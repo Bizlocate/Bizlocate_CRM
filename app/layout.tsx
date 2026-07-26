@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata = {
   title: "BizLocate CRM",
   description: "Internal sales CRM",
+  icons: { icon: "/logo.jpg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

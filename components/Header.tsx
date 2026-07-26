@@ -68,24 +68,7 @@ export default function Header() {
       }}
     >
       <Link href="/customers" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            background: "#4046c9",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 13,
-            fontFamily: "'IBM Plex Mono', monospace",
-          }}
-        >
-          B
-        </div>
-        <span style={{ fontWeight: 600, fontSize: 14.5, color: "#20222b" }}>BizLocate CRM</span>
+        <img src="/logo.jpg" alt="BizLocate" style={{ height: 30, width: "auto" }} />
       </Link>
       <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
         <div ref={notifRef} style={{ position: "relative" }}>

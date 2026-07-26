@@ -38,24 +38,7 @@ export default function LoginPage() {
         style={{ width: 380, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}
       >
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "#4046c9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 18,
-              fontFamily: "'IBM Plex Mono', monospace",
-            }}
-          >
-            B
-          </div>
-          <div style={{ fontSize: 19, fontWeight: 700 }}>BizLocate CRM</div>
+          <img src="/logo.jpg" alt="BizLocate" style={{ width: 200, height: "auto" }} />
           <div style={{ fontSize: 13, color: "#6b7280" }}>Internal sales CRM — sign in to continue</div>
         </div>
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
