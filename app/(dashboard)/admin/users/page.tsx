@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import { Role } from "@/lib/types";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, deleteUser } = useStore();
+  const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, deleteUser, resetUserPassword } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -24,6 +24,16 @@ export default function AdminUsersPage() {
     if (!window.confirm(`Delete ${name}? This permanently removes their login and cannot be undone.`)) return;
     const result = await deleteUser(id);
     if (!result.ok) alert(result.error ?? "Could not delete user.");
+  }
+
+  async function handleResetPassword(id: string, name: string) {
+    if (!window.confirm(`Reset password for ${name}? A new temporary password will be generated.`)) return;
+    const result = await resetUserPassword(id);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setTempPassword(result.tempPassword ?? null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -137,6 +147,9 @@ export default function AdminUsersPage() {
             <div style={{ display: "flex", gap: 12 }}>
               <span onClick={() => toggleUserActive(u.id)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
                 {u.active ? "Deactivate" : "Reactivate"}
+              </span>
+              <span onClick={() => handleResetPassword(u.id, u.name)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
+                Reset Password
               </span>
               {u.id !== currentUser?.id && (
                 <span onClick={() => handleDelete(u.id, u.name)} style={{ color: "#d9483a", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
