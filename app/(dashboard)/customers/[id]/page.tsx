@@ -84,23 +84,33 @@ export default function CustomerDetailPage() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {currentUser.role === "ADMIN" && (
-            <select
-              className="field-input"
-              style={{ width: "auto" }}
-              value={reassignTo || customer.assignedToUserId}
-              onChange={(e) => {
-                const result = reassignCustomer(customer.id, e.target.value);
-                if (!result.ok) {
-                  alert(result.error ?? "Could not reassign customer.");
-                  return;
-                }
-                setReassignTo(e.target.value);
-              }}
-            >
-              {users.filter((u) => u.active).map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+            <>
+              <select
+                className="field-input"
+                style={{ width: "auto" }}
+                value={reassignTo || customer.assignedToUserId}
+                onChange={(e) => setReassignTo(e.target.value)}
+              >
+                {users.filter((u) => u.active).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+              {reassignTo && reassignTo !== customer.assignedToUserId && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const result = reassignCustomer(customer.id, reassignTo);
+                    if (!result.ok) {
+                      alert(result.error ?? "Could not reassign customer.");
+                      return;
+                    }
+                    setReassignTo("");
+                  }}
+                >
+                  Confirm
+                </button>
+              )}
+            </>
           )}
           {currentUser.role === "ADMIN" && (
             <button className="btn btn-danger" onClick={handleDelete}>
