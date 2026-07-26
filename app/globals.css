@@ -1,0 +1,98 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #eef0f4;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  color: #20222b;
+}
+
+a {
+  color: #4046c9;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #2f379e;
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select {
+  font-family: inherit;
+}
+
+.btn {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: #4046c9;
+  color: #fff;
+}
+
+.btn-primary:disabled {
+  background: #9aa0ab;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: #fff;
+  border: 1px solid #d7d9de;
+  color: #3a3d47;
+}
+
+.btn-danger {
+  background: #fff;
+  border: 1px solid #f3c9c2;
+  color: #c0392b;
+}
+
+.field-input {
+  border: 1px solid #d7d9de;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #20222b;
+  background: #fff;
+  width: 100%;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #3a3d47;
+}
+
+.card {
+  border: 1px solid #e2e4e9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.card div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.error-text {
+  color: #c0392b;
+  font-size: 12.5px;
+}
