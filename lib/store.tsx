@@ -11,8 +11,8 @@ import {
 import { createClient } from "./supabase/client";
 import { Activity, ActivityType, Customer, Notification, Role, Stage, Task, Team, User } from "./types";
 
-function mapProfile(row: { id: string; name: string; email: string; role: Role; team_id: string | null; status: string }): User {
-  return { id: row.id, name: row.name, email: row.email, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE" };
+function mapProfile(row: { id: string; name: string; email: string; phone: string | null; role: Role; team_id: string | null; status: string }): User {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE" };
 }
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
@@ -40,7 +40,7 @@ interface Store {
 
   visibleCustomers: Customer[];
 
-  addUser: (input: { name: string; email: string; role: User["role"]; teamId: string | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
+  addUser: (input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
   toggleUserActive: (id: string) => void;
   updateUserRole: (id: string, role: Role) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -151,7 +151,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return customers.filter((c) => c.assignedToUserId === currentUser.id);
   }, [customers, users, currentUser]);
 
-  async function addUser(input: { name: string; email: string; role: User["role"]; teamId: string | null; password?: string }) {
+  async function addUser(input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; password?: string }) {
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

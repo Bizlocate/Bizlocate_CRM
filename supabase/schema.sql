@@ -15,10 +15,14 @@ create table profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   name text not null,
   email text not null,
+  phone text,
   role text not null check (role in ('ADMIN', 'MANAGER', 'SALESPERSON')),
   team_id uuid references teams (id) on delete set null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE'))
 );
+
+-- Run this alone against an already-provisioned database:
+-- alter table profiles add column if not exists phone text;
 
 alter table teams
   add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null;
@@ -88,11 +92,12 @@ $$ language sql security definer stable set search_path = public;
 
 create function handle_new_user() returns trigger as $$
 begin
-  insert into public.profiles (id, name, email, role, team_id, status)
+  insert into public.profiles (id, name, email, phone, role, team_id, status)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', new.email),
     new.email,
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
     'ACTIVE'

@@ -7,8 +7,8 @@ function genTempPassword() {
 }
 
 export async function POST(request: Request) {
-  const { name, email, role, teamId, password } = await request.json();
-  if (!name?.trim() || !email?.trim() || !role) {
+  const { name, email, phone, role, teamId, password } = await request.json();
+  if (!name?.trim() || !email?.trim() || !phone?.trim() || !role) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
   if (password && password.length < 6) {
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     email: email.trim(),
     password: finalPassword,
     email_confirm: true,
-    user_metadata: { name: name.trim(), role, team_id: teamId || "" },
+    user_metadata: { name: name.trim(), phone: phone.trim(), role, team_id: teamId || "" },
   });
 
   if (createError) {

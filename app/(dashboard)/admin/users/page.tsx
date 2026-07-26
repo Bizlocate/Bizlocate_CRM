@@ -11,10 +11,15 @@ export default function AdminUsersPage() {
   const [formError, setFormError] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("SALESPERSON");
   const [teamId, setTeamId] = useState<string>("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   function teamName(id: string | null) {
     return teams.find((t) => t.id === id)?.name ?? "—";
@@ -26,27 +31,38 @@ export default function AdminUsersPage() {
     if (!result.ok) alert(result.error ?? "Could not delete user.");
   }
 
-  async function handleResetPassword(id: string, name: string) {
-    const manual = window.prompt(`Reset password for ${name}. Enter a new password, or leave blank to auto-generate one:`);
-    if (manual === null) return;
-    if (manual.trim() && manual.trim().length < 6) {
-      alert("Password must be at least 6 characters.");
+  function openReset(id: string, name: string) {
+    setResetTarget({ id, name });
+    setResetPassword("");
+    setResetError("");
+  }
+
+  async function handleResetSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetTarget) return;
+    const manual = resetPassword.trim();
+    if (manual && manual.length < 6) {
+      setResetError("Password must be at least 6 characters.");
       return;
     }
-    const result = await resetUserPassword(id, manual.trim() || undefined);
+    setResetting(true);
+    setResetError("");
+    const result = await resetUserPassword(resetTarget.id, manual || undefined);
+    setResetting(false);
     if (result.error) {
-      alert(result.error);
+      setResetError(result.error);
       return;
     }
-    setTempPassword(result.tempPassword ?? manual.trim());
+    setTempPassword(result.tempPassword ?? manual);
+    setResetTarget(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
+    if (!name.trim() || !email.trim() || !phone.trim()) return;
     setSubmitting(true);
     setFormError("");
-    const result = await addUser({ name: name.trim(), email: email.trim(), role, teamId: teamId || null, password: password.trim() || undefined });
+    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), role, teamId: teamId || null, password: password.trim() || undefined });
     setSubmitting(false);
     if (result.error) {
       setFormError(result.error);
@@ -55,6 +71,7 @@ export default function AdminUsersPage() {
     setTempPassword(result.tempPassword ?? null);
     setName("");
     setEmail("");
+    setPhone("");
     setRole("SALESPERSON");
     setTeamId("");
     setPassword("");
@@ -80,6 +97,26 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {resetTarget && (
+        <form onSubmit={handleResetSubmit} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ flex: "1 1 260px" }}>
+            <label className="field-label">New password for {resetTarget.name}</label>
+            <input
+              className="field-input"
+              type="password"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+              placeholder="Leave blank to auto-generate"
+              minLength={6}
+              autoFocus
+            />
+          </div>
+          <button className="btn btn-primary" type="submit" disabled={resetting}>{resetting ? "Resetting…" : "Reset Password"}</button>
+          <button className="btn btn-outline" type="button" onClick={() => setResetTarget(null)}>Cancel</button>
+          {resetError && <div className="error-text" style={{ flexBasis: "100%" }}>{resetError}</div>}
+        </form>
+      )}
+
       {showForm && (
         <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 180px" }}>
@@ -89,6 +126,10 @@ export default function AdminUsersPage() {
           <div style={{ flex: "1 1 220px" }}>
             <label className="field-label">Email</label>
             <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div style={{ flex: "1 1 160px" }}>
+            <label className="field-label">Phone</label>
+            <input className="field-input" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
           </div>
           <div style={{ flex: "1 1 160px" }}>
             <label className="field-label">Role</label>
@@ -123,14 +164,15 @@ export default function AdminUsersPage() {
       )}
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 2.2fr 1.2fr 1.3fr 1fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Name</div><div>Email</div><div>Role</div><div>Team</div><div>Status</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 2fr 1.3fr 1.1fr 1.2fr 1fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Status</div><div>Actions</div>
         </div>
         {users.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No users yet. Create the first one.</div>}
         {users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.8fr 2.2fr 1.2fr 1.3fr 1fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 2fr 1.3fr 1.1fr 1.2fr 1fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ color: "#6b7280" }}>{u.email}</div>
+            <div style={{ color: "#6b7280" }}>{u.phone ?? "—"}</div>
             <div>
               <select
                 className="field-input"
@@ -153,7 +195,7 @@ export default function AdminUsersPage() {
               <span onClick={() => toggleUserActive(u.id)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
                 {u.active ? "Deactivate" : "Reactivate"}
               </span>
-              <span onClick={() => handleResetPassword(u.id, u.name)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
+              <span onClick={() => openReset(u.id, u.name)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
                 Reset Password
               </span>
               {u.id !== currentUser?.id && (
