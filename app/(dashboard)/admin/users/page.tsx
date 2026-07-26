@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { Role } from "@/lib/types";
+import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
   const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
@@ -87,6 +88,7 @@ export default function AdminUsersPage() {
 
   return (
     <div style={{ padding: "28px 32px" }}>
+      <AdminTabs />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Admin — Users</div>
         <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>+ New User</button>
