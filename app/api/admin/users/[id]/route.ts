@@ -8,6 +8,10 @@ function genTempPassword() {
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { password } = await request.json().catch(() => ({ password: undefined }));
+  if (password && password.length < 6) {
+    return NextResponse.json({ error: "Password must be at least 6 characters." }, { status: 400 });
+  }
 
   const supabase = await createServerClient();
   const { data: auth } = await supabase.auth.getUser();
@@ -24,14 +28,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
   }
 
-  const tempPassword = genTempPassword();
+  const finalPassword = password || genTempPassword();
   const admin = createAdminClient();
-  const { error } = await admin.auth.admin.updateUserById(id, { password: tempPassword });
+  const { error } = await admin.auth.admin.updateUserById(id, { password: finalPassword });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ tempPassword });
+  return NextResponse.json({ tempPassword: password ? undefined : finalPassword });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

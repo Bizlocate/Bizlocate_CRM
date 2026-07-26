@@ -44,7 +44,7 @@ interface Store {
   toggleUserActive: (id: string) => void;
   updateUserRole: (id: string, role: Role) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  resetUserPassword: (id: string) => Promise<{ tempPassword?: string; error?: string }>;
+  resetUserPassword: (id: string, password?: string) => Promise<{ tempPassword?: string; error?: string }>;
 
   addTeam: (name: string, managerId: string | null) => void;
   updateTeam: (id: string, name: string, managerId: string | null) => void;
@@ -205,8 +205,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
-  async function resetUserPassword(id: string) {
-    const res = await fetch(`/api/admin/users/${id}`, { method: "PATCH" });
+  async function resetUserPassword(id: string, password?: string) {
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
     const body = await res.json();
     if (!res.ok) {
       return { error: body.error ?? "Could not reset password." };

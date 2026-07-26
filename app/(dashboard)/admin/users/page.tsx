@@ -27,13 +27,18 @@ export default function AdminUsersPage() {
   }
 
   async function handleResetPassword(id: string, name: string) {
-    if (!window.confirm(`Reset password for ${name}? A new temporary password will be generated.`)) return;
-    const result = await resetUserPassword(id);
+    const manual = window.prompt(`Reset password for ${name}. Enter a new password, or leave blank to auto-generate one:`);
+    if (manual === null) return;
+    if (manual.trim() && manual.trim().length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
+    }
+    const result = await resetUserPassword(id, manual.trim() || undefined);
     if (result.error) {
       alert(result.error);
       return;
     }
-    setTempPassword(result.tempPassword ?? null);
+    setTempPassword(result.tempPassword ?? manual.trim());
   }
 
   async function handleSubmit(e: React.FormEvent) {
