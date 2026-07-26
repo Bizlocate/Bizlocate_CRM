@@ -1,19 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { STAGE_STYLES } from "@/lib/types";
 
 export default function CustomersPage() {
   const router = useRouter();
-  const { currentUser, visibleCustomers, users, stages } = useStore();
+  const { currentUser, visibleCustomers, users, stages, activities } = useStore();
   const [showForm, setShowForm] = useState(false);
+  const [searchName, setSearchName] = useState("");
+  const [searchEmail, setSearchEmail] = useState("");
+  const [searchPhone, setSearchPhone] = useState("");
+  const [searchStageId, setSearchStageId] = useState("");
+  const [searchAssignedTo, setSearchAssignedTo] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+
+  const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+  const showAssignedTo = currentUser?.role !== "SALESPERSON";
+
+  const filteredCustomers = useMemo(() => {
+    const name = searchName.trim().toLowerCase();
+    const email = searchEmail.trim().toLowerCase();
+    const phone = searchPhone.trim().toLowerCase();
+    const keyword = searchKeyword.trim().toLowerCase();
+    return visibleCustomers.filter((c) => {
+      if (name && !c.name.toLowerCase().includes(name)) return false;
+      if (email && !c.email.toLowerCase().includes(email)) return false;
+      if (phone && !c.phone.toLowerCase().includes(phone)) return false;
+      if (searchStageId && c.stageId !== searchStageId) return false;
+      if (showAssignedTo && searchAssignedTo && c.assignedToUserId !== searchAssignedTo) return false;
+      if (keyword) {
+        const hit = activities.some(
+          (a) => a.customerId === c.id && (a.content.toLowerCase().includes(keyword) || a.followUp.toLowerCase().includes(keyword))
+        );
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [visibleCustomers, activities, searchName, searchEmail, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo]);
 
   if (!currentUser) return null;
-
-  const canCreate = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
-  const showAssignedTo = currentUser.role !== "SALESPERSON";
 
   function stageName(stageId: string) {
     return stages.find((s) => s.id === stageId)?.name ?? "";
@@ -38,6 +65,55 @@ export default function CustomersPage() {
         <NewCustomerForm onClose={() => setShowForm(false)} />
       )}
 
+      <div className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Name</label>
+          <input className="field-input" value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Search name" />
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Email</label>
+          <input className="field-input" value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)} placeholder="Search email" />
+        </div>
+        <div style={{ flex: "1 1 140px" }}>
+          <label className="field-label">Phone</label>
+          <input className="field-input" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} placeholder="Search phone" />
+        </div>
+        <div style={{ flex: "1 1 140px" }}>
+          <label className="field-label">Stage</label>
+          <select className="field-input" value={searchStageId} onChange={(e) => setSearchStageId(e.target.value)}>
+            <option value="">All</option>
+            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        {showAssignedTo && (
+          <div style={{ flex: "1 1 160px" }}>
+            <label className="field-label">Assigned To</label>
+            <select className="field-input" value={searchAssignedTo} onChange={(e) => setSearchAssignedTo(e.target.value)}>
+              <option value="">All</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ flex: "1 1 200px" }}>
+          <label className="field-label">Keyword (in log)</label>
+          <input className="field-input" value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} placeholder="Search notes, calls, visits" />
+        </div>
+        <button
+          className="btn btn-outline"
+          type="button"
+          onClick={() => {
+            setSearchName("");
+            setSearchEmail("");
+            setSearchPhone("");
+            setSearchStageId("");
+            setSearchAssignedTo("");
+            setSearchKeyword("");
+          }}
+        >
+          Clear
+        </button>
+      </div>
+
       <div className="card">
         <div
           style={{
@@ -60,10 +136,10 @@ export default function CustomersPage() {
           {showAssignedTo && <div>Assigned To</div>}
           <div></div>
         </div>
-        {visibleCustomers.length === 0 && (
-          <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers yet.</div>
+        {filteredCustomers.length === 0 && (
+          <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
         )}
-        {visibleCustomers.map((c) => {
+        {filteredCustomers.map((c) => {
           const style = STAGE_STYLES[stageName(c.stageId)] ?? { bg: "#eef0f4", color: "#4b5566" };
           return (
             <div
