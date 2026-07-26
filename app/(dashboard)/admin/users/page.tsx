@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import { Role } from "@/lib/types";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, deleteUser, resetUserPassword } = useStore();
+  const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -14,6 +14,7 @@ export default function AdminUsersPage() {
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("SALESPERSON");
   const [teamId, setTeamId] = useState<string>("");
+  const [customerLimit, setCustomerLimit] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
@@ -60,9 +61,14 @@ export default function AdminUsersPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !phone.trim()) return;
+    const limit = customerLimit.trim() ? Number(customerLimit) : null;
+    if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
+      setFormError("Customer limit must be a non-negative whole number.");
+      return;
+    }
     setSubmitting(true);
     setFormError("");
-    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), role, teamId: teamId || null, password: password.trim() || undefined });
+    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), role, teamId: teamId || null, customerLimit: limit, password: password.trim() || undefined });
     setSubmitting(false);
     if (result.error) {
       setFormError(result.error);
@@ -74,6 +80,7 @@ export default function AdminUsersPage() {
     setPhone("");
     setRole("SALESPERSON");
     setTeamId("");
+    setCustomerLimit("");
     setPassword("");
     setShowForm(false);
   }
@@ -146,6 +153,18 @@ export default function AdminUsersPage() {
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
+          <div style={{ flex: "1 1 140px" }}>
+            <label className="field-label">Customer limit</label>
+            <input
+              className="field-input"
+              type="number"
+              min={0}
+              step={1}
+              value={customerLimit}
+              onChange={(e) => setCustomerLimit(e.target.value)}
+              placeholder="Unlimited"
+            />
+          </div>
           <div style={{ flex: "1 1 180px" }}>
             <label className="field-label">Password (optional)</label>
             <input
@@ -164,12 +183,12 @@ export default function AdminUsersPage() {
       )}
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 2fr 1.3fr 1.1fr 1.2fr 1fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Status</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Limit</div><div>Status</div><div>Actions</div>
         </div>
         {users.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No users yet. Create the first one.</div>}
         {users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 2fr 1.3fr 1.1fr 1.2fr 1fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ color: "#6b7280" }}>{u.email}</div>
             <div style={{ color: "#6b7280" }}>{u.phone ?? "—"}</div>
@@ -186,6 +205,24 @@ export default function AdminUsersPage() {
               </select>
             </div>
             <div style={{ color: "#6b7280" }}>{teamName(u.teamId)}</div>
+            <div>
+              <input
+                key={u.customerLimit ?? "unlimited"}
+                className="field-input"
+                style={{ fontSize: 13, padding: "4px 8px", width: 70 }}
+                type="number"
+                min={0}
+                step={1}
+                defaultValue={u.customerLimit ?? ""}
+                placeholder="∞"
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  const next = raw ? Number(raw) : null;
+                  if (next !== null && (!Number.isInteger(next) || next < 0)) return;
+                  if (next !== u.customerLimit) updateUserCustomerLimit(u.id, next);
+                }}
+              />
+            </div>
             <div>
               <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 9px", borderRadius: 20, background: u.active ? "#e7f6ec" : "#eceef1", color: u.active ? "#1e7a41" : "#6b7280" }}>
                 {u.active ? "ACTIVE" : "INACTIVE"}

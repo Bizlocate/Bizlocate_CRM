@@ -8,6 +8,7 @@ export interface User {
   role: Role;
   teamId: string | null;
   active: boolean;
+  customerLimit: number | null;
 }
 
 export interface Team {

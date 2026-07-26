@@ -7,12 +7,15 @@ function genTempPassword() {
 }
 
 export async function POST(request: Request) {
-  const { name, email, phone, role, teamId, password } = await request.json();
+  const { name, email, phone, role, teamId, customerLimit, password } = await request.json();
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !role) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
   if (password && password.length < 6) {
     return NextResponse.json({ error: "Password must be at least 6 characters." }, { status: 400 });
+  }
+  if (customerLimit !== null && customerLimit !== undefined && (!Number.isInteger(customerLimit) || customerLimit < 0)) {
+    return NextResponse.json({ error: "Customer limit must be a non-negative whole number." }, { status: 400 });
   }
 
   const supabase = await createServerClient();
@@ -36,7 +39,7 @@ export async function POST(request: Request) {
     email: email.trim(),
     password: finalPassword,
     email_confirm: true,
-    user_metadata: { name: name.trim(), phone: phone.trim(), role, team_id: teamId || "" },
+    user_metadata: { name: name.trim(), phone: phone.trim(), role, team_id: teamId || "", customer_limit: customerLimit ?? "" },
   });
 
   if (createError) {

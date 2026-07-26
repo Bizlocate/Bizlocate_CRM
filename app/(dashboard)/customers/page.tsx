@@ -116,7 +116,11 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !assignedToUserId) return;
-    addCustomer({ name, email, phone, assignedToUserId });
+    const result = addCustomer({ name, email, phone, assignedToUserId });
+    if (!result.ok) {
+      alert(result.error ?? "Could not add customer.");
+      return;
+    }
     onClose();
   }
 

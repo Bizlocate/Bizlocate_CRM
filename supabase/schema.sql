@@ -18,11 +18,13 @@ create table profiles (
   phone text,
   role text not null check (role in ('ADMIN', 'MANAGER', 'SALESPERSON')),
   team_id uuid references teams (id) on delete set null,
-  status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE'))
+  status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
+  customer_limit int check (customer_limit is null or customer_limit >= 0)
 );
 
 -- Run this alone against an already-provisioned database:
 -- alter table profiles add column if not exists phone text;
+-- alter table profiles add column if not exists customer_limit int check (customer_limit is null or customer_limit >= 0);
 
 alter table teams
   add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null;
@@ -92,7 +94,7 @@ $$ language sql security definer stable set search_path = public;
 
 create function handle_new_user() returns trigger as $$
 begin
-  insert into public.profiles (id, name, email, phone, role, team_id, status)
+  insert into public.profiles (id, name, email, phone, role, team_id, status, customer_limit)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', new.email),
@@ -100,7 +102,8 @@ begin
     nullif(new.raw_user_meta_data ->> 'phone', ''),
     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
-    'ACTIVE'
+    'ACTIVE',
+    nullif(new.raw_user_meta_data ->> 'customer_limit', '')::int
   );
   return new;
 end;
@@ -121,8 +124,9 @@ begin
     new.role is distinct from old.role
     or new.team_id is distinct from old.team_id
     or new.status is distinct from old.status
+    or new.customer_limit is distinct from old.customer_limit
   ) then
-    raise exception 'only an admin can change role, team, or status';
+    raise exception 'only an admin can change role, team, status, or customer limit';
   end if;
   return new;
 end;

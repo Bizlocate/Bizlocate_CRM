@@ -11,8 +11,8 @@ import {
 import { createClient } from "./supabase/client";
 import { Activity, ActivityType, Customer, Notification, Role, Stage, Task, Team, User } from "./types";
 
-function mapProfile(row: { id: string; name: string; email: string; phone: string | null; role: Role; team_id: string | null; status: string }): User {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE" };
+function mapProfile(row: { id: string; name: string; email: string; phone: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
 }
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
@@ -40,9 +40,10 @@ interface Store {
 
   visibleCustomers: Customer[];
 
-  addUser: (input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
+  addUser: (input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
   toggleUserActive: (id: string) => void;
   updateUserRole: (id: string, role: Role) => void;
+  updateUserCustomerLimit: (id: string, customerLimit: number | null) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
   resetUserPassword: (id: string, password?: string) => Promise<{ tempPassword?: string; error?: string }>;
 
@@ -54,8 +55,8 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => void;
-  reassignCustomer: (customerId: string, newAssigneeId: string) => void;
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => { ok: boolean; error?: string };
+  reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
 
@@ -151,7 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return customers.filter((c) => c.assignedToUserId === currentUser.id);
   }, [customers, users, currentUser]);
 
-  async function addUser(input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; password?: string }) {
+  async function addUser(input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) {
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -192,6 +193,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .eq("id", id)
       .then(({ error }) => {
         if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: prevRole } : u)));
+      });
+  }
+
+  function updateUserCustomerLimit(id: string, customerLimit: number | null) {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    const prevLimit = target.customerLimit;
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, customerLimit } : u)));
+    const supabase = createClient();
+    supabase
+      .from("profiles")
+      .update({ customer_limit: customerLimit })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, customerLimit: prevLimit } : u)));
       });
   }
 
@@ -273,7 +289,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  function assignmentError(userId: string, excludeCustomerId?: string) {
+    const user = users.find((u) => u.id === userId);
+    if (!user || user.customerLimit === null) return undefined;
+    const count = customers.filter((c) => c.assignedToUserId === userId && c.id !== excludeCustomerId).length;
+    if (count >= user.customerLimit) {
+      return `${user.name} is at their customer limit (${user.customerLimit}).`;
+    }
+    return undefined;
+  }
+
   function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string }) {
+    const error = assignmentError(input.assignedToUserId);
+    if (error) return { ok: false, error };
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
     setCustomers((prev) => [
       ...prev,
@@ -286,18 +314,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         stageId: defaultStage?.id ?? "",
       },
     ]);
+    return { ok: true };
   }
 
   function reassignCustomer(customerId: string, newAssigneeId: string) {
+    const customer = customers.find((c) => c.id === customerId);
+    if (customer && customer.assignedToUserId !== newAssigneeId) {
+      const error = assignmentError(newAssigneeId, customerId);
+      if (error) return { ok: false, error };
+    }
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, assignedToUserId: newAssigneeId } : c)));
     const assignee = users.find((u) => u.id === newAssigneeId);
-    const customer = customers.find((c) => c.id === customerId);
     if (assignee && customer) {
       setNotifications((prev) => [
         { id: genId("n"), message: `${assignee.name} was assigned ${customer.name}.`, time: "just now", unread: true },
         ...prev,
       ]);
     }
+    return { ok: true };
   }
 
   function deleteCustomer(customerId: string) {
@@ -365,6 +399,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addUser,
     toggleUserActive,
     updateUserRole,
+    updateUserCustomerLimit,
     deleteUser,
     resetUserPassword,
     addTeam,

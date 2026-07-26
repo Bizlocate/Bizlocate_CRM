@@ -89,8 +89,12 @@ export default function CustomerDetailPage() {
               style={{ width: "auto" }}
               value={reassignTo || customer.assignedToUserId}
               onChange={(e) => {
+                const result = reassignCustomer(customer.id, e.target.value);
+                if (!result.ok) {
+                  alert(result.error ?? "Could not reassign customer.");
+                  return;
+                }
                 setReassignTo(e.target.value);
-                reassignCustomer(customer.id, e.target.value);
               }}
             >
               {users.filter((u) => u.active).map((u) => (
