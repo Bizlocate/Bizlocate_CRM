@@ -57,3 +57,28 @@ export function parseAreaCsv(csvText: string, existingAreas: Area[], existingSub
   const approvedCount = approvedAreas.reduce((sum, a) => sum + a.subAreaNames.length, 0);
   return { approvedAreas, rejected, rows, approvedCount, rejectedCount: rejected.length };
 }
+
+// Drops one row (by row number) from a preview and regroups approvedAreas
+// from what's left, so admin can exclude a row before confirming upload.
+export function removeCsvRow(preview: CsvPreview, row: number): CsvPreview {
+  const rows = preview.rows.filter((r) => r.row !== row);
+  const rejected = preview.rejected.filter((r) => r.row !== row);
+  const isNewByArea = new Map(preview.approvedAreas.map((a) => [a.name.toLowerCase(), a.isNew]));
+
+  const approvedAreas: CsvPreview["approvedAreas"] = [];
+  const areaByKey = new Map<string, CsvPreview["approvedAreas"][number]>();
+  for (const r of rows) {
+    if (!r.approved) continue;
+    const key = r.area.toLowerCase();
+    let entry = areaByKey.get(key);
+    if (!entry) {
+      entry = { name: r.area, isNew: isNewByArea.get(key) ?? false, subAreaNames: [] };
+      areaByKey.set(key, entry);
+      approvedAreas.push(entry);
+    }
+    entry.subAreaNames.push(r.subArea);
+  }
+
+  const approvedCount = approvedAreas.reduce((sum, a) => sum + a.subAreaNames.length, 0);
+  return { approvedAreas, rejected, rows, approvedCount, rejectedCount: rejected.length };
+}

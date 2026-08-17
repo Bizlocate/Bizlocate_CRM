@@ -1,7 +1,7 @@
 // Self-check for parseAreaCsv. Run with:
 //   node --experimental-strip-types lib/parseAreaCsv.check.ts
 import assert from "node:assert";
-import { parseAreaCsv } from "./parseAreaCsv.ts";
+import { parseAreaCsv, removeCsvRow } from "./parseAreaCsv.ts";
 import type { Area, SubArea } from "./types.ts";
 
 // Blank Area cells carry forward the last non-blank area (Setapak.csv layout).
@@ -40,5 +40,19 @@ assert.equal(reupload.rejected[0].reason, "duplicate");
 assert.equal(reupload.approvedAreas.length, 1);
 assert.equal(reupload.approvedAreas[0].isNew, false);
 assert.deepEqual(reupload.approvedAreas[0].subAreaNames, ["New One"]);
+
+// Deleting one approved row from the preview drops it from that area's
+// subAreaNames and keeps everything else (isNew, other rows) intact.
+const withoutRow3 = removeCsvRow(result, 3); // row 3 = ",Saville Melati"
+assert.equal(withoutRow3.rows.length, 4);
+assert.equal(withoutRow3.rows.some((r) => r.row === 3), false);
+assert.deepEqual(withoutRow3.approvedAreas[0].subAreaNames, ["Desa Melawati", "Repeat"]);
+assert.equal(withoutRow3.approvedCount, 2);
+
+// Deleting the last approved row for an area removes that area entirely.
+const onlySetapak = parseAreaCsv("Area,Sub-Area\nSETAPAK,Desa Melawati", [], []);
+const emptied = removeCsvRow(onlySetapak, 2);
+assert.equal(emptied.approvedAreas.length, 0);
+assert.equal(emptied.approvedCount, 0);
 
 console.log("parseAreaCsv: all checks passed");

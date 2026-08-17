@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import AdminTabs from "@/components/AdminTabs";
 import { CsvPreview } from "@/lib/types";
+import { removeCsvRow } from "@/lib/parseAreaCsv";
 
 export default function AdminAreaPage() {
   const { areas, subAreas, addArea, updateArea, deleteArea, addSubArea, updateSubArea, deleteSubArea, previewAreaCsv, confirmAreaCsvImport } = useStore();
@@ -138,6 +139,9 @@ export default function AdminAreaPage() {
                 <span style={{ color: "#6b7280", width: 40 }}>row {r.row}</span>
                 <span style={{ flex: 1 }}>{r.area || "(no area)"} / {r.subArea || "(blank)"}</span>
                 {!r.approved && <span style={{ color: "#a13a2b" }}>{r.reason}</span>}
+                <span style={{ color: "#9aa0ab", cursor: "pointer", fontWeight: 600 }} onClick={() => setPreview(removeCsvRow(preview, r.row))}>
+                  ✕
+                </span>
               </div>
             ))}
           </div>
