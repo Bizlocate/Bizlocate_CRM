@@ -52,7 +52,7 @@ interface Store {
   visibleCustomers: Customer[];
 
   addUser: (input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
-  toggleUserActive: (id: string) => void;
+  updateUser: (id: string, input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; active: boolean }) => Promise<{ ok?: boolean; error?: string }>;
   updateUserRole: (id: string, role: Role) => void;
   updateUserTeam: (id: string, teamId: string | null) => void;
   updateUserCustomerLimit: (id: string, customerLimit: number | null) => void;
@@ -206,19 +206,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { tempPassword: body.tempPassword as string };
   }
 
-  function toggleUserActive(id: string) {
-    const target = users.find((u) => u.id === id);
-    if (!target) return;
-    const nextActive = !target.active;
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active: nextActive } : u)));
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .update({ status: nextActive ? "ACTIVE" : "INACTIVE" })
-      .eq("id", id)
-      .then(({ error }) => {
-        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active: !nextActive } : u)));
-      });
+  async function updateUser(id: string, input: { name: string; email: string; phone: string; ic: string | null; role: Role; teamId: string | null; customerLimit: number | null; active: boolean }) {
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      return { error: body.error ?? "Could not update user." };
+    }
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...input } : u)));
+    return { ok: true };
   }
 
   function updateUserRole(id: string, role: Role) {
@@ -553,7 +552,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     visibleCustomers,
     addCustomer,
     addUser,
-    toggleUserActive,
+    updateUser,
     updateUserRole,
     updateUserTeam,
     updateUserCustomerLimit,

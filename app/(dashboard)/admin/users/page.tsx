@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { Role } from "@/lib/types";
+import { Role, User } from "@/lib/types";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
+  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -20,7 +20,18 @@ export default function AdminUsersPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editIc, setEditIc] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<Role>("SALESPERSON");
+  const [editTeamId, setEditTeamId] = useState("");
+  const [editCustomerLimit, setEditCustomerLimit] = useState("");
+  const [editActive, setEditActive] = useState(true);
+  const [editError, setEditError] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [resetPassword, setResetPassword] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -32,18 +43,59 @@ export default function AdminUsersPage() {
   async function handleDelete(id: string, name: string) {
     if (!window.confirm(`Delete ${name}? This permanently removes their login and cannot be undone.`)) return;
     const result = await deleteUser(id);
-    if (!result.ok) alert(result.error ?? "Could not delete user.");
+    if (!result.ok) {
+      alert(result.error ?? "Could not delete user.");
+      return;
+    }
+    setEditTarget(null);
   }
 
-  function openReset(id: string, name: string) {
-    setResetTarget({ id, name });
+  function openEdit(u: User) {
+    setEditTarget(u);
+    setEditName(u.name);
+    setEditIc(u.ic ?? "");
+    setEditPhone(u.phone ?? "");
+    setEditEmail(u.email);
+    setEditRole(u.role);
+    setEditTeamId(u.teamId ?? "");
+    setEditCustomerLimit(u.customerLimit != null ? String(u.customerLimit) : "");
+    setEditActive(u.active);
+    setEditError("");
     setResetPassword("");
     setResetError("");
   }
 
-  async function handleResetSubmit(e: React.FormEvent) {
+  async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!resetTarget) return;
+    if (!editTarget) return;
+    if (!editName.trim() || !editEmail.trim() || !editPhone.trim()) return;
+    const limit = editCustomerLimit.trim() ? Number(editCustomerLimit) : null;
+    if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
+      setEditError("Customer limit must be a non-negative whole number.");
+      return;
+    }
+    setEditSubmitting(true);
+    setEditError("");
+    const result = await updateUser(editTarget.id, {
+      name: editName.trim(),
+      email: editEmail.trim(),
+      phone: editPhone.trim(),
+      ic: editIc.trim() || null,
+      role: editRole,
+      teamId: editTeamId || null,
+      customerLimit: limit,
+      active: editActive,
+    });
+    setEditSubmitting(false);
+    if (result.error) {
+      setEditError(result.error);
+      return;
+    }
+    setEditTarget(null);
+  }
+
+  async function handleResetSubmit() {
+    if (!editTarget) return;
     const manual = resetPassword.trim();
     if (manual && manual.length < 6) {
       setResetError("Password must be at least 6 characters.");
@@ -51,14 +103,14 @@ export default function AdminUsersPage() {
     }
     setResetting(true);
     setResetError("");
-    const result = await resetUserPassword(resetTarget.id, manual || undefined);
+    const result = await resetUserPassword(editTarget.id, manual || undefined);
     setResetting(false);
     if (result.error) {
       setResetError(result.error);
       return;
     }
     setTempPassword(result.tempPassword ?? manual);
-    setResetTarget(null);
+    setResetPassword("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -114,24 +166,100 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {resetTarget && (
-        <form onSubmit={handleResetSubmit} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ flex: "1 1 260px" }}>
-            <label className="field-label">New password for {resetTarget.name}</label>
-            <input
-              className="field-input"
-              type="password"
-              value={resetPassword}
-              onChange={(e) => setResetPassword(e.target.value)}
-              placeholder="Leave blank to auto-generate"
-              minLength={6}
-              autoFocus
-            />
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={resetting}>{resetting ? "Resetting…" : "Reset Password"}</button>
-          <button className="btn btn-outline" type="button" onClick={() => setResetTarget(null)}>Cancel</button>
-          {resetError && <div className="error-text" style={{ flexBasis: "100%" }}>{resetError}</div>}
-        </form>
+      {editTarget && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setEditTarget(null); }}>
+          <form onSubmit={handleEditSubmit} className="card modal-card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit User</div>
+              <button className="btn btn-outline" type="button" onClick={() => setEditTarget(null)}>×</button>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">Name</label>
+                <input className="field-input" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">IC</label>
+                <input className="field-input" value={editIc} onChange={(e) => setEditIc(e.target.value)} />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Tel. No</label>
+                <input className="field-input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 220px" }}>
+                <label className="field-label">Email</label>
+                <input className="field-input" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Role</label>
+                <select className="field-input" value={editRole} onChange={(e) => setEditRole(e.target.value as Role)}>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MANAGER">MANAGER</option>
+                  <option value="SALESPERSON">SALESPERSON</option>
+                </select>
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Team</label>
+                <select className="field-input" value={editTeamId} onChange={(e) => setEditTeamId(e.target.value)}>
+                  <option value="">—</option>
+                  {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: "1 1 140px" }}>
+                <label className="field-label">Customer limit</label>
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={editCustomerLimit}
+                  onChange={(e) => setEditCustomerLimit(e.target.value)}
+                  placeholder="Unlimited"
+                />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Status</label>
+                <select className="field-input" value={editActive ? "ACTIVE" : "INACTIVE"} onChange={(e) => setEditActive(e.target.value === "ACTIVE")}>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="INACTIVE">INACTIVE</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button className="btn btn-primary" type="submit" disabled={editSubmitting}>{editSubmitting ? "Saving…" : "Save"}</button>
+              <button className="btn btn-outline" type="button" onClick={() => setEditTarget(null)}>Cancel</button>
+            </div>
+            {editError && <div className="error-text" style={{ marginTop: 10 }}>{editError}</div>}
+
+            <div style={{ borderTop: "1px solid #eef0f2", marginTop: 20, paddingTop: 16 }}>
+              <label className="field-label">Reset password</label>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginTop: 6 }}>
+                <div style={{ flex: "1 1 220px" }}>
+                  <input
+                    className="field-input"
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="Leave blank to auto-generate"
+                    minLength={6}
+                  />
+                </div>
+                <button className="btn btn-outline" type="button" disabled={resetting} onClick={handleResetSubmit}>
+                  {resetting ? "Resetting…" : "Reset Password"}
+                </button>
+              </div>
+              {resetError && <div className="error-text" style={{ marginTop: 6 }}>{resetError}</div>}
+            </div>
+
+            {editTarget.id !== currentUser?.id && (
+              <div style={{ borderTop: "1px solid #eef0f2", marginTop: 20, paddingTop: 16 }}>
+                <span onClick={() => handleDelete(editTarget.id, editTarget.name)} style={{ color: "#d9483a", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
+                  Delete this user
+                </span>
+              </div>
+            )}
+          </form>
+        </div>
       )}
 
       {showAddModal && (
@@ -264,17 +392,9 @@ export default function AdminUsersPage() {
               </span>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
-              <span onClick={() => toggleUserActive(u.id)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
-                {u.active ? "Deactivate" : "Reactivate"}
+              <span onClick={() => openEdit(u)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
+                Edit
               </span>
-              <span onClick={() => openReset(u.id, u.name)} style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
-                Reset Password
-              </span>
-              {u.id !== currentUser?.id && (
-                <span onClick={() => handleDelete(u.id, u.name)} style={{ color: "#d9483a", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
-                  Delete
-                </span>
-              )}
             </div>
           </div>
         ))}
