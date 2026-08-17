@@ -36,6 +36,18 @@ create table pipeline_stages (
   is_default boolean not null default false
 );
 
+create table areas (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table sub_areas (
+  id uuid primary key default gen_random_uuid(),
+  area_id uuid not null references areas (id) on delete cascade,
+  name text not null,
+  unique (area_id, name)
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -187,6 +199,8 @@ create trigger notifications_protect_columns
 alter table teams enable row level security;
 alter table profiles enable row level security;
 alter table pipeline_stages enable row level security;
+alter table areas enable row level security;
+alter table sub_areas enable row level security;
 alter table customers enable row level security;
 alter table activities enable row level security;
 alter table tasks enable row level security;
@@ -215,6 +229,17 @@ create policy "pipeline_stages_select" on pipeline_stages for select using (auth
 create policy "pipeline_stages_insert_admin" on pipeline_stages for insert with check (is_admin());
 create policy "pipeline_stages_update_admin" on pipeline_stages for update using (is_admin());
 create policy "pipeline_stages_delete_admin" on pipeline_stages for delete using (is_admin());
+
+-- areas / sub_areas: any authenticated user reads, admin writes
+create policy "areas_select" on areas for select using (auth.uid() is not null);
+create policy "areas_insert_admin" on areas for insert with check (is_admin());
+create policy "areas_update_admin" on areas for update using (is_admin());
+create policy "areas_delete_admin" on areas for delete using (is_admin());
+
+create policy "sub_areas_select" on sub_areas for select using (auth.uid() is not null);
+create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_admin());
+create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
+create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());
 
 -- customers: admin all, manager own team, salesperson own assigned
 create policy "customers_select" on customers for select using (
@@ -316,3 +341,34 @@ insert into teams (name) values
 -- select id, 'Hello', email, 'ADMIN', null, 'ACTIVE'
 -- from auth.users where email = 'hello@bizlocate.com.my'
 -- on conflict (id) do update set role = 'ADMIN', status = 'ACTIVE';
+
+-- ============================================================
+-- Migration: Area / Sub-Area management (run once against an
+-- already-provisioned database — everything below already exists
+-- in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table areas (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table sub_areas (
+--   id uuid primary key default gen_random_uuid(),
+--   area_id uuid not null references areas (id) on delete cascade,
+--   name text not null,
+--   unique (area_id, name)
+-- );
+--
+-- alter table areas enable row level security;
+-- alter table sub_areas enable row level security;
+--
+-- create policy "areas_select" on areas for select using (auth.uid() is not null);
+-- create policy "areas_insert_admin" on areas for insert with check (is_admin());
+-- create policy "areas_update_admin" on areas for update using (is_admin());
+-- create policy "areas_delete_admin" on areas for delete using (is_admin());
+--
+-- create policy "sub_areas_select" on sub_areas for select using (auth.uid() is not null);
+-- create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_admin());
+-- create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
+-- create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());

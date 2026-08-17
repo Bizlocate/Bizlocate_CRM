@@ -17,6 +17,46 @@ export interface Team {
   managerId: string | null;
 }
 
+export interface Area {
+  id: string;
+  name: string;
+}
+
+export interface SubArea {
+  id: string;
+  areaId: string;
+  name: string;
+}
+
+export interface CsvPreviewArea {
+  name: string;
+  isNew: boolean;
+  subAreaNames: string[];
+}
+
+export interface CsvRejectedRow {
+  row: number;
+  area: string;
+  subArea: string;
+  reason: string;
+}
+
+export interface CsvPreviewRow {
+  row: number;
+  area: string;
+  subArea: string;
+  approved: boolean;
+  reason?: string;
+}
+
+export interface CsvPreview {
+  approvedAreas: CsvPreviewArea[];
+  rejected: CsvRejectedRow[];
+  rows: CsvPreviewRow[];
+  approvedCount: number;
+  rejectedCount: number;
+}
+
 export interface Stage {
   id: string;
   name: string;

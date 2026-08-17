@@ -9,7 +9,8 @@ import {
   seedTasks,
 } from "./mock-data";
 import { createClient } from "./supabase/client";
-import { Activity, ActivityType, Customer, Notification, Role, Stage, Task, Team, User } from "./types";
+import { parseAreaCsv } from "./parseAreaCsv";
+import { Activity, ActivityType, Area, Customer, CsvPreview, Notification, Role, Stage, SubArea, Task, Team, User } from "./types";
 
 function mapProfile(row: { id: string; name: string; email: string; phone: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
   return { id: row.id, name: row.name, email: row.email, phone: row.phone, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
@@ -17,6 +18,14 @@ function mapProfile(row: { id: string; name: string; email: string; phone: strin
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
   return { id: row.id, name: row.name, managerId: row.manager_id };
+}
+
+function mapArea(row: { id: string; name: string }): Area {
+  return { id: row.id, name: row.name };
+}
+
+function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
+  return { id: row.id, areaId: row.area_id, name: row.name };
 }
 
 interface LoginResult {
@@ -27,6 +36,8 @@ interface LoginResult {
 interface Store {
   users: User[];
   teams: Team[];
+  areas: Area[];
+  subAreas: SubArea[];
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
@@ -49,6 +60,15 @@ interface Store {
 
   addTeam: (name: string, managerId: string | null) => void;
   updateTeam: (id: string, name: string, managerId: string | null) => void;
+
+  addArea: (name: string) => void;
+  updateArea: (id: string, name: string) => void;
+  deleteArea: (id: string) => void;
+  addSubArea: (areaId: string, name: string) => void;
+  updateSubArea: (id: string, name: string) => void;
+  deleteSubArea: (id: string) => void;
+  previewAreaCsv: (csvText: string) => CsvPreview;
+  confirmAreaCsvImport: (preview: CsvPreview) => Promise<{ ok: boolean; areasCreated: number; subAreasCreated: number; error?: string }>;
 
   addStage: (name: string, isDefault: boolean) => void;
   renameStage: (id: string, name: string) => void;
@@ -79,6 +99,8 @@ function genId(prefix: string) {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [subAreas, setSubAreas] = useState<SubArea[]>([]);
   const [stages, setStages] = useState<Stage[]>(seedStages);
   const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
   const [activities, setActivities] = useState<Activity[]>(seedActivities);
@@ -103,11 +125,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadAreas(): Promise<Area[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("areas").select("*").order("name");
+    const mapped = (data ?? []).map(mapArea);
+    setAreas(mapped);
+    return mapped;
+  }
+
+  async function loadSubAreas(): Promise<SubArea[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("sub_areas").select("*").order("name");
+    const mapped = (data ?? []).map(mapSubArea);
+    setSubAreas(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
-        const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers()]);
+        const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers(), loadAreas(), loadSubAreas()]);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) setCurrentUserId(profile.id);
       }
@@ -126,7 +164,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (error || !data.user) {
       return { ok: false, error: "Invalid email or password." };
     }
-    const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers()]);
+    const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers(), loadAreas(), loadSubAreas()]);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -250,6 +288,94 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTeams((prev) => prev.map((t) => (t.id === id ? { ...t, name, managerId } : t)));
     const supabase = createClient();
     supabase.from("teams").update({ name, manager_id: managerId }).eq("id", id).then(() => {});
+  }
+
+  function addArea(name: string) {
+    const supabase = createClient();
+    supabase
+      .from("areas")
+      .insert({ name })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setAreas((prev) => [...prev, mapArea(data)]);
+      });
+  }
+
+  function updateArea(id: string, name: string) {
+    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, name } : a)));
+    const supabase = createClient();
+    supabase.from("areas").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function deleteArea(id: string) {
+    setAreas((prev) => prev.filter((a) => a.id !== id));
+    setSubAreas((prev) => prev.filter((s) => s.areaId !== id));
+    const supabase = createClient();
+    supabase.from("areas").delete().eq("id", id).then(() => {});
+  }
+
+  function addSubArea(areaId: string, name: string) {
+    const supabase = createClient();
+    supabase
+      .from("sub_areas")
+      .insert({ area_id: areaId, name })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setSubAreas((prev) => [...prev, mapSubArea(data)]);
+      });
+  }
+
+  function updateSubArea(id: string, name: string) {
+    setSubAreas((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+    const supabase = createClient();
+    supabase.from("sub_areas").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function deleteSubArea(id: string) {
+    setSubAreas((prev) => prev.filter((s) => s.id !== id));
+    const supabase = createClient();
+    supabase.from("sub_areas").delete().eq("id", id).then(() => {});
+  }
+
+  function previewAreaCsv(csvText: string): CsvPreview {
+    return parseAreaCsv(csvText, areas, subAreas);
+  }
+
+  async function confirmAreaCsvImport(preview: CsvPreview) {
+    const supabase = createClient();
+    try {
+      let areasCreated = 0;
+      let subAreasCreated = 0;
+      for (const entry of preview.approvedAreas) {
+        let areaId: string;
+        if (entry.isNew) {
+          const { data, error } = await supabase.from("areas").insert({ name: entry.name }).select().single();
+          if (error || !data) throw new Error(error?.message ?? `Could not create area "${entry.name}".`);
+          areaId = data.id;
+          areasCreated++;
+        } else {
+          const existing = areas.find((a) => a.name.toLowerCase() === entry.name.toLowerCase());
+          if (!existing) throw new Error(`Area "${entry.name}" not found.`);
+          areaId = existing.id;
+        }
+        const { data: inserted, error: subError } = await supabase
+          .from("sub_areas")
+          .upsert(
+            entry.subAreaNames.map((name) => ({ area_id: areaId, name })),
+            { onConflict: "area_id,name", ignoreDuplicates: true }
+          )
+          .select();
+        if (subError) throw new Error(subError.message);
+        subAreasCreated += inserted?.length ?? 0;
+      }
+      await Promise.all([loadAreas(), loadSubAreas()]);
+      return { ok: true, areasCreated, subAreasCreated };
+    } catch (err) {
+      await Promise.all([loadAreas(), loadSubAreas()]);
+      return { ok: false, areasCreated: 0, subAreasCreated: 0, error: err instanceof Error ? err.message : "Import failed." };
+    }
   }
 
   function addStage(name: string, isDefault: boolean) {
@@ -385,6 +511,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     users,
     teams,
+    areas,
+    subAreas,
     stages,
     customers,
     activities,
@@ -404,6 +532,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     resetUserPassword,
     addTeam,
     updateTeam,
+    addArea,
+    updateArea,
+    deleteArea,
+    addSubArea,
+    updateSubArea,
+    deleteSubArea,
+    previewAreaCsv,
+    confirmAreaCsvImport,
     addStage,
     renameStage,
     moveStage,
