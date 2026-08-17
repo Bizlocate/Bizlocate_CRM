@@ -58,6 +58,60 @@ export interface CsvPreview {
   rejectedCount: number;
 }
 
+export interface BusinessTagIndustry {
+  id: string;
+  name: string;
+}
+
+export interface BusinessTagCategory {
+  id: string;
+  industryId: string;
+  name: string;
+}
+
+export interface BusinessTagType {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+export interface CsvPreviewBusinessTagCategory {
+  name: string;
+  isNew: boolean;
+  typeNames: string[];
+}
+
+export interface CsvPreviewBusinessTagIndustry {
+  name: string;
+  isNew: boolean;
+  categories: CsvPreviewBusinessTagCategory[];
+}
+
+export interface CsvRejectedBusinessTagRow {
+  row: number;
+  industry: string;
+  category: string;
+  type: string;
+  reason: string;
+}
+
+export interface CsvBusinessTagPreviewRow {
+  row: number;
+  industry: string;
+  category: string;
+  type: string;
+  approved: boolean;
+  reason?: string;
+}
+
+export interface CsvBusinessTagPreview {
+  approvedIndustries: CsvPreviewBusinessTagIndustry[];
+  rejected: CsvRejectedBusinessTagRow[];
+  rows: CsvBusinessTagPreviewRow[];
+  approvedCount: number;
+  rejectedCount: number;
+}
+
 export interface Stage {
   id: string;
   name: string;

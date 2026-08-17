@@ -1,0 +1,229 @@
+Industries,Categories,Types
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Fast Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Chinese Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Malay Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Dimsum (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Dimsum
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Vegetarian
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- India Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Arabian Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Western Food (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Western Food (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Korean Food (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Korean Food (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Japanese Food (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Japanese Food (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- NyoNya Food (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- NyoNya Food (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Taiwanese Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- China Food 中国餐 (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- China Food 中国餐 (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Thai Food (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Thai Food (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Local Cuisine
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Mamak
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Steamboat (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Steamboat (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Thai BBQ (Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Thai BBQ (Non-Halal)
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Noodle House
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Vietnamese Food
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Snacks
+Food & Beverage,Food & Beverage- Restaurant,Restaurant- Others
+Food & Beverage,Food & Beverage- Cafe,Cafe- Pastries n Coffee (Halal)
+Food & Beverage,Food & Beverage- Cafe,Cafe- Pastries n Coffee (Non-Halal)
+Food & Beverage,Food & Beverage- Dessert,Dessert- Boba Tea
+Food & Beverage,Food & Beverage- Dessert,Dessert- Shave Ice
+Food & Beverage,Food & Beverage- Dessert,Dessert- IceCream
+Food & Beverage,Food & Beverage- Dessert,Dessert- Chinese TongShui
+Food & Beverage,Food & Beverage- Dessert,Dessert- Others
+Food & Beverage,Food & Beverage- Hawker,Hawker- Chinese
+Food & Beverage,Food & Beverage- Hawker,Hawker- Malay
+Food & Beverage,Food & Beverage- Bakery & Bread,Food & Beverage- Bakery & Bread
+Food & Beverage,Food & Beverage- Take N Go,Food & Beverage- Take N Go
+Food & Beverage,Food & Beverage- Bar & Bistro,Food & Beverage- Bar & Bistro
+Food & Beverage,Food & Beverage- Central Kitchen,Food & Beverage- Central Kitchen
+Beauty,Beauty- Hair Salon,Hair Salon- Salon
+Beauty,Beauty- Hair Salon,Hair Salon- Barber
+Beauty,Beauty- Hair Salon,Hair Salon- Hair Treatment
+Beauty,Beauty- Beauty Salon,Beauty Salon- Facial
+Beauty,Beauty- Beauty Salon,Beauty Salon- Slimming Station
+Beauty,Beauty- Beauty Salon,Beauty Salon- Beauty Product
+Beauty,Beauty- Beauty Salon,Beauty Salon- Beauty Studio
+Beauty,Beauty- Tattoo,Beauty- Tattoo
+Health & Personal Care,Health & Personal Care,Health & Personal Care
+Health & Personal Care,Health & Personal Care- Pharmacy,Health & Personal Care- Pharmacy
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Clinic 24Jam
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- General Clinic
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Specialist Clinic
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Pet Clinic
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Dialysis Centre
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Hospital
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Surgery Clinic
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Aesthetic Clinic
+Health & Personal Care,Health & Personal Care- Clinic,Clinic- Others
+Health & Personal Care,Health & Personal Care- Chinese Medic,Chinese Medic- Bone Setting
+Health & Personal Care,Health & Personal Care- Chinese Medic,Chinese Medic- Traditional Chinese Medicine 中医
+Health & Personal Care,Health & Personal Care- Chinese Medic,Chinese Medic- Acupuncture
+Health & Personal Care,Health & Personal Care- Chinese Medic,Chinese Medic- Chinese Pharmacy 药材店
+Health & Personal Care,Health & Personal Care- Spa & Massage,Health & Personal Care- Spa & Massage
+Health & Personal Care,Health & Personal Care- Dental,Health & Personal Care- Dental Clinic
+Health & Personal Care,Health & Personal Care- Physical Therapy,Health & Personal Care- Physical Therapy
+Health & Personal Care,Health & Personal Care- Traditional Therapy,Health & Personal Care- Traditional Therapy
+Health & Personal Care,Health & Personal Care- Confinement Centre,Health & Personal Care- Confinement Centre
+Health & Personal Care,Health & Personal Care- Medical Equipment,Health & Personal Care- Medical Equipment
+Retail,Retail- Mart,Mart- Convenience Store
+Retail,Retail- Mart,Mart- Groceries
+Retail,Retail- Mart,Mart- Mini Market
+Retail,Retail- Mart,Mart- Snacks
+Retail,Retail- Mart,Mart- Healthy Food
+Retail,Retail- Mart,Mart- Meat Butcher
+Retail,Retail- Mart,Mart- Alcohol
+Retail,Retail- Mart,Mart- Frozen
+Retail,Retail- Mart,Mart- Seafood
+Retail,Retail- Mart,Mart- Fruits
+Retail,Retail- Mart,Mart- Chinese Dried Food 海味
+Retail,Retail- Mart,Mart- Wholesales
+Retail,Retail- Mart,Mart- Wine & Liquor
+Retail,Retail- Hardware,Hardware- General
+Retail,Retail- Hardware,Hardware- Paint
+Retail,Retail- Hardware,Hardware- Construction
+Retail,Retail- Hardware,Hardware- Electrical & Wiring
+Retail,Retail- Hardware,Hardware- Aluminium & Glass
+Retail,Retail- Hardware,Hardware- Carpentry Wood
+Retail,Retail- Hardware,Hardware- Machine SparePart
+Retail,Retail- Hardware,Hardware- Machine
+Retail,Retail- Hardware,Hardware- Tiles
+Retail,Retail- Household,Household- Electronical Product
+Retail,Retail- Household,Household- Secondhand Electronical Product
+Retail,Retail- Household,Household- Repair Electronical Product
+Retail,Retail- Household,Household- Lights
+Retail,Retail- Household,Household- Water Filter / Water Dispenser
+Retail,Retail- Household,Household- Kitchen Goods
+Retail,Retail- Household,Household- Furniture
+Retail,Retail- Household,Household- Office Furniture
+Retail,Retail- Household,Household- Plastic & Packaging
+Retail,Retail- Household,Household- Carpet
+Retail,Retail- Household,Household- Curtain & Bed Sheet
+Retail,Retail- Household,Household- Home Decor
+Retail,Retail- Household,Household- Household Products
+Retail,Retail- Household,Household- Air Cond
+Retail,Retail- Household,Household- Toilet Equipment
+Retail,Retail- Jewelery,Jewelery- Gold
+Retail,Retail- Jewelery,Jewelery- Diamond
+Retail,Retail- Fashion,Fashion- Malay Boutique
+Retail,Retail- Fashion,Fashion- Chinese Boutique
+Retail,Retail- Fashion,Fashion- Indian Boutique
+Retail,Retail- Fashion,Fashion- General Boutique
+Retail,Retail- Fashion,Fashion- West Suit
+Retail,Retail- Fashion,Fashion- Tudung
+Retail,Retail- Fashion,Fashion- Kids
+Retail,Retail- Fashion,Fashion- Wedding Dress
+Retail,Retail- Fashion,Fashion- Sport Clothes
+Retail,Retail- Fashion,Fashion- Accessories
+Retail,Retail- Fashion,Fashion- Shoes
+Retail,Retail- Fashion,Fashion- Tailor
+Retail,Retail- Fashion,Fashion- Textile 布店
+Retail,Retail- Fashion,Fashion- Bag
+Retail,Retail- Fashion,Fashion- Cloth Printing
+Retail,Retail- Fashion,Fashion- Perfume
+Retail,Retail- Fashion,Fashion- Cosmetic
+Retail,Retail- Fashion,Fashion- Bundle
+Retail,Retail- Fashion,Fashion- Uniform
+Retail,Retail- Hobbies,Hobbies- Vape
+Retail,Retail- Hobbies,Hobbies- Sport Equipment
+Retail,Retail- Hobbies,Hobbies- Bicycle
+Retail,Retail- Hobbies,Hobbies- Fishing
+Retail,Retail- Hobbies,Hobbies- Tobacco
+Retail,Retail- Hobbies,Hobbies- Bakery Ingredient
+Retail,Retail- Hobbies,Hobbies- Toy
+Retail,Retail- Hobbies,Hobbies- Pet Store
+Retail,Retail- Hobbies,Hobbies- Music Instrucment
+Retail,Retail- Hobbies,Hobbies- Aquarium
+Retail,Retail- Hobbies,Hobbies- Art n Craft
+Retail,Retail- Hobbies,Hobbies- FireArm
+Retail,Retail- Living Style,Living Style- Travel Equipment
+Retail,Retail- Living Style,Living Style- Watch & Clock
+Retail,Retail- Living Style,Living Style- Flower
+Retail,Retail- Living Style,Living Style- Souveniour 精品店
+Retail,Retail- Living Style,Living Style- Wedding Goods
+Retail,Retail- Living Style,Living Style- Religion 神料店
+Retail,Retail- Living Style,Living Style- Religion Indian Cash n Carry
+Retail,Retail- Living Style,Living Style- Baby Mummy Products
+Retail,Retail- Living Style,Living Style- Optical Shop
+Retail,Retail- Stationary,Stationary- Stationary & Printing
+Retail,Retail- Stationary,Stationary- Stationary
+Retail,Retail- Stationary,Stationary- Printing
+Retail,Retail- 3c Product,3c Product- Phone Gadget
+Retail,Retail- 3c Product,3c Product- Phone Repair
+Retail,Retail- 3c Product,3c Product- Phone Flagship Store
+Retail,Retail- 3c Product,3c Product- Phone General Store
+Retail,Retail- 3c Product,3c Product- PC Repair
+Retail,Retail- 3c Product,3c Product- PC Flagship Store
+Retail,Retail- 3c Product,3c Product- PC General Store
+Automotive,Automotive- Car,Car- Sparepart Shop
+Automotive,Automotive- Car,Car- Car Accessories
+Automotive,Automotive- Car,Car- Car Workshop
+Automotive,Automotive- Car,Car- Car Tyre
+Automotive,Automotive- Car,Car- Car Windscreen
+Automotive,Automotive- Car,Car- Car Tinted
+Automotive,Automotive- Car,Car- Car Showroom
+Automotive,Automotive- Car,Car- Car Wash
+Automotive,Automotive- Car,Car- Car Detailing
+Automotive,Automotive- Car,Car- Car Battery
+Automotive,Automotive- Car,Car- Car Spray
+Automotive,Automotive- Car,Car- Car Exhaust
+Automotive,Automotive- Car,Car- Car Wrapping
+Automotive,Automotive- Heavy Duty,Heavy Duty- Heavy Duty Repair
+Automotive,Automotive- Heavy Duty,Heavy Duty- Heavy Duty Spare Part
+Automotive,Automotive- Motor,Motor- Sparepart Shop
+Automotive,Automotive- Motor,Motor- Motor Accessories
+Automotive,Automotive- Motor,Motor- Motor Workshop
+Automotive,Automotive- Motor,Motor- Motor Showroom
+Automotive,Automotive- Motor,Motor- Motor Wash
+Automotive,Automotive- Motor,Motor- Motor Helmet
+Services,Services- Logistic Courier Service,Services- Logistic Courier Service
+Services,Services- Photo Shop & Studio,Services- Photo Shop & Studio
+Services,Services- Fitness,Fitness- Gym n Fitness
+Services,Services- Fitness,Fitness- Yoga
+Services,Services- Financial,Financial- Bank
+Services,Services- Financial,Financial- Pawn
+Services,Services- Financial,Financial- Money Changer
+Services,Services- Laundry,Laundry- Self Laundry
+Services,Services- Laundry,Laundry- Old Style Laundry
+Services,Services- Laundry,Laundry- Wash Carpet
+Services,Services- Office,Office- General Office
+Services,Services- Travel,Travel- Travel Agency
+Services,Services- Telecomunication,Services- Telecomunication
+Services,Services- Keylock,Services- Keylock
+Services,Services- Showroom,Showroom- Property Showroom
+Services,Services- Showroom,Showroom- Others
+Services,Services- Event Hall,Services- Event Hall
+Services,Services- Sport Centre,Services- Sport Centre
+Services,Services- Funeral,Services- Funeral
+Services,Services- Pet,Services- Pet Hotel
+Services,Services- Pet,Services- Pet Treatment
+Services,Services- Advertising,Advertising- Signboard
+Services,Services- Others,Services- Others
+Entertainment,Entertainment- Internet Cafe,Entertainment- Internet Cafe
+Entertainment,Entertainment- Karaoke,Entertainment- Karaoke
+Entertainment,Entertainment- Claw Machine,Entertainment- Claw Machine
+Entertainment,Entertainment- Snooker,Entertainment- Snooker
+Entertainment,Entertainment- Gambling,Entertainment- Gambling
+Entertainment,Entertainment- Illegal,Entertainment- Illegal
+Entertainment,Entertainment-Others,Entertainment- Others
+Education,Education- University & College,Education- University & College
+Education,Education- International School,Education- International School
+Education,Education- ChildCare,Education- ChildCare n Kindergarten
+Education,Education- ChildCare,Education- Child Enrichment
+Education,Education- Tuition,Education- Tuition
+Education,Education- Agama,Education- Sekolah Agama
+Education,Education- Hobbies,Education- Hobbies
+Religion,Religion,Religion- Chinese Temple
+Religion,Religion,Religion- Indian Temple
+Religion,Religion,Religion- Others
+Religion,Religion,Religion- Church
+Storage,Storage,Storage
+Manufacturer,Manufacturer,Manufacturer
+Manufacturer,Manufacturer,Manufacturer- Besi Buruk
+UNKNOWN,UNKNOWN,UNKNOWN

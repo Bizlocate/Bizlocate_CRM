@@ -10,7 +10,25 @@ import {
 } from "./mock-data";
 import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
-import { Activity, ActivityType, Area, Customer, CsvPreview, Notification, Role, Stage, SubArea, Task, Team, User } from "./types";
+import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
+import {
+  Activity,
+  ActivityType,
+  Area,
+  BusinessTagCategory,
+  BusinessTagIndustry,
+  BusinessTagType,
+  Customer,
+  CsvBusinessTagPreview,
+  CsvPreview,
+  Notification,
+  Role,
+  Stage,
+  SubArea,
+  Task,
+  Team,
+  User,
+} from "./types";
 
 function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
   return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
@@ -28,6 +46,18 @@ function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea
   return { id: row.id, areaId: row.area_id, name: row.name };
 }
 
+function mapBusinessTagIndustry(row: { id: string; name: string }): BusinessTagIndustry {
+  return { id: row.id, name: row.name };
+}
+
+function mapBusinessTagCategory(row: { id: string; industry_id: string; name: string }): BusinessTagCategory {
+  return { id: row.id, industryId: row.industry_id, name: row.name };
+}
+
+function mapBusinessTagType(row: { id: string; category_id: string; name: string }): BusinessTagType {
+  return { id: row.id, categoryId: row.category_id, name: row.name };
+}
+
 interface LoginResult {
   ok: boolean;
   error?: string;
@@ -38,6 +68,9 @@ interface Store {
   teams: Team[];
   areas: Area[];
   subAreas: SubArea[];
+  businessTagIndustries: BusinessTagIndustry[];
+  businessTagCategories: BusinessTagCategory[];
+  businessTagTypes: BusinessTagType[];
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
@@ -72,6 +105,20 @@ interface Store {
   previewAreaCsv: (csvText: string) => CsvPreview;
   confirmAreaCsvImport: (preview: CsvPreview) => Promise<{ ok: boolean; areasCreated: number; subAreasCreated: number; error?: string }>;
 
+  addBusinessTagIndustry: (name: string) => void;
+  updateBusinessTagIndustry: (id: string, name: string) => void;
+  deleteBusinessTagIndustry: (id: string) => void;
+  addBusinessTagCategory: (industryId: string, name: string) => void;
+  updateBusinessTagCategory: (id: string, name: string) => void;
+  deleteBusinessTagCategory: (id: string) => void;
+  addBusinessTagType: (categoryId: string, name: string) => void;
+  updateBusinessTagType: (id: string, name: string) => void;
+  deleteBusinessTagType: (id: string) => void;
+  previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
+  confirmBusinessTagCsvImport: (
+    preview: CsvBusinessTagPreview
+  ) => Promise<{ ok: boolean; industriesCreated: number; categoriesCreated: number; typesCreated: number; error?: string }>;
+
   addStage: (name: string, isDefault: boolean) => void;
   renameStage: (id: string, name: string) => void;
   moveStage: (id: string, direction: -1 | 1) => void;
@@ -103,6 +150,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [subAreas, setSubAreas] = useState<SubArea[]>([]);
+  const [businessTagIndustries, setBusinessTagIndustries] = useState<BusinessTagIndustry[]>([]);
+  const [businessTagCategories, setBusinessTagCategories] = useState<BusinessTagCategory[]>([]);
+  const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
   const [stages, setStages] = useState<Stage[]>(seedStages);
   const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
   const [activities, setActivities] = useState<Activity[]>(seedActivities);
@@ -143,11 +193,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadBusinessTagIndustries(): Promise<BusinessTagIndustry[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("business_tag_industries").select("*").order("name");
+    const mapped = (data ?? []).map(mapBusinessTagIndustry);
+    setBusinessTagIndustries(mapped);
+    return mapped;
+  }
+
+  async function loadBusinessTagCategories(): Promise<BusinessTagCategory[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("business_tag_categories").select("*").order("name");
+    const mapped = (data ?? []).map(mapBusinessTagCategory);
+    setBusinessTagCategories(mapped);
+    return mapped;
+  }
+
+  async function loadBusinessTagTypes(): Promise<BusinessTagType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("business_tag_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapBusinessTagType);
+    setBusinessTagTypes(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
-        const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers(), loadAreas(), loadSubAreas()]);
+        const [, loadedUsers] = await Promise.all([
+          loadTeams(),
+          loadUsers(),
+          loadAreas(),
+          loadSubAreas(),
+          loadBusinessTagIndustries(),
+          loadBusinessTagCategories(),
+          loadBusinessTagTypes(),
+        ]);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) setCurrentUserId(profile.id);
       }
@@ -166,7 +248,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (error || !data.user) {
       return { ok: false, error: "Invalid email or password." };
     }
-    const [, loadedUsers] = await Promise.all([loadTeams(), loadUsers(), loadAreas(), loadSubAreas()]);
+    const [, loadedUsers] = await Promise.all([
+      loadTeams(),
+      loadUsers(),
+      loadAreas(),
+      loadSubAreas(),
+      loadBusinessTagIndustries(),
+      loadBusinessTagCategories(),
+      loadBusinessTagTypes(),
+    ]);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -405,6 +495,147 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function addBusinessTagIndustry(name: string) {
+    const supabase = createClient();
+    supabase
+      .from("business_tag_industries")
+      .insert({ name })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setBusinessTagIndustries((prev) => [...prev, mapBusinessTagIndustry(data)]);
+      });
+  }
+
+  function updateBusinessTagIndustry(id: string, name: string) {
+    setBusinessTagIndustries((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("business_tag_industries").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function deleteBusinessTagIndustry(id: string) {
+    setBusinessTagIndustries((prev) => prev.filter((i) => i.id !== id));
+    const removedCategoryIds = businessTagCategories.filter((c) => c.industryId === id).map((c) => c.id);
+    setBusinessTagCategories((prev) => prev.filter((c) => c.industryId !== id));
+    setBusinessTagTypes((prev) => prev.filter((t) => !removedCategoryIds.includes(t.categoryId)));
+    const supabase = createClient();
+    supabase.from("business_tag_industries").delete().eq("id", id).then(() => {});
+  }
+
+  function addBusinessTagCategory(industryId: string, name: string) {
+    const supabase = createClient();
+    supabase
+      .from("business_tag_categories")
+      .insert({ industry_id: industryId, name })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setBusinessTagCategories((prev) => [...prev, mapBusinessTagCategory(data)]);
+      });
+  }
+
+  function updateBusinessTagCategory(id: string, name: string) {
+    setBusinessTagCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+    const supabase = createClient();
+    supabase.from("business_tag_categories").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function deleteBusinessTagCategory(id: string) {
+    setBusinessTagCategories((prev) => prev.filter((c) => c.id !== id));
+    setBusinessTagTypes((prev) => prev.filter((t) => t.categoryId !== id));
+    const supabase = createClient();
+    supabase.from("business_tag_categories").delete().eq("id", id).then(() => {});
+  }
+
+  function addBusinessTagType(categoryId: string, name: string) {
+    const supabase = createClient();
+    supabase
+      .from("business_tag_types")
+      .insert({ category_id: categoryId, name })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setBusinessTagTypes((prev) => [...prev, mapBusinessTagType(data)]);
+      });
+  }
+
+  function updateBusinessTagType(id: string, name: string) {
+    setBusinessTagTypes((prev) => prev.map((t) => (t.id === id ? { ...t, name } : t)));
+    const supabase = createClient();
+    supabase.from("business_tag_types").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function deleteBusinessTagType(id: string) {
+    setBusinessTagTypes((prev) => prev.filter((t) => t.id !== id));
+    const supabase = createClient();
+    supabase.from("business_tag_types").delete().eq("id", id).then(() => {});
+  }
+
+  function previewBusinessTagCsv(csvText: string): CsvBusinessTagPreview {
+    return parseBusinessTagCsv(csvText, businessTagIndustries, businessTagCategories, businessTagTypes);
+  }
+
+  async function confirmBusinessTagCsvImport(preview: CsvBusinessTagPreview) {
+    const supabase = createClient();
+    try {
+      let industriesCreated = 0;
+      let categoriesCreated = 0;
+      let typesCreated = 0;
+      for (const industryEntry of preview.approvedIndustries) {
+        let industryId: string;
+        if (industryEntry.isNew) {
+          const { data, error } = await supabase.from("business_tag_industries").insert({ name: industryEntry.name }).select().single();
+          if (error || !data) throw new Error(error?.message ?? `Could not create industry "${industryEntry.name}".`);
+          industryId = data.id;
+          industriesCreated++;
+        } else {
+          const existing = businessTagIndustries.find((i) => i.name.toLowerCase() === industryEntry.name.toLowerCase());
+          if (!existing) throw new Error(`Industry "${industryEntry.name}" not found.`);
+          industryId = existing.id;
+        }
+        for (const categoryEntry of industryEntry.categories) {
+          let categoryId: string;
+          if (categoryEntry.isNew) {
+            const { data, error } = await supabase
+              .from("business_tag_categories")
+              .insert({ industry_id: industryId, name: categoryEntry.name })
+              .select()
+              .single();
+            if (error || !data) throw new Error(error?.message ?? `Could not create category "${categoryEntry.name}".`);
+            categoryId = data.id;
+            categoriesCreated++;
+          } else {
+            const existing = businessTagCategories.find(
+              (c) => c.industryId === industryId && c.name.toLowerCase() === categoryEntry.name.toLowerCase()
+            );
+            if (!existing) throw new Error(`Category "${categoryEntry.name}" not found.`);
+            categoryId = existing.id;
+          }
+          const { data: inserted, error: typeError } = await supabase
+            .from("business_tag_types")
+            .upsert(
+              categoryEntry.typeNames.map((name) => ({ category_id: categoryId, name })),
+              { onConflict: "category_id,name", ignoreDuplicates: true }
+            )
+            .select();
+          if (typeError) throw new Error(typeError.message);
+          typesCreated += inserted?.length ?? 0;
+        }
+      }
+      await Promise.all([loadBusinessTagIndustries(), loadBusinessTagCategories(), loadBusinessTagTypes()]);
+      return { ok: true, industriesCreated, categoriesCreated, typesCreated };
+    } catch (err) {
+      await Promise.all([loadBusinessTagIndustries(), loadBusinessTagCategories(), loadBusinessTagTypes()]);
+      return {
+        ok: false,
+        industriesCreated: 0,
+        categoriesCreated: 0,
+        typesCreated: 0,
+        error: err instanceof Error ? err.message : "Import failed.",
+      };
+    }
+  }
+
   function addStage(name: string, isDefault: boolean) {
     setStages((prev) => {
       const order = prev.length + 1;
@@ -540,6 +771,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     teams,
     areas,
     subAreas,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
     stages,
     customers,
     activities,
@@ -569,6 +803,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteSubArea,
     previewAreaCsv,
     confirmAreaCsvImport,
+    addBusinessTagIndustry,
+    updateBusinessTagIndustry,
+    deleteBusinessTagIndustry,
+    addBusinessTagCategory,
+    updateBusinessTagCategory,
+    deleteBusinessTagCategory,
+    addBusinessTagType,
+    updateBusinessTagType,
+    deleteBusinessTagType,
+    previewBusinessTagCsv,
+    confirmBusinessTagCsvImport,
     addStage,
     renameStage,
     moveStage,

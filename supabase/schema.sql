@@ -67,6 +67,25 @@ create table sub_areas (
   unique (area_id, name)
 );
 
+create table business_tag_industries (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table business_tag_categories (
+  id uuid primary key default gen_random_uuid(),
+  industry_id uuid not null references business_tag_industries (id) on delete cascade,
+  name text not null,
+  unique (industry_id, name)
+);
+
+create table business_tag_types (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid not null references business_tag_categories (id) on delete cascade,
+  name text not null,
+  unique (category_id, name)
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -261,6 +280,25 @@ create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_ad
 create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
 create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());
 
+alter table business_tag_industries enable row level security;
+alter table business_tag_categories enable row level security;
+alter table business_tag_types enable row level security;
+
+create policy "business_tag_industries_select" on business_tag_industries for select using (auth.uid() is not null);
+create policy "business_tag_industries_insert_admin" on business_tag_industries for insert with check (is_admin());
+create policy "business_tag_industries_update_admin" on business_tag_industries for update using (is_admin());
+create policy "business_tag_industries_delete_admin" on business_tag_industries for delete using (is_admin());
+
+create policy "business_tag_categories_select" on business_tag_categories for select using (auth.uid() is not null);
+create policy "business_tag_categories_insert_admin" on business_tag_categories for insert with check (is_admin());
+create policy "business_tag_categories_update_admin" on business_tag_categories for update using (is_admin());
+create policy "business_tag_categories_delete_admin" on business_tag_categories for delete using (is_admin());
+
+create policy "business_tag_types_select" on business_tag_types for select using (auth.uid() is not null);
+create policy "business_tag_types_insert_admin" on business_tag_types for insert with check (is_admin());
+create policy "business_tag_types_update_admin" on business_tag_types for update using (is_admin());
+create policy "business_tag_types_delete_admin" on business_tag_types for delete using (is_admin());
+
 -- customers: admin all, manager own team, salesperson own assigned
 create policy "customers_select" on customers for select using (
   is_admin()
@@ -392,3 +430,47 @@ insert into teams (name) values
 -- create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_admin());
 -- create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
 -- create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());
+
+-- ============================================================
+-- Migration: Business Tag management (run once against an
+-- already-provisioned database — everything below already exists
+-- in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table business_tag_industries (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table business_tag_categories (
+--   id uuid primary key default gen_random_uuid(),
+--   industry_id uuid not null references business_tag_industries (id) on delete cascade,
+--   name text not null,
+--   unique (industry_id, name)
+-- );
+--
+-- create table business_tag_types (
+--   id uuid primary key default gen_random_uuid(),
+--   category_id uuid not null references business_tag_categories (id) on delete cascade,
+--   name text not null,
+--   unique (category_id, name)
+-- );
+--
+-- alter table business_tag_industries enable row level security;
+-- alter table business_tag_categories enable row level security;
+-- alter table business_tag_types enable row level security;
+--
+-- create policy "business_tag_industries_select" on business_tag_industries for select using (auth.uid() is not null);
+-- create policy "business_tag_industries_insert_admin" on business_tag_industries for insert with check (is_admin());
+-- create policy "business_tag_industries_update_admin" on business_tag_industries for update using (is_admin());
+-- create policy "business_tag_industries_delete_admin" on business_tag_industries for delete using (is_admin());
+--
+-- create policy "business_tag_categories_select" on business_tag_categories for select using (auth.uid() is not null);
+-- create policy "business_tag_categories_insert_admin" on business_tag_categories for insert with check (is_admin());
+-- create policy "business_tag_categories_update_admin" on business_tag_categories for update using (is_admin());
+-- create policy "business_tag_categories_delete_admin" on business_tag_categories for delete using (is_admin());
+--
+-- create policy "business_tag_types_select" on business_tag_types for select using (auth.uid() is not null);
+-- create policy "business_tag_types_insert_admin" on business_tag_types for insert with check (is_admin());
+-- create policy "business_tag_types_update_admin" on business_tag_types for update using (is_admin());
+-- create policy "business_tag_types_delete_admin" on business_tag_types for delete using (is_admin());
