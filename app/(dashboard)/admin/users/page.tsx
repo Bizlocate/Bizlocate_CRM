@@ -36,6 +36,12 @@ export default function AdminUsersPage() {
   const [resetError, setResetError] = useState("");
   const [resetting, setResetting] = useState(false);
 
+  const [filterRole, setFilterRole] = useState<Role | "">("");
+  const [filterTeamId, setFilterTeamId] = useState<string>("");
+  const filteredUsers = users.filter(
+    (u) => (!filterRole || u.role === filterRole) && (!filterTeamId || u.teamId === filterTeamId)
+  );
+
   function teamName(id: string | null) {
     return teams.find((t) => t.id === id)?.name ?? "—";
   }
@@ -345,12 +351,40 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      <div className="card" style={{ padding: 14, marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ flex: "0 1 180px" }}>
+          <label className="field-label">Role</label>
+          <select className="field-input" value={filterRole} onChange={(e) => setFilterRole(e.target.value as Role | "")}>
+            <option value="">All Roles</option>
+            <option value="ADMIN">ADMIN</option>
+            <option value="MANAGER">MANAGER</option>
+            <option value="SALESPERSON">SALESPERSON</option>
+          </select>
+        </div>
+        <div style={{ flex: "0 1 180px" }}>
+          <label className="field-label">Team</label>
+          <select className="field-input" value={filterTeamId} onChange={(e) => setFilterTeamId(e.target.value)}>
+            <option value="">All Teams</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        {(filterRole || filterTeamId) && (
+          <button className="btn btn-outline" type="button" onClick={() => { setFilterRole(""); setFilterTeamId(""); }}>
+            Clear filters
+          </button>
+        )}
+      </div>
+
       <div className="card">
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
           <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Limit</div><div>Status</div><div>Actions</div>
         </div>
-        {users.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No users yet. Create the first one.</div>}
-        {users.map((u) => (
+        {filteredUsers.length === 0 && (
+          <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>
+            {users.length === 0 ? "No users yet. Create the first one." : "No users match this filter."}
+          </div>
+        )}
+        {filteredUsers.map((u) => (
           <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ color: "#6b7280" }}>{u.email}</div>
