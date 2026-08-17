@@ -137,11 +137,15 @@ export default function AdminAreaPage() {
                   {r.approved ? "✔" : "✗"}
                 </span>
                 <span style={{ color: "#6b7280", width: 40 }}>row {r.row}</span>
-                <span style={{ flex: 1 }}>{r.area || "(no area)"} / {r.subArea || "(blank)"}</span>
-                {!r.approved && <span style={{ color: "#a13a2b" }}>{r.reason}</span>}
-                <span style={{ color: "#9aa0ab", cursor: "pointer", fontWeight: 600 }} onClick={() => setPreview(removeCsvRow(preview, r.row))}>
+                <span>{r.area || "(no area)"} / {r.subArea || "(blank)"}</span>
+                <span
+                  style={{ color: "#9aa0ab", cursor: "pointer", fontWeight: 600 }}
+                  onClick={() => setPreview(removeCsvRow(preview, r.row))}
+                >
                   ✕
                 </span>
+                {!r.approved && <span style={{ color: "#a13a2b" }}>{r.reason}</span>}
+                <span style={{ flex: 1 }} />
               </div>
             ))}
           </div>
