@@ -54,12 +54,14 @@ interface Store {
   addUser: (input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
   toggleUserActive: (id: string) => void;
   updateUserRole: (id: string, role: Role) => void;
+  updateUserTeam: (id: string, teamId: string | null) => void;
   updateUserCustomerLimit: (id: string, customerLimit: number | null) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
   resetUserPassword: (id: string, password?: string) => Promise<{ tempPassword?: string; error?: string }>;
 
   addTeam: (name: string, managerId: string | null) => void;
   updateTeam: (id: string, name: string, managerId: string | null) => void;
+  deleteTeam: (id: string) => { ok: boolean; error?: string };
 
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
@@ -234,6 +236,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  function updateUserTeam(id: string, teamId: string | null) {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    const prevTeamId = target.teamId;
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, teamId } : u)));
+    const supabase = createClient();
+    supabase
+      .from("profiles")
+      .update({ team_id: teamId })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, teamId: prevTeamId } : u)));
+      });
+  }
+
   function updateUserCustomerLimit(id: string, customerLimit: number | null) {
     const target = users.find((u) => u.id === id);
     if (!target) return;
@@ -288,6 +305,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTeams((prev) => prev.map((t) => (t.id === id ? { ...t, name, managerId } : t)));
     const supabase = createClient();
     supabase.from("teams").update({ name, manager_id: managerId }).eq("id", id).then(() => {});
+  }
+
+  function deleteTeam(id: string) {
+    const memberCount = users.filter((u) => u.teamId === id).length;
+    if (memberCount > 0) {
+      return { ok: false, error: `${memberCount} member(s) are in this team. Remove them first.` };
+    }
+    setTeams((prev) => prev.filter((t) => t.id !== id));
+    const supabase = createClient();
+    supabase.from("teams").delete().eq("id", id).then(() => {});
+    return { ok: true };
   }
 
   function addArea(name: string) {
@@ -527,11 +555,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addUser,
     toggleUserActive,
     updateUserRole,
+    updateUserTeam,
     updateUserCustomerLimit,
     deleteUser,
     resetUserPassword,
     addTeam,
     updateTeam,
+    deleteTeam,
     addArea,
     updateArea,
     deleteArea,
