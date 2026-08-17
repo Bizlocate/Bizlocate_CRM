@@ -12,8 +12,8 @@ import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
 import { Activity, ActivityType, Area, Customer, CsvPreview, Notification, Role, Stage, SubArea, Task, Team, User } from "./types";
 
-function mapProfile(row: { id: string; name: string; email: string; phone: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
+function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
 }
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
@@ -51,7 +51,7 @@ interface Store {
 
   visibleCustomers: Customer[];
 
-  addUser: (input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
+  addUser: (input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
   toggleUserActive: (id: string) => void;
   updateUserRole: (id: string, role: Role) => void;
   updateUserTeam: (id: string, teamId: string | null) => void;
@@ -192,7 +192,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return customers.filter((c) => c.assignedToUserId === currentUser.id);
   }, [customers, users, currentUser]);
 
-  async function addUser(input: { name: string; email: string; phone: string; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) {
+  async function addUser(input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) {
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

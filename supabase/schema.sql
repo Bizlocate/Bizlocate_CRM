@@ -16,6 +16,7 @@ create table profiles (
   name text not null,
   email text not null,
   phone text,
+  ic text,
   role text not null check (role in ('ADMIN', 'MANAGER', 'SALESPERSON')),
   team_id uuid references teams (id) on delete set null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
@@ -25,6 +26,24 @@ create table profiles (
 -- Run this alone against an already-provisioned database:
 -- alter table profiles add column if not exists phone text;
 -- alter table profiles add column if not exists customer_limit int check (customer_limit is null or customer_limit >= 0);
+-- alter table profiles add column if not exists ic text;
+-- create or replace function handle_new_user() returns trigger as $$
+-- begin
+--   insert into public.profiles (id, name, email, phone, ic, role, team_id, status, customer_limit)
+--   values (
+--     new.id,
+--     coalesce(new.raw_user_meta_data ->> 'name', new.email),
+--     new.email,
+--     nullif(new.raw_user_meta_data ->> 'phone', ''),
+--     nullif(new.raw_user_meta_data ->> 'ic', ''),
+--     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
+--     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
+--     'ACTIVE',
+--     nullif(new.raw_user_meta_data ->> 'customer_limit', '')::int
+--   );
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
 
 alter table teams
   add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null;
@@ -106,12 +125,13 @@ $$ language sql security definer stable set search_path = public;
 
 create function handle_new_user() returns trigger as $$
 begin
-  insert into public.profiles (id, name, email, phone, role, team_id, status, customer_limit)
+  insert into public.profiles (id, name, email, phone, ic, role, team_id, status, customer_limit)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', new.email),
     new.email,
     nullif(new.raw_user_meta_data ->> 'phone', ''),
+    nullif(new.raw_user_meta_data ->> 'ic', ''),
     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
     'ACTIVE',

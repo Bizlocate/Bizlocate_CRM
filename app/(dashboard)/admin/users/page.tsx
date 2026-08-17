@@ -7,16 +7,18 @@ import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
   const { users, teams, currentUser, addUser, toggleUserActive, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
-  const [showForm, setShowForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
   const [name, setName] = useState("");
+  const [ic, setIc] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("SALESPERSON");
   const [teamId, setTeamId] = useState<string>("");
   const [customerLimit, setCustomerLimit] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
   const [resetPassword, setResetPassword] = useState("");
@@ -67,9 +69,13 @@ export default function AdminUsersPage() {
       setFormError("Customer limit must be a non-negative whole number.");
       return;
     }
+    if (password.trim() !== confirmPassword.trim()) {
+      setFormError("Passwords do not match.");
+      return;
+    }
     setSubmitting(true);
     setFormError("");
-    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), role, teamId: teamId || null, customerLimit: limit, password: password.trim() || undefined });
+    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), ic: ic.trim() || null, role, teamId: teamId || null, customerLimit: limit, password: password.trim() || undefined });
     setSubmitting(false);
     if (result.error) {
       setFormError(result.error);
@@ -77,13 +83,15 @@ export default function AdminUsersPage() {
     }
     setTempPassword(result.tempPassword ?? null);
     setName("");
+    setIc("");
     setEmail("");
     setPhone("");
     setRole("SALESPERSON");
     setTeamId("");
     setCustomerLimit("");
     setPassword("");
-    setShowForm(false);
+    setConfirmPassword("");
+    setShowAddModal(false);
   }
 
   return (
@@ -91,7 +99,7 @@ export default function AdminUsersPage() {
       <AdminTabs />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Admin — Users</div>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>+ New User</button>
+        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ New User</button>
       </div>
 
       {tempPassword && (
@@ -126,62 +134,87 @@ export default function AdminUsersPage() {
         </form>
       )}
 
-      {showForm && (
-        <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ flex: "1 1 180px" }}>
-            <label className="field-label">Name</label>
-            <input className="field-input" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div style={{ flex: "1 1 220px" }}>
-            <label className="field-label">Email</label>
-            <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div style={{ flex: "1 1 160px" }}>
-            <label className="field-label">Phone</label>
-            <input className="field-input" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-          </div>
-          <div style={{ flex: "1 1 160px" }}>
-            <label className="field-label">Role</label>
-            <select className="field-input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              <option value="ADMIN">ADMIN</option>
-              <option value="MANAGER">MANAGER</option>
-              <option value="SALESPERSON">SALESPERSON</option>
-            </select>
-          </div>
-          <div style={{ flex: "1 1 160px" }}>
-            <label className="field-label">Team</label>
-            <select className="field-input" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-              <option value="">—</option>
-              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div style={{ flex: "1 1 140px" }}>
-            <label className="field-label">Customer limit</label>
-            <input
-              className="field-input"
-              type="number"
-              min={0}
-              step={1}
-              value={customerLimit}
-              onChange={(e) => setCustomerLimit(e.target.value)}
-              placeholder="Unlimited"
-            />
-          </div>
-          <div style={{ flex: "1 1 180px" }}>
-            <label className="field-label">Password (optional)</label>
-            <input
-              className="field-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Leave blank to auto-generate"
-              minLength={6}
-            />
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create"}</button>
-          <button className="btn btn-outline" type="button" onClick={() => setShowForm(false)}>Cancel</button>
-          {formError && <div className="error-text" style={{ flexBasis: "100%" }}>{formError}</div>}
-        </form>
+      {showAddModal && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
+          <form onSubmit={handleSubmit} className="card modal-card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>New User</div>
+              <button className="btn btn-outline" type="button" onClick={() => setShowAddModal(false)}>×</button>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">Name</label>
+                <input className="field-input" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">IC</label>
+                <input className="field-input" value={ic} onChange={(e) => setIc(e.target.value)} />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Tel. No</label>
+                <input className="field-input" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 220px" }}>
+                <label className="field-label">Email</label>
+                <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Role</label>
+                <select className="field-input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MANAGER">MANAGER</option>
+                  <option value="SALESPERSON">SALESPERSON</option>
+                </select>
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <label className="field-label">Team</label>
+                <select className="field-input" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                  <option value="">—</option>
+                  {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">Password (optional)</label>
+                <input
+                  className="field-input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Leave blank to auto-generate"
+                  minLength={6}
+                />
+              </div>
+              <div style={{ flex: "1 1 180px" }}>
+                <label className="field-label">Confirm Password</label>
+                <input
+                  className="field-input"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  minLength={6}
+                />
+              </div>
+              <div style={{ flex: "1 1 140px" }}>
+                <label className="field-label">Customer limit</label>
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={customerLimit}
+                  onChange={(e) => setCustomerLimit(e.target.value)}
+                  placeholder="Unlimited"
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create"}</button>
+              <button className="btn btn-outline" type="button" onClick={() => setShowAddModal(false)}>Cancel</button>
+            </div>
+            {formError && <div className="error-text" style={{ marginTop: 10 }}>{formError}</div>}
+          </form>
+        </div>
       )}
 
       <div className="card">
