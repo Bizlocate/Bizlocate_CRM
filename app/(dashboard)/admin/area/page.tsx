@@ -166,8 +166,8 @@ export default function AdminAreaPage() {
       )}
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.4fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Area</div><div>Sub-Areas</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "2.6fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Area</div><div>Sub-Areas</div>
         </div>
         {areas.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No areas yet. Create one or upload a CSV.</div>}
         {areas.map((a) => {
@@ -175,23 +175,21 @@ export default function AdminAreaPage() {
           const expanded = expandedAreaId === a.id;
           return (
             <div key={a.id} style={{ borderBottom: "1px solid #eef0f2" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.4fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
-                <div>
+              <div style={{ display: "grid", gridTemplateColumns: "2.6fr 1fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   {editingAreaId === a.id ? (
-                    <input className="field-input" value={editingAreaName} onChange={(e) => setEditingAreaName(e.target.value)} onBlur={saveEditArea} autoFocus />
+                    <input className="field-input" style={{ flex: "1 1 200px" }} value={editingAreaName} onChange={(e) => setEditingAreaName(e.target.value)} onBlur={saveEditArea} autoFocus />
                   ) : (
                     <span style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => setExpandedAreaId(expanded ? null : a.id)}>
                       {expanded ? "▾" : "▸"} {a.name}
                     </span>
                   )}
-                </div>
-                <div style={{ color: "#6b7280" }}>{rows.length}</div>
-                <div style={{ display: "flex", gap: 14 }}>
                   <span style={{ color: "#4046c9", fontWeight: 500, cursor: "pointer" }} onClick={() => startEditArea(a.id, a.name)}>Edit</span>
                   <span style={{ color: confirmDeleteAreaId === a.id ? "#a13a2b" : "#4046c9", fontWeight: 500, cursor: "pointer" }} onClick={() => handleDeleteArea(a.id)}>
                     {confirmDeleteAreaId === a.id ? "Confirm delete?" : "Delete"}
                   </span>
                 </div>
+                <div style={{ color: "#6b7280" }}>{rows.length}</div>
               </div>
 
               {expanded && (
@@ -201,7 +199,7 @@ export default function AdminAreaPage() {
                       {editingSubAreaId === s.id ? (
                         <input className="field-input" style={{ flex: "1 1 240px" }} value={editingSubAreaName} onChange={(e) => setEditingSubAreaName(e.target.value)} onBlur={saveEditSubArea} autoFocus />
                       ) : (
-                        <span style={{ flex: "1 1 240px", color: "#374151" }}>{s.name}</span>
+                        <span style={{ color: "#374151" }}>{s.name}</span>
                       )}
                       <span style={{ color: "#4046c9", cursor: "pointer" }} onClick={() => startEditSubArea(s.id, s.name)}>Edit</span>
                       <span style={{ color: "#a13a2b", cursor: "pointer" }} onClick={() => deleteSubArea(s.id)}>Delete</span>

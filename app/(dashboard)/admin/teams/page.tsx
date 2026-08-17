@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminTeamsPage() {
-  const { teams, users, addTeam, updateTeam } = useStore();
+  const { teams, users, areas, addTeam, updateTeam } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -56,8 +56,12 @@ export default function AdminTeamsPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 200px" }}>
-            <label className="field-label">Team name</label>
-            <input className="field-input" value={name} onChange={(e) => setName(e.target.value)} required />
+            <label className="field-label">Team name (Area)</label>
+            <select className="field-input" value={name} onChange={(e) => setName(e.target.value)} required>
+              <option value="">— Select area —</option>
+              {name && !areas.some((a) => a.name === name) && <option value={name}>{name}</option>}
+              {areas.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </select>
           </div>
           <div style={{ flex: "1 1 200px" }}>
             <label className="field-label">Manager</label>
