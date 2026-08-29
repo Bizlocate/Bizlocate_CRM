@@ -702,10 +702,38 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ### Task 5: Wire Tasks to Supabase
 
 **Files:**
+- Modify: `supabase/schema.sql`
 - Modify: `lib/store.tsx`
 
 **Interfaces:**
 - Produces: `loadTasks(usersList: User[]): Promise<Task[]>` (following Task 4's users-list-parameter pattern isn't actually needed here since `Task` has no author field — a plain no-arg loader is fine), rewritten `addTask`, `toggleTaskDone`.
+
+- [ ] **Step 0: Fix the main (fresh-install) `tasks` table definition**
+
+Task 4 already appended a migration-note comment covering `tasks.due_date` → `due` (text) for already-provisioned databases, but never updated the main fresh-install schema block — fix that omission now. In `supabase/schema.sql`, change the `create table tasks (...)` block:
+```sql
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  title text not null,
+  due_date date,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
+to:
+```sql
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  title text not null,
+  due text,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
 
 - [ ] **Step 1: Add `mapTask` and `loadTasks`**
 
@@ -802,7 +830,7 @@ On a customer's detail page, add a task with a due date, reload, confirm it's st
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A lib/store.tsx lib/mock-data.ts
+git add -A supabase/schema.sql lib/store.tsx lib/mock-data.ts
 git commit -m "Wire tasks to Supabase, remove mock data file
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
