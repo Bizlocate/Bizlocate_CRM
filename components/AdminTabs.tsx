@@ -10,6 +10,7 @@ const TABS = [
   { href: "/admin/business-tags", label: "Business Tag" },
   { href: "/admin/stages", label: "Pipeline Stages" },
   { href: "/admin/profile-lists", label: "Profile Lists" },
+  { href: "/admin/field-settings", label: "Required Fields" },
 ];
 
 export default function AdminTabs() {

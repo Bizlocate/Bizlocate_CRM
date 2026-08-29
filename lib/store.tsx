@@ -14,6 +14,7 @@ import {
   Customer,
   CsvBusinessTagPreview,
   CsvPreview,
+  FieldRequirement,
   FirsttimeBranchType,
   Language,
   LeadSource,
@@ -57,6 +58,10 @@ function mapBusinessTagCategory(row: { id: string; industry_id: string; name: st
 
 function mapBusinessTagType(row: { id: string; category_id: string; name: string }): BusinessTagType {
   return { id: row.id, categoryId: row.category_id, name: row.name };
+}
+
+function mapFieldRequirement(row: { field_key: string; required: boolean }): FieldRequirement {
+  return { fieldKey: row.field_key, required: row.required };
 }
 
 function mapLeadSource(row: { id: string; name: string }): LeadSource {
@@ -232,6 +237,7 @@ interface Store {
   races: Race[];
   targetRaces: TargetRace[];
   targetTypes: TargetType[];
+  fieldRequirements: FieldRequirement[];
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
@@ -300,6 +306,7 @@ interface Store {
   addTargetType: (name: string) => void;
   updateTargetType: (id: string, name: string) => void;
   deleteTargetType: (id: string) => void;
+  updateFieldRequirement: (fieldKey: string, required: boolean) => void;
 
   previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
   confirmBusinessTagCsvImport: (
@@ -346,6 +353,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [races, setRaces] = useState<Race[]>([]);
   const [targetRaces, setTargetRaces] = useState<TargetRace[]>([]);
   const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
+  const [fieldRequirements, setFieldRequirements] = useState<FieldRequirement[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -474,6 +482,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadFieldRequirements(): Promise<FieldRequirement[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("mandatory_field_settings").select("*");
+    const mapped = (data ?? []).map(mapFieldRequirement);
+    setFieldRequirements(mapped);
+    return mapped;
+  }
+
   async function loadStages(): Promise<Stage[]> {
     const supabase = createClient();
     const { data } = await supabase.from("pipeline_stages").select("*").order("order");
@@ -539,6 +555,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadRaces(),
           loadTargetRaces(),
           loadTargetTypes(),
+          loadFieldRequirements(),
           loadStages(),
           loadCustomers(),
           loadTasks(),
@@ -581,6 +598,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadRaces(),
       loadTargetRaces(),
       loadTargetTypes(),
+      loadFieldRequirements(),
       loadStages(),
       loadCustomers(),
       loadTasks(),
@@ -1039,6 +1057,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("target_types").delete().eq("id", id).then(() => {});
   }
 
+  function updateFieldRequirement(fieldKey: string, required: boolean) {
+    setFieldRequirements((prev) => prev.map((f) => (f.fieldKey === fieldKey ? { ...f, required } : f)));
+    const supabase = createClient();
+    supabase.from("mandatory_field_settings").upsert({ field_key: fieldKey, required }).then(() => {});
+  }
+
   function previewBusinessTagCsv(csvText: string): CsvBusinessTagPreview {
     return parseBusinessTagCsv(csvText, businessTagIndustries, businessTagCategories, businessTagTypes);
   }
@@ -1361,6 +1385,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     races,
     targetRaces,
     targetTypes,
+    fieldRequirements,
     stages,
     customers,
     activities,
@@ -1423,6 +1448,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addTargetType,
     updateTargetType,
     deleteTargetType,
+    updateFieldRequirement,
     previewBusinessTagCsv,
     confirmBusinessTagCsvImport,
     addStage,
