@@ -86,6 +86,46 @@ create table business_tag_types (
   unique (category_id, name)
 );
 
+create table lead_sources (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table property_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table purposes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table languages (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table firsttime_branch_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table races (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table target_races (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table target_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -93,6 +133,21 @@ create table customers (
   phone text,
   assigned_to uuid not null references profiles (id),
   stage_id uuid not null references pipeline_stages (id),
+  source_id uuid references lead_sources (id) on delete set null,
+  area_id uuid references areas (id) on delete set null,
+  sub_area_id uuid references sub_areas (id) on delete set null,
+  property_type_id uuid references property_types (id) on delete set null,
+  purpose_id uuid references purposes (id) on delete set null,
+  business_industry_id uuid references business_tag_industries (id) on delete set null,
+  business_category_id uuid references business_tag_categories (id) on delete set null,
+  business_type_id uuid references business_tag_types (id) on delete set null,
+  race_id uuid references races (id) on delete set null,
+  language_id uuid references languages (id) on delete set null,
+  business_name text,
+  firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null,
+  target_race_id uuid references target_races (id) on delete set null,
+  target_type_id uuid references target_types (id) on delete set null,
+  remark text,
   created_by uuid references profiles (id),
   created_at timestamptz not null default now()
 );
@@ -200,6 +255,21 @@ create trigger customers_protect_assignment
   before update on customers
   for each row execute function protect_customer_assignment();
 
+create function protect_customer_remark_column() returns trigger as $$
+begin
+  if new.remark is distinct from old.remark and not (
+    is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+  ) then
+    raise exception 'only an admin or manager can change the remark';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_remark
+  before update on customers
+  for each row execute function protect_customer_remark_column();
+
 create function protect_task_columns() returns trigger as $$
 begin
   if new.customer_id is distinct from old.customer_id
@@ -299,6 +369,55 @@ create policy "business_tag_types_insert_admin" on business_tag_types for insert
 create policy "business_tag_types_update_admin" on business_tag_types for update using (is_admin());
 create policy "business_tag_types_delete_admin" on business_tag_types for delete using (is_admin());
 
+alter table lead_sources enable row level security;
+alter table property_types enable row level security;
+alter table purposes enable row level security;
+alter table languages enable row level security;
+alter table firsttime_branch_types enable row level security;
+alter table races enable row level security;
+alter table target_races enable row level security;
+alter table target_types enable row level security;
+
+create policy "lead_sources_select" on lead_sources for select using (auth.uid() is not null);
+create policy "lead_sources_insert_admin" on lead_sources for insert with check (is_admin());
+create policy "lead_sources_update_admin" on lead_sources for update using (is_admin());
+create policy "lead_sources_delete_admin" on lead_sources for delete using (is_admin());
+
+create policy "property_types_select" on property_types for select using (auth.uid() is not null);
+create policy "property_types_insert_admin" on property_types for insert with check (is_admin());
+create policy "property_types_update_admin" on property_types for update using (is_admin());
+create policy "property_types_delete_admin" on property_types for delete using (is_admin());
+
+create policy "purposes_select" on purposes for select using (auth.uid() is not null);
+create policy "purposes_insert_admin" on purposes for insert with check (is_admin());
+create policy "purposes_update_admin" on purposes for update using (is_admin());
+create policy "purposes_delete_admin" on purposes for delete using (is_admin());
+
+create policy "languages_select" on languages for select using (auth.uid() is not null);
+create policy "languages_insert_admin" on languages for insert with check (is_admin());
+create policy "languages_update_admin" on languages for update using (is_admin());
+create policy "languages_delete_admin" on languages for delete using (is_admin());
+
+create policy "firsttime_branch_types_select" on firsttime_branch_types for select using (auth.uid() is not null);
+create policy "firsttime_branch_types_insert_admin" on firsttime_branch_types for insert with check (is_admin());
+create policy "firsttime_branch_types_update_admin" on firsttime_branch_types for update using (is_admin());
+create policy "firsttime_branch_types_delete_admin" on firsttime_branch_types for delete using (is_admin());
+
+create policy "races_select" on races for select using (auth.uid() is not null);
+create policy "races_insert_admin" on races for insert with check (is_admin());
+create policy "races_update_admin" on races for update using (is_admin());
+create policy "races_delete_admin" on races for delete using (is_admin());
+
+create policy "target_races_select" on target_races for select using (auth.uid() is not null);
+create policy "target_races_insert_admin" on target_races for insert with check (is_admin());
+create policy "target_races_update_admin" on target_races for update using (is_admin());
+create policy "target_races_delete_admin" on target_races for delete using (is_admin());
+
+create policy "target_types_select" on target_types for select using (auth.uid() is not null);
+create policy "target_types_insert_admin" on target_types for insert with check (is_admin());
+create policy "target_types_update_admin" on target_types for update using (is_admin());
+create policy "target_types_delete_admin" on target_types for delete using (is_admin());
+
 -- customers: admin all, manager own team, salesperson own assigned
 create policy "customers_select" on customers for select using (
   is_admin()
@@ -387,6 +506,9 @@ insert into pipeline_stages (name, "order", is_default) values
 insert into teams (name) values
   ('North Team'),
   ('South Team');
+
+insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
+insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
 
 -- ============================================================
 -- Bootstrap: promote an already-existing auth user to ADMIN.
@@ -496,3 +618,131 @@ insert into teams (name) values
 --   return new;
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: Customer Business Profile — run once against an
+-- already-provisioned database.
+-- ============================================================
+
+create table lead_sources (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table property_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table purposes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table languages (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table firsttime_branch_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table races (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table target_races (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+create table target_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
+alter table customers add column if not exists source_id uuid references lead_sources (id) on delete set null;
+alter table customers add column if not exists area_id uuid references areas (id) on delete set null;
+alter table customers add column if not exists sub_area_id uuid references sub_areas (id) on delete set null;
+alter table customers add column if not exists property_type_id uuid references property_types (id) on delete set null;
+alter table customers add column if not exists purpose_id uuid references purposes (id) on delete set null;
+alter table customers add column if not exists business_industry_id uuid references business_tag_industries (id) on delete set null;
+alter table customers add column if not exists business_category_id uuid references business_tag_categories (id) on delete set null;
+alter table customers add column if not exists business_type_id uuid references business_tag_types (id) on delete set null;
+alter table customers add column if not exists race_id uuid references races (id) on delete set null;
+alter table customers add column if not exists language_id uuid references languages (id) on delete set null;
+alter table customers add column if not exists business_name text;
+alter table customers add column if not exists firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null;
+alter table customers add column if not exists target_race_id uuid references target_races (id) on delete set null;
+alter table customers add column if not exists target_type_id uuid references target_types (id) on delete set null;
+alter table customers add column if not exists remark text;
+
+alter table lead_sources enable row level security;
+alter table property_types enable row level security;
+alter table purposes enable row level security;
+alter table languages enable row level security;
+alter table firsttime_branch_types enable row level security;
+alter table races enable row level security;
+alter table target_races enable row level security;
+alter table target_types enable row level security;
+
+create policy "lead_sources_select" on lead_sources for select using (auth.uid() is not null);
+create policy "lead_sources_insert_admin" on lead_sources for insert with check (is_admin());
+create policy "lead_sources_update_admin" on lead_sources for update using (is_admin());
+create policy "lead_sources_delete_admin" on lead_sources for delete using (is_admin());
+
+create policy "property_types_select" on property_types for select using (auth.uid() is not null);
+create policy "property_types_insert_admin" on property_types for insert with check (is_admin());
+create policy "property_types_update_admin" on property_types for update using (is_admin());
+create policy "property_types_delete_admin" on property_types for delete using (is_admin());
+
+create policy "purposes_select" on purposes for select using (auth.uid() is not null);
+create policy "purposes_insert_admin" on purposes for insert with check (is_admin());
+create policy "purposes_update_admin" on purposes for update using (is_admin());
+create policy "purposes_delete_admin" on purposes for delete using (is_admin());
+
+create policy "languages_select" on languages for select using (auth.uid() is not null);
+create policy "languages_insert_admin" on languages for insert with check (is_admin());
+create policy "languages_update_admin" on languages for update using (is_admin());
+create policy "languages_delete_admin" on languages for delete using (is_admin());
+
+create policy "firsttime_branch_types_select" on firsttime_branch_types for select using (auth.uid() is not null);
+create policy "firsttime_branch_types_insert_admin" on firsttime_branch_types for insert with check (is_admin());
+create policy "firsttime_branch_types_update_admin" on firsttime_branch_types for update using (is_admin());
+create policy "firsttime_branch_types_delete_admin" on firsttime_branch_types for delete using (is_admin());
+
+create policy "races_select" on races for select using (auth.uid() is not null);
+create policy "races_insert_admin" on races for insert with check (is_admin());
+create policy "races_update_admin" on races for update using (is_admin());
+create policy "races_delete_admin" on races for delete using (is_admin());
+
+create policy "target_races_select" on target_races for select using (auth.uid() is not null);
+create policy "target_races_insert_admin" on target_races for insert with check (is_admin());
+create policy "target_races_update_admin" on target_races for update using (is_admin());
+create policy "target_races_delete_admin" on target_races for delete using (is_admin());
+
+create policy "target_types_select" on target_types for select using (auth.uid() is not null);
+create policy "target_types_insert_admin" on target_types for insert with check (is_admin());
+create policy "target_types_update_admin" on target_types for update using (is_admin());
+create policy "target_types_delete_admin" on target_types for delete using (is_admin());
+
+create or replace function protect_customer_remark_column() returns trigger as $$
+begin
+  if new.remark is distinct from old.remark and not (
+    is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+  ) then
+    raise exception 'only an admin or manager can change the remark';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_remark
+  before update on customers
+  for each row execute function protect_customer_remark_column();
+
+insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
+insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
