@@ -104,6 +104,10 @@ Appended as a new migration block, following the existing style of the Area/Sub-
 3. Seed rows: `purposes` (Rent, Buy, Buy/Rent), `firsttime_branch_types` (First Time, Branch). The other 6 new lists start empty — admin populates via the Profile Lists page.
 4. New trigger function `protect_customer_remark_column`, mirroring `protect_customer_assignment`: raises an exception if a non-admin/non-manager changes `remark` on update. Attached as `before update on customers`.
 
+## Expanded Scope: Backend Persistence
+
+While mapping the data model, we found `customers`, `activities`, `tasks`, `stages`, and `notifications` are currently mock, in-memory-only state in `lib/store.tsx` (seeded from `lib/mock-data.ts`, documented there as "still local-only mock data") — none of it is persisted to Supabase, unlike `users`/`teams`/`areas`/`businessTag*`. Adding Business Profile fields to a customer that resets on every page reload would make the feature meaningless, so this work also wires all five entities to real Supabase persistence, following the exact pattern already used for `areas`. This is a prerequisite done as Tasks 1-5 of the implementation plan, ahead of the Business Profile work itself (Tasks 6-13). Two schema type tweaks are folded in along the way: `activities.follow_up_date` and `tasks.due_date` change from `date` to `text`, since the existing UI accepts loose free-text (e.g. "Follow-up: 2 Aug 2026"), not a strict date — both tables are currently empty in production, so this is a safe, no-data-loss change.
+
 ## Testing
 
 No automated test suite exists in this repo for UI flows; verification is manual via the `run` skill after implementation:
