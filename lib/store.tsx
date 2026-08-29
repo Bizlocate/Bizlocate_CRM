@@ -1060,7 +1060,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function updateFieldRequirement(fieldKey: string, required: boolean) {
     setFieldRequirements((prev) => prev.map((f) => (f.fieldKey === fieldKey ? { ...f, required } : f)));
     const supabase = createClient();
-    supabase.from("mandatory_field_settings").update({ required }).eq("field_key", fieldKey).then(() => {});
+    supabase.from("mandatory_field_settings").upsert({ field_key: fieldKey, required }).then(() => {});
   }
 
   function previewBusinessTagCsv(csvText: string): CsvBusinessTagPreview {

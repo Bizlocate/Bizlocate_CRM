@@ -87,7 +87,7 @@ export const MANDATORY_FIELD_KEYS = [
   "business_type",
 ] as const;
 
-export const MANDATORY_FIELD_LABELS: Record<string, string> = {
+export const MANDATORY_FIELD_LABELS: Record<(typeof MANDATORY_FIELD_KEYS)[number], string> = {
   phone: "Phone",
   assigned_to: "Assigned To",
   source: "Source",

@@ -204,7 +204,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState(users[0]?.id ?? "");
+  const [assignedToUserId, setAssignedToUserId] = useState(users.find((u) => u.active)?.id ?? "");
   const [sourceId, setSourceId] = useState("");
   const [areaId, setAreaId] = useState("");
   const [subAreaId, setSubAreaId] = useState("");
