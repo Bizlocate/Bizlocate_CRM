@@ -5,7 +5,6 @@ import {
   seedActivities,
   seedCustomers,
   seedNotifications,
-  seedStages,
   seedTasks,
 } from "./mock-data";
 import { createClient } from "./supabase/client";
@@ -56,6 +55,10 @@ function mapBusinessTagCategory(row: { id: string; industry_id: string; name: st
 
 function mapBusinessTagType(row: { id: string; category_id: string; name: string }): BusinessTagType {
   return { id: row.id, categoryId: row.category_id, name: row.name };
+}
+
+function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
+  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
 }
 
 interface LoginResult {
@@ -153,7 +156,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [businessTagIndustries, setBusinessTagIndustries] = useState<BusinessTagIndustry[]>([]);
   const [businessTagCategories, setBusinessTagCategories] = useState<BusinessTagCategory[]>([]);
   const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
-  const [stages, setStages] = useState<Stage[]>(seedStages);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
   const [activities, setActivities] = useState<Activity[]>(seedActivities);
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
@@ -217,6 +220,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadStages(): Promise<Stage[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("pipeline_stages").select("*").order("order");
+    const mapped = (data ?? []).map(mapStage);
+    setStages(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
@@ -229,6 +240,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadBusinessTagIndustries(),
           loadBusinessTagCategories(),
           loadBusinessTagTypes(),
+          loadStages(),
         ]);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) setCurrentUserId(profile.id);
@@ -256,6 +268,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadBusinessTagIndustries(),
       loadBusinessTagCategories(),
       loadBusinessTagTypes(),
+      loadStages(),
     ]);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
@@ -636,32 +649,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function addStage(name: string, isDefault: boolean) {
-    setStages((prev) => {
-      const order = prev.length + 1;
-      const next = isDefault ? prev.map((s) => ({ ...s, isDefault: false })) : prev;
-      return [...next, { id: genId("s"), name, order, isDefault }];
-    });
+  async function addStage(name: string, isDefault: boolean) {
+    const supabase = createClient();
+    if (isDefault) {
+      await supabase.from("pipeline_stages").update({ is_default: false }).eq("is_default", true);
+    }
+    const order = stages.length + 1;
+    const { data, error } = await supabase
+      .from("pipeline_stages")
+      .insert({ name, order, is_default: isDefault })
+      .select()
+      .single();
+    if (!error && data) {
+      setStages((prev) => [...(isDefault ? prev.map((s) => ({ ...s, isDefault: false })) : prev), mapStage(data)]);
+    }
   }
 
   function renameStage(id: string, name: string) {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ name }).eq("id", id).then(() => {});
   }
 
   function moveStage(id: string, direction: -1 | 1) {
-    setStages((prev) => {
-      const sorted = [...prev].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === id);
-      const swapIdx = idx + direction;
-      if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return prev;
-      const a = sorted[idx];
-      const b = sorted[swapIdx];
-      return prev.map((s) => {
+    const sorted = [...stages].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex((s) => s.id === id);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    setStages((prev) =>
+      prev.map((s) => {
         if (s.id === a.id) return { ...s, order: b.order };
         if (s.id === b.id) return { ...s, order: a.order };
         return s;
-      });
-    });
+      })
+    );
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ order: b.order }).eq("id", a.id).then(() => {});
+    supabase.from("pipeline_stages").update({ order: a.order }).eq("id", b.id).then(() => {});
   }
 
   function deleteStage(id: string) {
@@ -670,6 +696,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
     setStages((prev) => prev.filter((s) => s.id !== id));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").delete().eq("id", id).then(() => {});
     return { ok: true };
   }
 
