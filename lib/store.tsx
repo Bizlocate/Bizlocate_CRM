@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import {
   seedActivities,
-  seedCustomers,
   seedTasks,
 } from "./mock-data";
 import { createClient } from "./supabase/client";
@@ -58,6 +57,24 @@ function mapBusinessTagType(row: { id: string; category_id: string; name: string
 
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
   return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
+}
+
+function mapCustomer(row: {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  assigned_to: string;
+  stage_id: string;
+}): Customer {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    assignedToUserId: row.assigned_to,
+    stageId: row.stage_id,
+  };
 }
 
 function formatTimestamp(iso: string): string {
@@ -134,7 +151,7 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => { ok: boolean; error?: string };
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
@@ -164,7 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [businessTagCategories, setBusinessTagCategories] = useState<BusinessTagCategory[]>([]);
   const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [activities, setActivities] = useState<Activity[]>(seedActivities);
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -247,6 +264,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadCustomers(): Promise<Customer[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("customers").select("*").order("name");
+    const mapped = (data ?? []).map(mapCustomer);
+    setCustomers(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
@@ -260,6 +285,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadBusinessTagCategories(),
           loadBusinessTagTypes(),
           loadStages(),
+          loadCustomers(),
         ]);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
@@ -291,6 +317,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadBusinessTagCategories(),
       loadBusinessTagTypes(),
       loadStages(),
+      loadCustomers(),
     ]);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
@@ -734,21 +761,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return undefined;
   }
 
-  function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string }) {
+  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string }) {
     const error = assignmentError(input.assignedToUserId);
     if (error) return { ok: false, error };
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
-    setCustomers((prev) => [
-      ...prev,
-      {
-        id: genId("c"),
+    if (!defaultStage) return { ok: false, error: "No pipeline stage configured. Add one in Admin → Pipeline Stages first." };
+    const supabase = createClient();
+    const { data, error: dbError } = await supabase
+      .from("customers")
+      .insert({
         name: input.name,
-        email: input.email,
-        phone: input.phone,
-        assignedToUserId: input.assignedToUserId,
-        stageId: defaultStage?.id ?? "",
-      },
-    ]);
+        email: input.email || null,
+        phone: input.phone || null,
+        assigned_to: input.assignedToUserId,
+        stage_id: defaultStage.id,
+        created_by: currentUserId,
+      })
+      .select()
+      .single();
+    if (dbError || !data) return { ok: false, error: dbError?.message ?? "Could not create customer." };
+    setCustomers((prev) => [...prev, mapCustomer(data)]);
     return { ok: true };
   }
 
@@ -759,22 +791,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (error) return { ok: false, error };
     }
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, assignedToUserId: newAssigneeId } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ assigned_to: newAssigneeId }).eq("id", customerId).then(() => {});
     const assignee = users.find((u) => u.id === newAssigneeId);
     if (assignee && customer) {
-      setNotifications((prev) => [
-        { id: genId("n"), message: `${assignee.name} was assigned ${customer.name}.`, time: "just now", unread: true },
-        ...prev,
-      ]);
+      createNotification(newAssigneeId, `${assignee.name} was assigned ${customer.name}.`);
     }
     return { ok: true };
   }
 
   function deleteCustomer(customerId: string) {
     setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+    const supabase = createClient();
+    supabase.from("customers").delete().eq("id", customerId).then(() => {});
   }
 
   function updateCustomerStage(customerId: string, stageId: string) {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, stageId } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ stage_id: stageId }).eq("id", customerId).then(() => {});
   }
 
   function addActivity(customerId: string, type: ActivityType, content: string, followUp: string) {

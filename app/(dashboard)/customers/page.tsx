@@ -189,10 +189,10 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [phone, setPhone] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState(users[0]?.id ?? "");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !assignedToUserId) return;
-    const result = addCustomer({ name, email, phone, assignedToUserId });
+    const result = await addCustomer({ name, email, phone, assignedToUserId });
     if (!result.ok) {
       alert(result.error ?? "Could not add customer.");
       return;
