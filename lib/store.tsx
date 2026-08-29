@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useMemo, useState, ReactNode } fr
 import {
   seedActivities,
   seedCustomers,
-  seedNotifications,
   seedTasks,
 } from "./mock-data";
 import { createClient } from "./supabase/client";
@@ -59,6 +58,14 @@ function mapBusinessTagType(row: { id: string; category_id: string; name: string
 
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
   return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
+}
+
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function mapNotification(row: { id: string; message: string; created_at: string; read: boolean }): Notification {
+  return { id: row.id, message: row.message, time: formatTimestamp(row.created_at), unread: !row.read };
 }
 
 interface LoginResult {
@@ -160,7 +167,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
   const [activities, setActivities] = useState<Activity[]>(seedActivities);
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
-  const [notifications, setNotifications] = useState<Notification[]>(seedNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -228,6 +235,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadNotifications(userId: string): Promise<Notification[]> {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapNotification);
+    setNotifications(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
@@ -243,7 +262,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadStages(),
         ]);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
-        if (profile) setCurrentUserId(profile.id);
+        if (profile) {
+          setCurrentUserId(profile.id);
+          loadNotifications(profile.id);
+        }
       }
       setInitialized(true);
     });
@@ -276,6 +298,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: "This account has no CRM profile set up. Contact your administrator." };
     }
     setCurrentUserId(profile.id);
+    await loadNotifications(profile.id);
     return { ok: true };
   }
 
@@ -770,7 +793,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function markNotificationsRead() {
+    const unreadIds = notifications.filter((n) => n.unread).map((n) => n.id);
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    if (unreadIds.length === 0) return;
+    const supabase = createClient();
+    supabase.from("notifications").update({ read: true }).in("id", unreadIds).then(() => {});
+  }
+
+  function createNotification(userId: string, message: string) {
+    const supabase = createClient();
+    supabase
+      .from("notifications")
+      .insert({ user_id: userId, type: "ASSIGNMENT", message, read: false })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data && data.user_id === currentUserId) {
+          setNotifications((prev) => [mapNotification(data), ...prev]);
+        }
+      });
   }
 
   function updateProfileName(name: string) {
