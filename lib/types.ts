@@ -69,6 +69,37 @@ export interface TargetType {
   name: string;
 }
 
+export interface FieldRequirement {
+  fieldKey: string;
+  required: boolean;
+}
+
+export const MANDATORY_FIELD_KEYS = [
+  "phone",
+  "assigned_to",
+  "source",
+  "area",
+  "sub_area",
+  "property_type",
+  "purpose",
+  "business_industry",
+  "business_category",
+  "business_type",
+] as const;
+
+export const MANDATORY_FIELD_LABELS: Record<string, string> = {
+  phone: "Phone",
+  assigned_to: "Assigned To",
+  source: "Source",
+  area: "Area",
+  sub_area: "Subarea",
+  property_type: "Property Type",
+  purpose: "Purpose",
+  business_industry: "Business Industry",
+  business_category: "Business Category",
+  business_type: "Business Type",
+};
+
 export interface CsvPreviewArea {
   name: string;
   isNew: boolean;
