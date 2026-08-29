@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { ACTIVITY_STYLES, ActivityType } from "@/lib/types";
+import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -62,6 +63,20 @@ export default function CustomerDetailPage() {
   if (!currentUser || !customer) return null;
 
   const assignedUser = users.find((u) => u.id === customer.assignedToUserId);
+  const canSendWhatsApp = (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && !!assignedUser?.phone;
+  const whatsAppLink = canSendWhatsApp
+    ? buildWhatsAppLink(
+        assignedUser!.phone!,
+        buildAssignmentMessage({
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          areaName: areas.find((a) => a.id === customer.areaId)?.name ?? "—",
+          businessTypeName: businessTagTypes.find((t) => t.id === customer.businessTypeId)?.name ?? "—",
+          raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
+          languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
+        })
+      )
+    : null;
   const canEditProfile = currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || currentUser.id === customer.assignedToUserId;
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const filteredSubAreas = subAreas.filter((s) => s.areaId === customer.areaId);
@@ -127,8 +142,31 @@ export default function CustomerDetailPage() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
-          <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6 }}>
-            {customer.email} · {customer.phone} · Assigned: {assignedUser?.name ?? "—"}
+          <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>
+              {customer.email} · {customer.phone} · Assigned: {assignedUser?.name ?? "—"}
+            </span>
+            {whatsAppLink && (
+              <a
+                href={whatsAppLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#1e7a41",
+                  background: "#e7f6ec",
+                  padding: "3px 10px",
+                  borderRadius: 20,
+                  textDecoration: "none",
+                }}
+              >
+                WhatsApp
+              </a>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
