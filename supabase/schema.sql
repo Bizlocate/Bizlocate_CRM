@@ -112,7 +112,7 @@ create table tasks (
   customer_id uuid not null references customers (id) on delete cascade,
   user_id uuid not null references profiles (id),
   title text not null,
-  due_date date,
+  due text,
   done boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -205,7 +205,7 @@ begin
   if new.customer_id is distinct from old.customer_id
     or new.user_id is distinct from old.user_id
     or new.title is distinct from old.title
-    or new.due_date is distinct from old.due_date then
+    or new.due is distinct from old.due then
     raise exception 'tasks can only be updated via the done flag';
   end if;
   return new;
@@ -485,3 +485,14 @@ insert into teams (name) values
 -- alter table activities alter column follow_up type text;
 -- alter table tasks rename column due_date to due;
 -- alter table tasks alter column due type text;
+-- create or replace function protect_task_columns() returns trigger as $$
+-- begin
+--   if new.customer_id is distinct from old.customer_id
+--     or new.user_id is distinct from old.user_id
+--     or new.title is distinct from old.title
+--     or new.due is distinct from old.due then
+--     raise exception 'tasks can only be updated via the done flag';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
