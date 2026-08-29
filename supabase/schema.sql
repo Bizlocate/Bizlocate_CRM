@@ -126,6 +126,11 @@ create table target_types (
   name text not null unique
 );
 
+create table mandatory_field_settings (
+  field_key text primary key,
+  required boolean not null default true
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -418,6 +423,11 @@ create policy "target_types_insert_admin" on target_types for insert with check 
 create policy "target_types_update_admin" on target_types for update using (is_admin());
 create policy "target_types_delete_admin" on target_types for delete using (is_admin());
 
+alter table mandatory_field_settings enable row level security;
+
+create policy "mandatory_field_settings_select" on mandatory_field_settings for select using (auth.uid() is not null);
+create policy "mandatory_field_settings_update_admin" on mandatory_field_settings for update using (is_admin());
+
 -- customers: admin all, manager own team, salesperson own assigned
 create policy "customers_select" on customers for select using (
   is_admin()
@@ -509,6 +519,18 @@ insert into teams (name) values
 
 insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
 insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
+
+insert into mandatory_field_settings (field_key, required) values
+  ('phone', true),
+  ('assigned_to', true),
+  ('source', true),
+  ('area', true),
+  ('sub_area', true),
+  ('property_type', true),
+  ('purpose', true),
+  ('business_industry', true),
+  ('business_category', true),
+  ('business_type', true);
 
 -- ============================================================
 -- Bootstrap: promote an already-existing auth user to ADMIN.
@@ -747,3 +769,31 @@ insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
 --
 -- insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
 -- insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
+
+-- ============================================================
+-- Migration: Mandatory Field Settings — run once against an
+-- already-provisioned database (everything below already exists
+-- in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table mandatory_field_settings (
+--   field_key text primary key,
+--   required boolean not null default true
+-- );
+--
+-- alter table mandatory_field_settings enable row level security;
+--
+-- create policy "mandatory_field_settings_select" on mandatory_field_settings for select using (auth.uid() is not null);
+-- create policy "mandatory_field_settings_update_admin" on mandatory_field_settings for update using (is_admin());
+--
+-- insert into mandatory_field_settings (field_key, required) values
+--   ('phone', true),
+--   ('assigned_to', true),
+--   ('source', true),
+--   ('area', true),
+--   ('sub_area', true),
+--   ('property_type', true),
+--   ('purpose', true),
+--   ('business_industry', true),
+--   ('business_category', true),
+--   ('business_type', true);
