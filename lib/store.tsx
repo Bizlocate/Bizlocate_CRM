@@ -14,10 +14,18 @@ import {
   Customer,
   CsvBusinessTagPreview,
   CsvPreview,
+  FirsttimeBranchType,
+  Language,
+  LeadSource,
   Notification,
+  PropertyType,
+  Purpose,
+  Race,
   Role,
   Stage,
   SubArea,
+  TargetRace,
+  TargetType,
   Task,
   Team,
   User,
@@ -49,6 +57,38 @@ function mapBusinessTagCategory(row: { id: string; industry_id: string; name: st
 
 function mapBusinessTagType(row: { id: string; category_id: string; name: string }): BusinessTagType {
   return { id: row.id, categoryId: row.category_id, name: row.name };
+}
+
+function mapLeadSource(row: { id: string; name: string }): LeadSource {
+  return { id: row.id, name: row.name };
+}
+
+function mapPropertyType(row: { id: string; name: string }): PropertyType {
+  return { id: row.id, name: row.name };
+}
+
+function mapPurpose(row: { id: string; name: string }): Purpose {
+  return { id: row.id, name: row.name };
+}
+
+function mapLanguage(row: { id: string; name: string }): Language {
+  return { id: row.id, name: row.name };
+}
+
+function mapFirsttimeBranchType(row: { id: string; name: string }): FirsttimeBranchType {
+  return { id: row.id, name: row.name };
+}
+
+function mapRace(row: { id: string; name: string }): Race {
+  return { id: row.id, name: row.name };
+}
+
+function mapTargetRace(row: { id: string; name: string }): TargetRace {
+  return { id: row.id, name: row.name };
+}
+
+function mapTargetType(row: { id: string; name: string }): TargetType {
+  return { id: row.id, name: row.name };
 }
 
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
@@ -118,6 +158,14 @@ interface Store {
   businessTagIndustries: BusinessTagIndustry[];
   businessTagCategories: BusinessTagCategory[];
   businessTagTypes: BusinessTagType[];
+  leadSources: LeadSource[];
+  propertyTypes: PropertyType[];
+  purposes: Purpose[];
+  languages: Language[];
+  firsttimeBranchTypes: FirsttimeBranchType[];
+  races: Race[];
+  targetRaces: TargetRace[];
+  targetTypes: TargetType[];
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
@@ -161,6 +209,32 @@ interface Store {
   addBusinessTagType: (categoryId: string, name: string) => void;
   updateBusinessTagType: (id: string, name: string) => void;
   deleteBusinessTagType: (id: string) => void;
+
+  addLeadSource: (name: string) => void;
+  updateLeadSource: (id: string, name: string) => void;
+  deleteLeadSource: (id: string) => void;
+  addPropertyType: (name: string) => void;
+  updatePropertyType: (id: string, name: string) => void;
+  deletePropertyType: (id: string) => void;
+  addPurpose: (name: string) => void;
+  updatePurpose: (id: string, name: string) => void;
+  deletePurpose: (id: string) => void;
+  addLanguage: (name: string) => void;
+  updateLanguage: (id: string, name: string) => void;
+  deleteLanguage: (id: string) => void;
+  addFirsttimeBranchType: (name: string) => void;
+  updateFirsttimeBranchType: (id: string, name: string) => void;
+  deleteFirsttimeBranchType: (id: string) => void;
+  addRace: (name: string) => void;
+  updateRace: (id: string, name: string) => void;
+  deleteRace: (id: string) => void;
+  addTargetRace: (name: string) => void;
+  updateTargetRace: (id: string, name: string) => void;
+  deleteTargetRace: (id: string) => void;
+  addTargetType: (name: string) => void;
+  updateTargetType: (id: string, name: string) => void;
+  deleteTargetType: (id: string) => void;
+
   previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
   confirmBusinessTagCsvImport: (
     preview: CsvBusinessTagPreview
@@ -196,6 +270,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [businessTagIndustries, setBusinessTagIndustries] = useState<BusinessTagIndustry[]>([]);
   const [businessTagCategories, setBusinessTagCategories] = useState<BusinessTagCategory[]>([]);
   const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
+  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
+  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
+  const [purposes, setPurposes] = useState<Purpose[]>([]);
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [firsttimeBranchTypes, setFirsttimeBranchTypes] = useState<FirsttimeBranchType[]>([]);
+  const [races, setRaces] = useState<Race[]>([]);
+  const [targetRaces, setTargetRaces] = useState<TargetRace[]>([]);
+  const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -260,6 +342,70 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadLeadSources(): Promise<LeadSource[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("lead_sources").select("*").order("name");
+    const mapped = (data ?? []).map(mapLeadSource);
+    setLeadSources(mapped);
+    return mapped;
+  }
+
+  async function loadPropertyTypes(): Promise<PropertyType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("property_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapPropertyType);
+    setPropertyTypes(mapped);
+    return mapped;
+  }
+
+  async function loadPurposes(): Promise<Purpose[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("purposes").select("*").order("name");
+    const mapped = (data ?? []).map(mapPurpose);
+    setPurposes(mapped);
+    return mapped;
+  }
+
+  async function loadLanguages(): Promise<Language[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("languages").select("*").order("name");
+    const mapped = (data ?? []).map(mapLanguage);
+    setLanguages(mapped);
+    return mapped;
+  }
+
+  async function loadFirsttimeBranchTypes(): Promise<FirsttimeBranchType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("firsttime_branch_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapFirsttimeBranchType);
+    setFirsttimeBranchTypes(mapped);
+    return mapped;
+  }
+
+  async function loadRaces(): Promise<Race[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("races").select("*").order("name");
+    const mapped = (data ?? []).map(mapRace);
+    setRaces(mapped);
+    return mapped;
+  }
+
+  async function loadTargetRaces(): Promise<TargetRace[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("target_races").select("*").order("name");
+    const mapped = (data ?? []).map(mapTargetRace);
+    setTargetRaces(mapped);
+    return mapped;
+  }
+
+  async function loadTargetTypes(): Promise<TargetType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("target_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapTargetType);
+    setTargetTypes(mapped);
+    return mapped;
+  }
+
   async function loadStages(): Promise<Stage[]> {
     const supabase = createClient();
     const { data } = await supabase.from("pipeline_stages").select("*").order("order");
@@ -317,6 +463,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadBusinessTagIndustries(),
           loadBusinessTagCategories(),
           loadBusinessTagTypes(),
+          loadLeadSources(),
+          loadPropertyTypes(),
+          loadPurposes(),
+          loadLanguages(),
+          loadFirsttimeBranchTypes(),
+          loadRaces(),
+          loadTargetRaces(),
+          loadTargetTypes(),
           loadStages(),
           loadCustomers(),
           loadTasks(),
@@ -351,6 +505,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadBusinessTagIndustries(),
       loadBusinessTagCategories(),
       loadBusinessTagTypes(),
+      loadLeadSources(),
+      loadPropertyTypes(),
+      loadPurposes(),
+      loadLanguages(),
+      loadFirsttimeBranchTypes(),
+      loadRaces(),
+      loadTargetRaces(),
+      loadTargetTypes(),
       loadStages(),
       loadCustomers(),
       loadTasks(),
@@ -671,6 +833,142 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("business_tag_types").delete().eq("id", id).then(() => {});
   }
 
+  function addLeadSource(name: string) {
+    const supabase = createClient();
+    supabase.from("lead_sources").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setLeadSources((prev) => [...prev, mapLeadSource(data)]);
+    });
+  }
+  function updateLeadSource(id: string, name: string) {
+    setLeadSources((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("lead_sources").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteLeadSource(id: string) {
+    setLeadSources((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("lead_sources").delete().eq("id", id).then(() => {});
+  }
+
+  function addPropertyType(name: string) {
+    const supabase = createClient();
+    supabase.from("property_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setPropertyTypes((prev) => [...prev, mapPropertyType(data)]);
+    });
+  }
+  function updatePropertyType(id: string, name: string) {
+    setPropertyTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("property_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deletePropertyType(id: string) {
+    setPropertyTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("property_types").delete().eq("id", id).then(() => {});
+  }
+
+  function addPurpose(name: string) {
+    const supabase = createClient();
+    supabase.from("purposes").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setPurposes((prev) => [...prev, mapPurpose(data)]);
+    });
+  }
+  function updatePurpose(id: string, name: string) {
+    setPurposes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("purposes").update({ name }).eq("id", id).then(() => {});
+  }
+  function deletePurpose(id: string) {
+    setPurposes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("purposes").delete().eq("id", id).then(() => {});
+  }
+
+  function addLanguage(name: string) {
+    const supabase = createClient();
+    supabase.from("languages").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setLanguages((prev) => [...prev, mapLanguage(data)]);
+    });
+  }
+  function updateLanguage(id: string, name: string) {
+    setLanguages((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("languages").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteLanguage(id: string) {
+    setLanguages((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("languages").delete().eq("id", id).then(() => {});
+  }
+
+  function addFirsttimeBranchType(name: string) {
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setFirsttimeBranchTypes((prev) => [...prev, mapFirsttimeBranchType(data)]);
+    });
+  }
+  function updateFirsttimeBranchType(id: string, name: string) {
+    setFirsttimeBranchTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteFirsttimeBranchType(id: string) {
+    setFirsttimeBranchTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").delete().eq("id", id).then(() => {});
+  }
+
+  function addRace(name: string) {
+    const supabase = createClient();
+    supabase.from("races").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setRaces((prev) => [...prev, mapRace(data)]);
+    });
+  }
+  function updateRace(id: string, name: string) {
+    setRaces((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("races").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteRace(id: string) {
+    setRaces((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("races").delete().eq("id", id).then(() => {});
+  }
+
+  function addTargetRace(name: string) {
+    const supabase = createClient();
+    supabase.from("target_races").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setTargetRaces((prev) => [...prev, mapTargetRace(data)]);
+    });
+  }
+  function updateTargetRace(id: string, name: string) {
+    setTargetRaces((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("target_races").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteTargetRace(id: string) {
+    setTargetRaces((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("target_races").delete().eq("id", id).then(() => {});
+  }
+
+  function addTargetType(name: string) {
+    const supabase = createClient();
+    supabase.from("target_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setTargetTypes((prev) => [...prev, mapTargetType(data)]);
+    });
+  }
+  function updateTargetType(id: string, name: string) {
+    setTargetTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("target_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteTargetType(id: string) {
+    setTargetTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("target_types").delete().eq("id", id).then(() => {});
+  }
+
   function previewBusinessTagCsv(csvText: string): CsvBusinessTagPreview {
     return parseBusinessTagCsv(csvText, businessTagIndustries, businessTagCategories, businessTagTypes);
   }
@@ -936,6 +1234,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     businessTagIndustries,
     businessTagCategories,
     businessTagTypes,
+    leadSources,
+    propertyTypes,
+    purposes,
+    languages,
+    firsttimeBranchTypes,
+    races,
+    targetRaces,
+    targetTypes,
     stages,
     customers,
     activities,
@@ -974,6 +1280,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addBusinessTagType,
     updateBusinessTagType,
     deleteBusinessTagType,
+    addLeadSource,
+    updateLeadSource,
+    deleteLeadSource,
+    addPropertyType,
+    updatePropertyType,
+    deletePropertyType,
+    addPurpose,
+    updatePurpose,
+    deletePurpose,
+    addLanguage,
+    updateLanguage,
+    deleteLanguage,
+    addFirsttimeBranchType,
+    updateFirsttimeBranchType,
+    deleteFirsttimeBranchType,
+    addRace,
+    updateRace,
+    deleteRace,
+    addTargetRace,
+    updateTargetRace,
+    deleteTargetRace,
+    addTargetType,
+    updateTargetType,
+    deleteTargetType,
     previewBusinessTagCsv,
     confirmBusinessTagCsvImport,
     addStage,
