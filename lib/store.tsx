@@ -1,10 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import {
-  seedActivities,
-  seedTasks,
-} from "./mock-data";
+import { seedTasks } from "./mock-data";
 import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
@@ -74,6 +71,26 @@ function mapCustomer(row: {
     phone: row.phone ?? "",
     assignedToUserId: row.assigned_to,
     stageId: row.stage_id,
+  };
+}
+
+function mapActivity(row: {
+  id: string;
+  customer_id: string;
+  type: ActivityType;
+  content: string;
+  follow_up: string | null;
+  user_id: string;
+  created_at: string;
+}, usersById: Map<string, User>): Activity {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    type: row.type,
+    content: row.content,
+    followUp: row.follow_up ?? "",
+    author: usersById.get(row.user_id)?.name ?? "",
+    time: formatTimestamp(row.created_at),
   };
 }
 
@@ -182,7 +199,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [activities, setActivities] = useState<Activity[]>(seedActivities);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -272,6 +289,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadActivities(usersList: User[]): Promise<Activity[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("activities").select("*").order("created_at", { ascending: false });
+    const usersById = new Map(usersList.map((u) => [u.id, u]));
+    const mapped = (data ?? []).map((row) => mapActivity(row, usersById));
+    setActivities(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
@@ -287,6 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadStages(),
           loadCustomers(),
         ]);
+        await loadActivities(loadedUsers);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
@@ -319,6 +346,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadStages(),
       loadCustomers(),
     ]);
+    await loadActivities(loadedUsers);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -813,10 +841,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function addActivity(customerId: string, type: ActivityType, content: string, followUp: string) {
-    setActivities((prev) => [
-      { id: genId("a"), customerId, type, content, followUp, author: currentUser?.name ?? "", time: "just now" },
-      ...prev,
-    ]);
+    if (!currentUser) return;
+    const supabase = createClient();
+    supabase
+      .from("activities")
+      .insert({ customer_id: customerId, user_id: currentUser.id, type, content, follow_up: followUp || null })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setActivities((prev) => [mapActivity(data, new Map(users.map((u) => [u.id, u]))), ...prev]);
+        }
+      });
   }
 
   function addTask(customerId: string, title: string, due: string) {

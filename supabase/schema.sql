@@ -103,7 +103,7 @@ create table activities (
   user_id uuid not null references profiles (id),
   type text not null check (type in ('CALL', 'VISIT', 'NOTE')),
   content text not null,
-  follow_up_date date,
+  follow_up text,
   created_at timestamptz not null default now()
 );
 
@@ -474,3 +474,14 @@ insert into teams (name) values
 -- create policy "business_tag_types_insert_admin" on business_tag_types for insert with check (is_admin());
 -- create policy "business_tag_types_update_admin" on business_tag_types for update using (is_admin());
 -- create policy "business_tag_types_delete_admin" on business_tag_types for delete using (is_admin());
+
+-- ============================================================
+-- Migration: widen activities.follow_up_date / tasks.due_date to
+-- free text (the UI accepts loose text like "2 Aug 2026", not a
+-- strict date) — run once against an already-provisioned database.
+-- ============================================================
+--
+-- alter table activities rename column follow_up_date to follow_up;
+-- alter table activities alter column follow_up type text;
+-- alter table tasks rename column due_date to due;
+-- alter table tasks alter column due type text;
