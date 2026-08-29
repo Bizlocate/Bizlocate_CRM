@@ -29,6 +29,46 @@ export interface SubArea {
   name: string;
 }
 
+export interface LeadSource {
+  id: string;
+  name: string;
+}
+
+export interface PropertyType {
+  id: string;
+  name: string;
+}
+
+export interface Purpose {
+  id: string;
+  name: string;
+}
+
+export interface Language {
+  id: string;
+  name: string;
+}
+
+export interface FirsttimeBranchType {
+  id: string;
+  name: string;
+}
+
+export interface Race {
+  id: string;
+  name: string;
+}
+
+export interface TargetRace {
+  id: string;
+  name: string;
+}
+
+export interface TargetType {
+  id: string;
+  name: string;
+}
+
 export interface CsvPreviewArea {
   name: string;
   isNew: boolean;
@@ -134,6 +174,21 @@ export interface Customer {
   phone: string;
   stageId: string;
   assignedToUserId: string;
+  sourceId: string | null;
+  areaId: string | null;
+  subAreaId: string | null;
+  propertyTypeId: string | null;
+  purposeId: string | null;
+  businessIndustryId: string | null;
+  businessCategoryId: string | null;
+  businessTypeId: string | null;
+  raceId: string | null;
+  languageId: string | null;
+  businessName: string;
+  firsttimeBranchId: string | null;
+  targetRaceId: string | null;
+  targetTypeId: string | null;
+  remark: string;
 }
 
 export type ActivityType = "CALL" | "VISIT" | "NOTE";
