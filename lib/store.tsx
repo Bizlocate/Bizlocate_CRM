@@ -102,6 +102,21 @@ function mapCustomer(row: {
   phone: string | null;
   assigned_to: string;
   stage_id: string;
+  source_id: string | null;
+  area_id: string | null;
+  sub_area_id: string | null;
+  property_type_id: string | null;
+  purpose_id: string | null;
+  business_industry_id: string | null;
+  business_category_id: string | null;
+  business_type_id: string | null;
+  race_id: string | null;
+  language_id: string | null;
+  business_name: string | null;
+  firsttime_branch_id: string | null;
+  target_race_id: string | null;
+  target_type_id: string | null;
+  remark: string | null;
 }): Customer {
   return {
     id: row.id,
@@ -110,8 +125,59 @@ function mapCustomer(row: {
     phone: row.phone ?? "",
     assignedToUserId: row.assigned_to,
     stageId: row.stage_id,
+    sourceId: row.source_id,
+    areaId: row.area_id,
+    subAreaId: row.sub_area_id,
+    propertyTypeId: row.property_type_id,
+    purposeId: row.purpose_id,
+    businessIndustryId: row.business_industry_id,
+    businessCategoryId: row.business_category_id,
+    businessTypeId: row.business_type_id,
+    raceId: row.race_id,
+    languageId: row.language_id,
+    businessName: row.business_name ?? "",
+    firsttimeBranchId: row.firsttime_branch_id,
+    targetRaceId: row.target_race_id,
+    targetTypeId: row.target_type_id,
+    remark: row.remark ?? "",
   };
 }
+
+export interface CustomerProfileInput {
+  sourceId: string | null;
+  areaId: string | null;
+  subAreaId: string | null;
+  propertyTypeId: string | null;
+  purposeId: string | null;
+  businessIndustryId: string | null;
+  businessCategoryId: string | null;
+  businessTypeId: string | null;
+  raceId: string | null;
+  languageId: string | null;
+  businessName: string;
+  firsttimeBranchId: string | null;
+  targetRaceId: string | null;
+  targetTypeId: string | null;
+  remark: string;
+}
+
+const emptyCustomerProfile: CustomerProfileInput = {
+  sourceId: null,
+  areaId: null,
+  subAreaId: null,
+  propertyTypeId: null,
+  purposeId: null,
+  businessIndustryId: null,
+  businessCategoryId: null,
+  businessTypeId: null,
+  raceId: null,
+  languageId: null,
+  businessName: "",
+  firsttimeBranchId: null,
+  targetRaceId: null,
+  targetTypeId: null,
+  remark: "",
+};
 
 function mapActivity(row: {
   id: string;
@@ -245,10 +311,12 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => Promise<{ ok: boolean; error?: string }>;
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
+  updateCustomerProfile: (customerId: string, patch: Partial<CustomerProfileInput>) => void;
+  updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
   addTask: (customerId: string, title: string, due: string) => void;
@@ -1096,11 +1164,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return undefined;
   }
 
-  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string }) {
+  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) {
     const error = assignmentError(input.assignedToUserId);
     if (error) return { ok: false, error };
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
     if (!defaultStage) return { ok: false, error: "No pipeline stage configured. Add one in Admin → Pipeline Stages first." };
+    const profile = { ...emptyCustomerProfile, ...input };
     const supabase = createClient();
     const { data, error: dbError } = await supabase
       .from("customers")
@@ -1111,6 +1180,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         assigned_to: input.assignedToUserId,
         stage_id: defaultStage.id,
         created_by: currentUserId,
+        source_id: profile.sourceId,
+        area_id: profile.areaId,
+        sub_area_id: profile.subAreaId,
+        property_type_id: profile.propertyTypeId,
+        purpose_id: profile.purposeId,
+        business_industry_id: profile.businessIndustryId,
+        business_category_id: profile.businessCategoryId,
+        business_type_id: profile.businessTypeId,
+        race_id: profile.raceId,
+        language_id: profile.languageId,
+        business_name: profile.businessName || null,
+        firsttime_branch_id: profile.firsttimeBranchId,
+        target_race_id: profile.targetRaceId,
+        target_type_id: profile.targetTypeId,
+        remark: profile.remark || null,
       })
       .select()
       .single();
@@ -1145,6 +1229,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, stageId } : c)));
     const supabase = createClient();
     supabase.from("customers").update({ stage_id: stageId }).eq("id", customerId).then(() => {});
+  }
+
+  function updateCustomerProfile(customerId: string, patch: Partial<CustomerProfileInput>) {
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
+    const columnMap: Record<string, string> = {
+      sourceId: "source_id",
+      areaId: "area_id",
+      subAreaId: "sub_area_id",
+      propertyTypeId: "property_type_id",
+      purposeId: "purpose_id",
+      businessIndustryId: "business_industry_id",
+      businessCategoryId: "business_category_id",
+      businessTypeId: "business_type_id",
+      raceId: "race_id",
+      languageId: "language_id",
+      businessName: "business_name",
+      firsttimeBranchId: "firsttime_branch_id",
+      targetRaceId: "target_race_id",
+      targetTypeId: "target_type_id",
+    };
+    const dbPatch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const column = columnMap[key];
+      if (column) dbPatch[column] = value === "" ? null : value;
+    }
+    const supabase = createClient();
+    supabase.from("customers").update(dbPatch).eq("id", customerId).then(() => {});
+  }
+
+  function updateCustomerRemark(customerId: string, remark: string) {
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, remark } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ remark: remark || null }).eq("id", customerId).then(() => {});
   }
 
   function addActivity(customerId: string, type: ActivityType, content: string, followUp: string) {
@@ -1313,6 +1430,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reassignCustomer,
     deleteCustomer,
     updateCustomerStage,
+    updateCustomerProfile,
+    updateCustomerRemark,
     addActivity,
     addTask,
     toggleTaskDone,
