@@ -315,7 +315,7 @@ interface Store {
   reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
-  updateCustomerProfile: (customerId: string, patch: Partial<CustomerProfileInput>) => void;
+  updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
   updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
@@ -600,6 +600,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     supabase.auth.signOut();
     setCurrentUserId(null);
+    setCustomers([]);
+    setNotifications([]);
   }
 
   const visibleCustomers = useMemo(() => {
@@ -1107,7 +1109,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (isDefault) {
       await supabase.from("pipeline_stages").update({ is_default: false }).eq("is_default", true);
     }
-    const order = stages.length + 1;
+    const order = Math.max(0, ...stages.map((s) => s.order)) + 1;
     const { data, error } = await supabase
       .from("pipeline_stages")
       .insert({ name, order, is_default: isDefault })
@@ -1231,7 +1233,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("customers").update({ stage_id: stageId }).eq("id", customerId).then(() => {});
   }
 
-  function updateCustomerProfile(customerId: string, patch: Partial<CustomerProfileInput>) {
+  function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
     const columnMap: Record<string, string> = {
       sourceId: "source_id",

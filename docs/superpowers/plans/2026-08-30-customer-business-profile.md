@@ -1210,6 +1210,8 @@ insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
 
 Confirm no errors before continuing to Task 7.
 
+> **DEPLOY ORDERING — READ BEFORE DEPLOYING THIS BRANCH:** the migration SQL above MUST be run against the production Supabase project BEFORE this branch is deployed. `lib/store.tsx`'s `addCustomer` unconditionally names all 15 new Business Profile columns in its `insert`. Deploying the app code first, against a database that hasn't had this migration applied, does not just leave the new fields empty — it makes every `addCustomer` call fail outright (`{ok: false}`), breaking customer creation entirely.
+
 ---
 
 ### Task 7: Types — lookup interfaces + Customer extension

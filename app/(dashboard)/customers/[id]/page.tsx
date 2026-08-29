@@ -51,6 +51,13 @@ export default function CustomerDetailPage() {
   const [taskDue, setTaskDue] = useState("");
   const [reassignTo, setReassignTo] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [businessNameDraft, setBusinessNameDraft] = useState(customer?.businessName ?? "");
+  const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
+
+  useEffect(() => {
+    setBusinessNameDraft(customer?.businessName ?? "");
+    setRemarkDraft(customer?.remark ?? "");
+  }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!currentUser || !customer) return null;
 
@@ -76,7 +83,7 @@ export default function CustomerDetailPage() {
   function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
     if (!taskTitle.trim()) return;
-    addTask(customer!.id, taskTitle.trim(), taskDue.trim() || "No due date");
+    addTask(customer!.id, taskTitle.trim(), taskDue.trim());
     setTaskTitle("");
     setTaskDue("");
   }
@@ -194,8 +201,13 @@ export default function CustomerDetailPage() {
             {canEditProfile ? (
               <input
                 className="field-input"
-                value={customer.businessName}
-                onChange={(e) => updateCustomerProfile(customer.id, { businessName: e.target.value })}
+                value={businessNameDraft}
+                onChange={(e) => setBusinessNameDraft(e.target.value)}
+                onBlur={() => {
+                  if (businessNameDraft !== customer.businessName) {
+                    updateCustomerProfile(customer.id, { businessName: businessNameDraft });
+                  }
+                }}
               />
             ) : (
               <div style={{ fontSize: 13.5 }}>{customer.businessName || "—"}</div>
@@ -210,8 +222,13 @@ export default function CustomerDetailPage() {
           {canEditRemark ? (
             <input
               className="field-input"
-              value={customer.remark}
-              onChange={(e) => updateCustomerRemark(customer.id, e.target.value)}
+              value={remarkDraft}
+              onChange={(e) => setRemarkDraft(e.target.value)}
+              onBlur={() => {
+                if (remarkDraft !== customer.remark) {
+                  updateCustomerRemark(customer.id, remarkDraft);
+                }
+              }}
               placeholder="Note for the assigned salesperson"
             />
           ) : (
