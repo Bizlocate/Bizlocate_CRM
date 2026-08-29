@@ -1,13 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import {
-  seedActivities,
-  seedCustomers,
-  seedNotifications,
-  seedStages,
-  seedTasks,
-} from "./mock-data";
 import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
@@ -21,10 +14,18 @@ import {
   Customer,
   CsvBusinessTagPreview,
   CsvPreview,
+  FirsttimeBranchType,
+  Language,
+  LeadSource,
   Notification,
+  PropertyType,
+  Purpose,
+  Race,
   Role,
   Stage,
   SubArea,
+  TargetRace,
+  TargetType,
   Task,
   Team,
   User,
@@ -58,6 +59,158 @@ function mapBusinessTagType(row: { id: string; category_id: string; name: string
   return { id: row.id, categoryId: row.category_id, name: row.name };
 }
 
+function mapLeadSource(row: { id: string; name: string }): LeadSource {
+  return { id: row.id, name: row.name };
+}
+
+function mapPropertyType(row: { id: string; name: string }): PropertyType {
+  return { id: row.id, name: row.name };
+}
+
+function mapPurpose(row: { id: string; name: string }): Purpose {
+  return { id: row.id, name: row.name };
+}
+
+function mapLanguage(row: { id: string; name: string }): Language {
+  return { id: row.id, name: row.name };
+}
+
+function mapFirsttimeBranchType(row: { id: string; name: string }): FirsttimeBranchType {
+  return { id: row.id, name: row.name };
+}
+
+function mapRace(row: { id: string; name: string }): Race {
+  return { id: row.id, name: row.name };
+}
+
+function mapTargetRace(row: { id: string; name: string }): TargetRace {
+  return { id: row.id, name: row.name };
+}
+
+function mapTargetType(row: { id: string; name: string }): TargetType {
+  return { id: row.id, name: row.name };
+}
+
+function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
+  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
+}
+
+function mapCustomer(row: {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  assigned_to: string;
+  stage_id: string;
+  source_id: string | null;
+  area_id: string | null;
+  sub_area_id: string | null;
+  property_type_id: string | null;
+  purpose_id: string | null;
+  business_industry_id: string | null;
+  business_category_id: string | null;
+  business_type_id: string | null;
+  race_id: string | null;
+  language_id: string | null;
+  business_name: string | null;
+  firsttime_branch_id: string | null;
+  target_race_id: string | null;
+  target_type_id: string | null;
+  remark: string | null;
+}): Customer {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    assignedToUserId: row.assigned_to,
+    stageId: row.stage_id,
+    sourceId: row.source_id,
+    areaId: row.area_id,
+    subAreaId: row.sub_area_id,
+    propertyTypeId: row.property_type_id,
+    purposeId: row.purpose_id,
+    businessIndustryId: row.business_industry_id,
+    businessCategoryId: row.business_category_id,
+    businessTypeId: row.business_type_id,
+    raceId: row.race_id,
+    languageId: row.language_id,
+    businessName: row.business_name ?? "",
+    firsttimeBranchId: row.firsttime_branch_id,
+    targetRaceId: row.target_race_id,
+    targetTypeId: row.target_type_id,
+    remark: row.remark ?? "",
+  };
+}
+
+export interface CustomerProfileInput {
+  sourceId: string | null;
+  areaId: string | null;
+  subAreaId: string | null;
+  propertyTypeId: string | null;
+  purposeId: string | null;
+  businessIndustryId: string | null;
+  businessCategoryId: string | null;
+  businessTypeId: string | null;
+  raceId: string | null;
+  languageId: string | null;
+  businessName: string;
+  firsttimeBranchId: string | null;
+  targetRaceId: string | null;
+  targetTypeId: string | null;
+  remark: string;
+}
+
+const emptyCustomerProfile: CustomerProfileInput = {
+  sourceId: null,
+  areaId: null,
+  subAreaId: null,
+  propertyTypeId: null,
+  purposeId: null,
+  businessIndustryId: null,
+  businessCategoryId: null,
+  businessTypeId: null,
+  raceId: null,
+  languageId: null,
+  businessName: "",
+  firsttimeBranchId: null,
+  targetRaceId: null,
+  targetTypeId: null,
+  remark: "",
+};
+
+function mapActivity(row: {
+  id: string;
+  customer_id: string;
+  type: ActivityType;
+  content: string;
+  follow_up: string | null;
+  user_id: string;
+  created_at: string;
+}, usersById: Map<string, User>): Activity {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    type: row.type,
+    content: row.content,
+    followUp: row.follow_up ?? "",
+    author: usersById.get(row.user_id)?.name ?? "",
+    time: formatTimestamp(row.created_at),
+  };
+}
+
+function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
+  return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
+}
+
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function mapNotification(row: { id: string; message: string; created_at: string; read: boolean }): Notification {
+  return { id: row.id, message: row.message, time: formatTimestamp(row.created_at), unread: !row.read };
+}
+
 interface LoginResult {
   ok: boolean;
   error?: string;
@@ -71,6 +224,14 @@ interface Store {
   businessTagIndustries: BusinessTagIndustry[];
   businessTagCategories: BusinessTagCategory[];
   businessTagTypes: BusinessTagType[];
+  leadSources: LeadSource[];
+  propertyTypes: PropertyType[];
+  purposes: Purpose[];
+  languages: Language[];
+  firsttimeBranchTypes: FirsttimeBranchType[];
+  races: Race[];
+  targetRaces: TargetRace[];
+  targetTypes: TargetType[];
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
@@ -114,6 +275,32 @@ interface Store {
   addBusinessTagType: (categoryId: string, name: string) => void;
   updateBusinessTagType: (id: string, name: string) => void;
   deleteBusinessTagType: (id: string) => void;
+
+  addLeadSource: (name: string) => void;
+  updateLeadSource: (id: string, name: string) => void;
+  deleteLeadSource: (id: string) => void;
+  addPropertyType: (name: string) => void;
+  updatePropertyType: (id: string, name: string) => void;
+  deletePropertyType: (id: string) => void;
+  addPurpose: (name: string) => void;
+  updatePurpose: (id: string, name: string) => void;
+  deletePurpose: (id: string) => void;
+  addLanguage: (name: string) => void;
+  updateLanguage: (id: string, name: string) => void;
+  deleteLanguage: (id: string) => void;
+  addFirsttimeBranchType: (name: string) => void;
+  updateFirsttimeBranchType: (id: string, name: string) => void;
+  deleteFirsttimeBranchType: (id: string) => void;
+  addRace: (name: string) => void;
+  updateRace: (id: string, name: string) => void;
+  deleteRace: (id: string) => void;
+  addTargetRace: (name: string) => void;
+  updateTargetRace: (id: string, name: string) => void;
+  deleteTargetRace: (id: string) => void;
+  addTargetType: (name: string) => void;
+  updateTargetType: (id: string, name: string) => void;
+  deleteTargetType: (id: string) => void;
+
   previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
   confirmBusinessTagCsvImport: (
     preview: CsvBusinessTagPreview
@@ -124,10 +311,12 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string }) => { ok: boolean; error?: string };
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
+  updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
+  updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
   addTask: (customerId: string, title: string, due: string) => void;
@@ -141,10 +330,6 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
-function genId(prefix: string) {
-  return prefix + Math.random().toString(36).slice(2, 8);
-}
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -153,11 +338,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [businessTagIndustries, setBusinessTagIndustries] = useState<BusinessTagIndustry[]>([]);
   const [businessTagCategories, setBusinessTagCategories] = useState<BusinessTagCategory[]>([]);
   const [businessTagTypes, setBusinessTagTypes] = useState<BusinessTagType[]>([]);
-  const [stages, setStages] = useState<Stage[]>(seedStages);
-  const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
-  const [activities, setActivities] = useState<Activity[]>(seedActivities);
-  const [tasks, setTasks] = useState<Task[]>(seedTasks);
-  const [notifications, setNotifications] = useState<Notification[]>(seedNotifications);
+  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
+  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
+  const [purposes, setPurposes] = useState<Purpose[]>([]);
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [firsttimeBranchTypes, setFirsttimeBranchTypes] = useState<FirsttimeBranchType[]>([]);
+  const [races, setRaces] = useState<Race[]>([]);
+  const [targetRaces, setTargetRaces] = useState<TargetRace[]>([]);
+  const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -217,6 +410,115 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadLeadSources(): Promise<LeadSource[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("lead_sources").select("*").order("name");
+    const mapped = (data ?? []).map(mapLeadSource);
+    setLeadSources(mapped);
+    return mapped;
+  }
+
+  async function loadPropertyTypes(): Promise<PropertyType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("property_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapPropertyType);
+    setPropertyTypes(mapped);
+    return mapped;
+  }
+
+  async function loadPurposes(): Promise<Purpose[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("purposes").select("*").order("name");
+    const mapped = (data ?? []).map(mapPurpose);
+    setPurposes(mapped);
+    return mapped;
+  }
+
+  async function loadLanguages(): Promise<Language[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("languages").select("*").order("name");
+    const mapped = (data ?? []).map(mapLanguage);
+    setLanguages(mapped);
+    return mapped;
+  }
+
+  async function loadFirsttimeBranchTypes(): Promise<FirsttimeBranchType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("firsttime_branch_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapFirsttimeBranchType);
+    setFirsttimeBranchTypes(mapped);
+    return mapped;
+  }
+
+  async function loadRaces(): Promise<Race[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("races").select("*").order("name");
+    const mapped = (data ?? []).map(mapRace);
+    setRaces(mapped);
+    return mapped;
+  }
+
+  async function loadTargetRaces(): Promise<TargetRace[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("target_races").select("*").order("name");
+    const mapped = (data ?? []).map(mapTargetRace);
+    setTargetRaces(mapped);
+    return mapped;
+  }
+
+  async function loadTargetTypes(): Promise<TargetType[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("target_types").select("*").order("name");
+    const mapped = (data ?? []).map(mapTargetType);
+    setTargetTypes(mapped);
+    return mapped;
+  }
+
+  async function loadStages(): Promise<Stage[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("pipeline_stages").select("*").order("order");
+    const mapped = (data ?? []).map(mapStage);
+    setStages(mapped);
+    return mapped;
+  }
+
+  async function loadNotifications(userId: string): Promise<Notification[]> {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapNotification);
+    setNotifications(mapped);
+    return mapped;
+  }
+
+  async function loadCustomers(): Promise<Customer[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("customers").select("*").order("name");
+    const mapped = (data ?? []).map(mapCustomer);
+    setCustomers(mapped);
+    return mapped;
+  }
+
+  async function loadActivities(usersList: User[]): Promise<Activity[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("activities").select("*").order("created_at", { ascending: false });
+    const usersById = new Map(usersList.map((u) => [u.id, u]));
+    const mapped = (data ?? []).map((row) => mapActivity(row, usersById));
+    setActivities(mapped);
+    return mapped;
+  }
+
+  async function loadTasks(): Promise<Task[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("tasks").select("*").order("created_at");
+    const mapped = (data ?? []).map(mapTask);
+    setTasks(mapped);
+    return mapped;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
@@ -229,9 +531,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadBusinessTagIndustries(),
           loadBusinessTagCategories(),
           loadBusinessTagTypes(),
+          loadLeadSources(),
+          loadPropertyTypes(),
+          loadPurposes(),
+          loadLanguages(),
+          loadFirsttimeBranchTypes(),
+          loadRaces(),
+          loadTargetRaces(),
+          loadTargetTypes(),
+          loadStages(),
+          loadCustomers(),
+          loadTasks(),
         ]);
+        await loadActivities(loadedUsers);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
-        if (profile) setCurrentUserId(profile.id);
+        if (profile) {
+          setCurrentUserId(profile.id);
+          loadNotifications(profile.id);
+        }
       }
       setInitialized(true);
     });
@@ -256,13 +573,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadBusinessTagIndustries(),
       loadBusinessTagCategories(),
       loadBusinessTagTypes(),
+      loadLeadSources(),
+      loadPropertyTypes(),
+      loadPurposes(),
+      loadLanguages(),
+      loadFirsttimeBranchTypes(),
+      loadRaces(),
+      loadTargetRaces(),
+      loadTargetTypes(),
+      loadStages(),
+      loadCustomers(),
+      loadTasks(),
     ]);
+    await loadActivities(loadedUsers);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
       return { ok: false, error: "This account has no CRM profile set up. Contact your administrator." };
     }
     setCurrentUserId(profile.id);
+    await loadNotifications(profile.id);
     return { ok: true };
   }
 
@@ -270,6 +600,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     supabase.auth.signOut();
     setCurrentUserId(null);
+    setCustomers([]);
+    setNotifications([]);
   }
 
   const visibleCustomers = useMemo(() => {
@@ -571,6 +903,142 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("business_tag_types").delete().eq("id", id).then(() => {});
   }
 
+  function addLeadSource(name: string) {
+    const supabase = createClient();
+    supabase.from("lead_sources").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setLeadSources((prev) => [...prev, mapLeadSource(data)]);
+    });
+  }
+  function updateLeadSource(id: string, name: string) {
+    setLeadSources((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("lead_sources").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteLeadSource(id: string) {
+    setLeadSources((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("lead_sources").delete().eq("id", id).then(() => {});
+  }
+
+  function addPropertyType(name: string) {
+    const supabase = createClient();
+    supabase.from("property_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setPropertyTypes((prev) => [...prev, mapPropertyType(data)]);
+    });
+  }
+  function updatePropertyType(id: string, name: string) {
+    setPropertyTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("property_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deletePropertyType(id: string) {
+    setPropertyTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("property_types").delete().eq("id", id).then(() => {});
+  }
+
+  function addPurpose(name: string) {
+    const supabase = createClient();
+    supabase.from("purposes").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setPurposes((prev) => [...prev, mapPurpose(data)]);
+    });
+  }
+  function updatePurpose(id: string, name: string) {
+    setPurposes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("purposes").update({ name }).eq("id", id).then(() => {});
+  }
+  function deletePurpose(id: string) {
+    setPurposes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("purposes").delete().eq("id", id).then(() => {});
+  }
+
+  function addLanguage(name: string) {
+    const supabase = createClient();
+    supabase.from("languages").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setLanguages((prev) => [...prev, mapLanguage(data)]);
+    });
+  }
+  function updateLanguage(id: string, name: string) {
+    setLanguages((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("languages").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteLanguage(id: string) {
+    setLanguages((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("languages").delete().eq("id", id).then(() => {});
+  }
+
+  function addFirsttimeBranchType(name: string) {
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setFirsttimeBranchTypes((prev) => [...prev, mapFirsttimeBranchType(data)]);
+    });
+  }
+  function updateFirsttimeBranchType(id: string, name: string) {
+    setFirsttimeBranchTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteFirsttimeBranchType(id: string) {
+    setFirsttimeBranchTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("firsttime_branch_types").delete().eq("id", id).then(() => {});
+  }
+
+  function addRace(name: string) {
+    const supabase = createClient();
+    supabase.from("races").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setRaces((prev) => [...prev, mapRace(data)]);
+    });
+  }
+  function updateRace(id: string, name: string) {
+    setRaces((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("races").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteRace(id: string) {
+    setRaces((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("races").delete().eq("id", id).then(() => {});
+  }
+
+  function addTargetRace(name: string) {
+    const supabase = createClient();
+    supabase.from("target_races").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setTargetRaces((prev) => [...prev, mapTargetRace(data)]);
+    });
+  }
+  function updateTargetRace(id: string, name: string) {
+    setTargetRaces((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("target_races").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteTargetRace(id: string) {
+    setTargetRaces((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("target_races").delete().eq("id", id).then(() => {});
+  }
+
+  function addTargetType(name: string) {
+    const supabase = createClient();
+    supabase.from("target_types").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setTargetTypes((prev) => [...prev, mapTargetType(data)]);
+    });
+  }
+  function updateTargetType(id: string, name: string) {
+    setTargetTypes((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("target_types").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteTargetType(id: string) {
+    setTargetTypes((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("target_types").delete().eq("id", id).then(() => {});
+  }
+
   function previewBusinessTagCsv(csvText: string): CsvBusinessTagPreview {
     return parseBusinessTagCsv(csvText, businessTagIndustries, businessTagCategories, businessTagTypes);
   }
@@ -636,32 +1104,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function addStage(name: string, isDefault: boolean) {
-    setStages((prev) => {
-      const order = prev.length + 1;
-      const next = isDefault ? prev.map((s) => ({ ...s, isDefault: false })) : prev;
-      return [...next, { id: genId("s"), name, order, isDefault }];
-    });
+  async function addStage(name: string, isDefault: boolean) {
+    const supabase = createClient();
+    if (isDefault) {
+      await supabase.from("pipeline_stages").update({ is_default: false }).eq("is_default", true);
+    }
+    const order = Math.max(0, ...stages.map((s) => s.order)) + 1;
+    const { data, error } = await supabase
+      .from("pipeline_stages")
+      .insert({ name, order, is_default: isDefault })
+      .select()
+      .single();
+    if (!error && data) {
+      setStages((prev) => [...(isDefault ? prev.map((s) => ({ ...s, isDefault: false })) : prev), mapStage(data)]);
+    }
   }
 
   function renameStage(id: string, name: string) {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ name }).eq("id", id).then(() => {});
   }
 
   function moveStage(id: string, direction: -1 | 1) {
-    setStages((prev) => {
-      const sorted = [...prev].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === id);
-      const swapIdx = idx + direction;
-      if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return prev;
-      const a = sorted[idx];
-      const b = sorted[swapIdx];
-      return prev.map((s) => {
+    const sorted = [...stages].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex((s) => s.id === id);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    setStages((prev) =>
+      prev.map((s) => {
         if (s.id === a.id) return { ...s, order: b.order };
         if (s.id === b.id) return { ...s, order: a.order };
         return s;
-      });
-    });
+      })
+    );
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ order: b.order }).eq("id", a.id).then(() => {});
+    supabase.from("pipeline_stages").update({ order: a.order }).eq("id", b.id).then(() => {});
   }
 
   function deleteStage(id: string) {
@@ -670,6 +1151,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
     setStages((prev) => prev.filter((s) => s.id !== id));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").delete().eq("id", id).then(() => {});
     return { ok: true };
   }
 
@@ -683,21 +1166,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return undefined;
   }
 
-  function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string }) {
+  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) {
     const error = assignmentError(input.assignedToUserId);
     if (error) return { ok: false, error };
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
-    setCustomers((prev) => [
-      ...prev,
-      {
-        id: genId("c"),
+    if (!defaultStage) return { ok: false, error: "No pipeline stage configured. Add one in Admin → Pipeline Stages first." };
+    const profile = { ...emptyCustomerProfile, ...input };
+    const supabase = createClient();
+    const { data, error: dbError } = await supabase
+      .from("customers")
+      .insert({
         name: input.name,
-        email: input.email,
-        phone: input.phone,
-        assignedToUserId: input.assignedToUserId,
-        stageId: defaultStage?.id ?? "",
-      },
-    ]);
+        email: input.email || null,
+        phone: input.phone || null,
+        assigned_to: input.assignedToUserId,
+        stage_id: defaultStage.id,
+        created_by: currentUserId,
+        source_id: profile.sourceId,
+        area_id: profile.areaId,
+        sub_area_id: profile.subAreaId,
+        property_type_id: profile.propertyTypeId,
+        purpose_id: profile.purposeId,
+        business_industry_id: profile.businessIndustryId,
+        business_category_id: profile.businessCategoryId,
+        business_type_id: profile.businessTypeId,
+        race_id: profile.raceId,
+        language_id: profile.languageId,
+        business_name: profile.businessName || null,
+        firsttime_branch_id: profile.firsttimeBranchId,
+        target_race_id: profile.targetRaceId,
+        target_type_id: profile.targetTypeId,
+        remark: profile.remark || null,
+      })
+      .select()
+      .single();
+    if (dbError || !data) return { ok: false, error: dbError?.message ?? "Could not create customer." };
+    setCustomers((prev) => [...prev, mapCustomer(data)]);
     return { ok: true };
   }
 
@@ -708,41 +1212,116 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (error) return { ok: false, error };
     }
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, assignedToUserId: newAssigneeId } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ assigned_to: newAssigneeId }).eq("id", customerId).then(() => {});
     const assignee = users.find((u) => u.id === newAssigneeId);
     if (assignee && customer) {
-      setNotifications((prev) => [
-        { id: genId("n"), message: `${assignee.name} was assigned ${customer.name}.`, time: "just now", unread: true },
-        ...prev,
-      ]);
+      createNotification(newAssigneeId, `${assignee.name} was assigned ${customer.name}.`);
     }
     return { ok: true };
   }
 
   function deleteCustomer(customerId: string) {
     setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+    const supabase = createClient();
+    supabase.from("customers").delete().eq("id", customerId).then(() => {});
   }
 
   function updateCustomerStage(customerId: string, stageId: string) {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, stageId } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ stage_id: stageId }).eq("id", customerId).then(() => {});
+  }
+
+  function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
+    const columnMap: Record<string, string> = {
+      sourceId: "source_id",
+      areaId: "area_id",
+      subAreaId: "sub_area_id",
+      propertyTypeId: "property_type_id",
+      purposeId: "purpose_id",
+      businessIndustryId: "business_industry_id",
+      businessCategoryId: "business_category_id",
+      businessTypeId: "business_type_id",
+      raceId: "race_id",
+      languageId: "language_id",
+      businessName: "business_name",
+      firsttimeBranchId: "firsttime_branch_id",
+      targetRaceId: "target_race_id",
+      targetTypeId: "target_type_id",
+    };
+    const dbPatch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const column = columnMap[key];
+      if (column) dbPatch[column] = value === "" ? null : value;
+    }
+    const supabase = createClient();
+    supabase.from("customers").update(dbPatch).eq("id", customerId).then(() => {});
+  }
+
+  function updateCustomerRemark(customerId: string, remark: string) {
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, remark } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ remark: remark || null }).eq("id", customerId).then(() => {});
   }
 
   function addActivity(customerId: string, type: ActivityType, content: string, followUp: string) {
-    setActivities((prev) => [
-      { id: genId("a"), customerId, type, content, followUp, author: currentUser?.name ?? "", time: "just now" },
-      ...prev,
-    ]);
+    if (!currentUser) return;
+    const supabase = createClient();
+    supabase
+      .from("activities")
+      .insert({ customer_id: customerId, user_id: currentUser.id, type, content, follow_up: followUp || null })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setActivities((prev) => [mapActivity(data, new Map(users.map((u) => [u.id, u]))), ...prev]);
+        }
+      });
   }
 
   function addTask(customerId: string, title: string, due: string) {
-    setTasks((prev) => [...prev, { id: genId("t"), customerId, title, due, done: false }]);
+    if (!currentUser) return;
+    const supabase = createClient();
+    supabase
+      .from("tasks")
+      .insert({ customer_id: customerId, user_id: currentUser.id, title, due: due || null, done: false })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setTasks((prev) => [...prev, mapTask(data)]);
+      });
   }
 
   function toggleTaskDone(taskId: string) {
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t)));
+    const supabase = createClient();
+    supabase.from("tasks").update({ done: !target.done }).eq("id", taskId).then(() => {});
   }
 
   function markNotificationsRead() {
+    const unreadIds = notifications.filter((n) => n.unread).map((n) => n.id);
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    if (unreadIds.length === 0) return;
+    const supabase = createClient();
+    supabase.from("notifications").update({ read: true }).in("id", unreadIds).then(() => {});
+  }
+
+  function createNotification(userId: string, message: string) {
+    const supabase = createClient();
+    supabase
+      .from("notifications")
+      .insert({ user_id: userId, type: "ASSIGNMENT", message, read: false })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data && data.user_id === currentUserId) {
+          setNotifications((prev) => [mapNotification(data), ...prev]);
+        }
+      });
   }
 
   function updateProfileName(name: string) {
@@ -774,6 +1353,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     businessTagIndustries,
     businessTagCategories,
     businessTagTypes,
+    leadSources,
+    propertyTypes,
+    purposes,
+    languages,
+    firsttimeBranchTypes,
+    races,
+    targetRaces,
+    targetTypes,
     stages,
     customers,
     activities,
@@ -812,6 +1399,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addBusinessTagType,
     updateBusinessTagType,
     deleteBusinessTagType,
+    addLeadSource,
+    updateLeadSource,
+    deleteLeadSource,
+    addPropertyType,
+    updatePropertyType,
+    deletePropertyType,
+    addPurpose,
+    updatePurpose,
+    deletePurpose,
+    addLanguage,
+    updateLanguage,
+    deleteLanguage,
+    addFirsttimeBranchType,
+    updateFirsttimeBranchType,
+    deleteFirsttimeBranchType,
+    addRace,
+    updateRace,
+    deleteRace,
+    addTargetRace,
+    updateTargetRace,
+    deleteTargetRace,
+    addTargetType,
+    updateTargetType,
+    deleteTargetType,
     previewBusinessTagCsv,
     confirmBusinessTagCsvImport,
     addStage,
@@ -821,6 +1432,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reassignCustomer,
     deleteCustomer,
     updateCustomerStage,
+    updateCustomerProfile,
+    updateCustomerRemark,
     addActivity,
     addTask,
     toggleTaskDone,

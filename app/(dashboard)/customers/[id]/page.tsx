@@ -16,11 +16,26 @@ export default function CustomerDetailPage() {
     activities,
     tasks,
     updateCustomerStage,
+    updateCustomerProfile,
+    updateCustomerRemark,
     reassignCustomer,
     deleteCustomer,
     addActivity,
     addTask,
     toggleTaskDone,
+    leadSources,
+    areas,
+    subAreas,
+    propertyTypes,
+    purposes,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
+    races,
+    languages,
+    firsttimeBranchTypes,
+    targetRaces,
+    targetTypes,
   } = useStore();
 
   const customer = visibleCustomers.find((c) => c.id === id);
@@ -36,10 +51,22 @@ export default function CustomerDetailPage() {
   const [taskDue, setTaskDue] = useState("");
   const [reassignTo, setReassignTo] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [businessNameDraft, setBusinessNameDraft] = useState(customer?.businessName ?? "");
+  const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
+
+  useEffect(() => {
+    setBusinessNameDraft(customer?.businessName ?? "");
+    setRemarkDraft(customer?.remark ?? "");
+  }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!currentUser || !customer) return null;
 
   const assignedUser = users.find((u) => u.id === customer.assignedToUserId);
+  const canEditProfile = currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || currentUser.id === customer.assignedToUserId;
+  const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
+  const filteredSubAreas = subAreas.filter((s) => s.areaId === customer.areaId);
+  const filteredCategories = businessTagCategories.filter((c) => c.industryId === customer.businessIndustryId);
+  const filteredTypes = businessTagTypes.filter((t) => t.categoryId === customer.businessCategoryId);
   const customerActivities = activities.filter((a) => a.customerId === customer.id);
   const customerTasks = tasks.filter((t) => t.customerId === customer.id);
   const openTasks = customerTasks.filter((t) => !t.done);
@@ -56,7 +83,7 @@ export default function CustomerDetailPage() {
   function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
     if (!taskTitle.trim()) return;
-    addTask(customer!.id, taskTitle.trim(), taskDue.trim() || "No due date");
+    addTask(customer!.id, taskTitle.trim(), taskDue.trim());
     setTaskTitle("");
     setTaskDue("");
   }
@@ -68,6 +95,28 @@ export default function CustomerDetailPage() {
     }
     deleteCustomer(customer!.id);
     router.push("/customers");
+  }
+
+  function profileSelect(
+    label: string,
+    value: string | null,
+    options: { id: string; name: string }[],
+    onChange: (value: string) => void,
+    disabled = false
+  ) {
+    return (
+      <div>
+        <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>{label}</div>
+        {canEditProfile ? (
+          <select className="field-input" value={value ?? ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
+            <option value="">—</option>
+            {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        ) : (
+          <div style={{ fontSize: 13.5 }}>{options.find((o) => o.id === value)?.name ?? "—"}</div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -132,6 +181,60 @@ export default function CustomerDetailPage() {
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
+      </div>
+
+      <div className="card" style={{ marginTop: 20, padding: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Business Profile</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+          {profileSelect("Source", customer.sourceId, leadSources, (v) => updateCustomerProfile(customer.id, { sourceId: v || null }))}
+          {profileSelect("Area", customer.areaId, areas, (v) => updateCustomerProfile(customer.id, { areaId: v || null, subAreaId: null }))}
+          {profileSelect("Subarea", customer.subAreaId, filteredSubAreas, (v) => updateCustomerProfile(customer.id, { subAreaId: v || null }), !customer.areaId)}
+          {profileSelect("Property Type", customer.propertyTypeId, propertyTypes, (v) => updateCustomerProfile(customer.id, { propertyTypeId: v || null }))}
+          {profileSelect("Purpose", customer.purposeId, purposes, (v) => updateCustomerProfile(customer.id, { purposeId: v || null }))}
+          {profileSelect("Business Industry", customer.businessIndustryId, businessTagIndustries, (v) => updateCustomerProfile(customer.id, { businessIndustryId: v || null, businessCategoryId: null, businessTypeId: null }))}
+          {profileSelect("Business Category", customer.businessCategoryId, filteredCategories, (v) => updateCustomerProfile(customer.id, { businessCategoryId: v || null, businessTypeId: null }), !customer.businessIndustryId)}
+          {profileSelect("Business Type", customer.businessTypeId, filteredTypes, (v) => updateCustomerProfile(customer.id, { businessTypeId: v || null }), !customer.businessCategoryId)}
+          {profileSelect("Race", customer.raceId, races, (v) => updateCustomerProfile(customer.id, { raceId: v || null }))}
+          {profileSelect("Language", customer.languageId, languages, (v) => updateCustomerProfile(customer.id, { languageId: v || null }))}
+          <div>
+            <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Business Name</div>
+            {canEditProfile ? (
+              <input
+                className="field-input"
+                value={businessNameDraft}
+                onChange={(e) => setBusinessNameDraft(e.target.value)}
+                onBlur={() => {
+                  if (businessNameDraft !== customer.businessName) {
+                    updateCustomerProfile(customer.id, { businessName: businessNameDraft });
+                  }
+                }}
+              />
+            ) : (
+              <div style={{ fontSize: 13.5 }}>{customer.businessName || "—"}</div>
+            )}
+          </div>
+          {profileSelect("Firsttime / Branch", customer.firsttimeBranchId, firsttimeBranchTypes, (v) => updateCustomerProfile(customer.id, { firsttimeBranchId: v || null }))}
+          {profileSelect("Target Race", customer.targetRaceId, targetRaces, (v) => updateCustomerProfile(customer.id, { targetRaceId: v || null }))}
+          {profileSelect("Target Type", customer.targetTypeId, targetTypes, (v) => updateCustomerProfile(customer.id, { targetTypeId: v || null }))}
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Remark</div>
+          {canEditRemark ? (
+            <input
+              className="field-input"
+              value={remarkDraft}
+              onChange={(e) => setRemarkDraft(e.target.value)}
+              onBlur={() => {
+                if (remarkDraft !== customer.remark) {
+                  updateCustomerRemark(customer.id, remarkDraft);
+                }
+              }}
+              placeholder="Note for the assigned salesperson"
+            />
+          ) : (
+            <div style={{ fontSize: 13.5 }}>{customer.remark || "—"}</div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, marginTop: 28 }}>

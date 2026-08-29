@@ -702,10 +702,38 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ### Task 5: Wire Tasks to Supabase
 
 **Files:**
+- Modify: `supabase/schema.sql`
 - Modify: `lib/store.tsx`
 
 **Interfaces:**
 - Produces: `loadTasks(usersList: User[]): Promise<Task[]>` (following Task 4's users-list-parameter pattern isn't actually needed here since `Task` has no author field — a plain no-arg loader is fine), rewritten `addTask`, `toggleTaskDone`.
+
+- [ ] **Step 0: Fix the main (fresh-install) `tasks` table definition**
+
+Task 4 already appended a migration-note comment covering `tasks.due_date` → `due` (text) for already-provisioned databases, but never updated the main fresh-install schema block — fix that omission now. In `supabase/schema.sql`, change the `create table tasks (...)` block:
+```sql
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  title text not null,
+  due_date date,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
+to:
+```sql
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  title text not null,
+  due text,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
 
 - [ ] **Step 1: Add `mapTask` and `loadTasks`**
 
@@ -802,7 +830,7 @@ On a customer's detail page, add a task with a due date, reload, confirm it's st
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A lib/store.tsx lib/mock-data.ts
+git add -A supabase/schema.sql lib/store.tsx lib/mock-data.ts
 git commit -m "Wire tasks to Supabase, remove mock data file
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -869,14 +897,193 @@ create table target_types (
 
 - [ ] **Step 2: Add the migration for an already-provisioned database**
 
-At the very end of `supabase/schema.sql`, append:
+At the very end of `supabase/schema.sql`, append. **This entire block must be `--`-commented**, exactly like the existing "Migration: Area / Sub-Area management" and "Migration: Business Tag management" blocks already at the end of this file — its contents are folded into the main schema in Step 3 below, so leaving it as live SQL would make running the file fresh top-to-bottom fail with "relation already exists" the second time these tables/policies are declared. Copy the existing migration blocks' comment style precisely (every line prefixed with `-- `, no bare SQL):
+
 ```sql
 
 -- ============================================================
 -- Migration: Customer Business Profile — run once against an
--- already-provisioned database.
+-- already-provisioned database (everything below already exists
+-- in the main schema above for fresh installs).
 -- ============================================================
+--
+-- create table lead_sources (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table property_types (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table purposes (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table languages (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table firsttime_branch_types (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table races (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table target_races (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table target_types (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- alter table customers add column if not exists source_id uuid references lead_sources (id) on delete set null;
+-- alter table customers add column if not exists area_id uuid references areas (id) on delete set null;
+-- alter table customers add column if not exists sub_area_id uuid references sub_areas (id) on delete set null;
+-- alter table customers add column if not exists property_type_id uuid references property_types (id) on delete set null;
+-- alter table customers add column if not exists purpose_id uuid references purposes (id) on delete set null;
+-- alter table customers add column if not exists business_industry_id uuid references business_tag_industries (id) on delete set null;
+-- alter table customers add column if not exists business_category_id uuid references business_tag_categories (id) on delete set null;
+-- alter table customers add column if not exists business_type_id uuid references business_tag_types (id) on delete set null;
+-- alter table customers add column if not exists race_id uuid references races (id) on delete set null;
+-- alter table customers add column if not exists language_id uuid references languages (id) on delete set null;
+-- alter table customers add column if not exists business_name text;
+-- alter table customers add column if not exists firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null;
+-- alter table customers add column if not exists target_race_id uuid references target_races (id) on delete set null;
+-- alter table customers add column if not exists target_type_id uuid references target_types (id) on delete set null;
+-- alter table customers add column if not exists remark text;
+--
+-- alter table lead_sources enable row level security;
+-- alter table property_types enable row level security;
+-- alter table purposes enable row level security;
+-- alter table languages enable row level security;
+-- alter table firsttime_branch_types enable row level security;
+-- alter table races enable row level security;
+-- alter table target_races enable row level security;
+-- alter table target_types enable row level security;
+--
+-- create policy "lead_sources_select" on lead_sources for select using (auth.uid() is not null);
+-- create policy "lead_sources_insert_admin" on lead_sources for insert with check (is_admin());
+-- create policy "lead_sources_update_admin" on lead_sources for update using (is_admin());
+-- create policy "lead_sources_delete_admin" on lead_sources for delete using (is_admin());
+--
+-- create policy "property_types_select" on property_types for select using (auth.uid() is not null);
+-- create policy "property_types_insert_admin" on property_types for insert with check (is_admin());
+-- create policy "property_types_update_admin" on property_types for update using (is_admin());
+-- create policy "property_types_delete_admin" on property_types for delete using (is_admin());
+--
+-- create policy "purposes_select" on purposes for select using (auth.uid() is not null);
+-- create policy "purposes_insert_admin" on purposes for insert with check (is_admin());
+-- create policy "purposes_update_admin" on purposes for update using (is_admin());
+-- create policy "purposes_delete_admin" on purposes for delete using (is_admin());
+--
+-- create policy "languages_select" on languages for select using (auth.uid() is not null);
+-- create policy "languages_insert_admin" on languages for insert with check (is_admin());
+-- create policy "languages_update_admin" on languages for update using (is_admin());
+-- create policy "languages_delete_admin" on languages for delete using (is_admin());
+--
+-- create policy "firsttime_branch_types_select" on firsttime_branch_types for select using (auth.uid() is not null);
+-- create policy "firsttime_branch_types_insert_admin" on firsttime_branch_types for insert with check (is_admin());
+-- create policy "firsttime_branch_types_update_admin" on firsttime_branch_types for update using (is_admin());
+-- create policy "firsttime_branch_types_delete_admin" on firsttime_branch_types for delete using (is_admin());
+--
+-- create policy "races_select" on races for select using (auth.uid() is not null);
+-- create policy "races_insert_admin" on races for insert with check (is_admin());
+-- create policy "races_update_admin" on races for update using (is_admin());
+-- create policy "races_delete_admin" on races for delete using (is_admin());
+--
+-- create policy "target_races_select" on target_races for select using (auth.uid() is not null);
+-- create policy "target_races_insert_admin" on target_races for insert with check (is_admin());
+-- create policy "target_races_update_admin" on target_races for update using (is_admin());
+-- create policy "target_races_delete_admin" on target_races for delete using (is_admin());
+--
+-- create policy "target_types_select" on target_types for select using (auth.uid() is not null);
+-- create policy "target_types_insert_admin" on target_types for insert with check (is_admin());
+-- create policy "target_types_update_admin" on target_types for update using (is_admin());
+-- create policy "target_types_delete_admin" on target_types for delete using (is_admin());
+--
+-- create or replace function protect_customer_remark_column() returns trigger as $$
+-- begin
+--   if new.remark is distinct from old.remark and not (
+--     is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--   ) then
+--     raise exception 'only an admin or manager can change the remark';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create trigger customers_protect_remark
+--   before update on customers
+--   for each row execute function protect_customer_remark_column();
+--
+-- insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
+-- insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
+```
 
+The uncommented, actually-runnable version of this SQL is what the user pastes into the Supabase SQL editor in Step 5 below — write it out for them there, not as live SQL in the file.
+
+- [ ] **Step 3: Also update the main (fresh-install) schema for consistency**
+
+Add the same 15 columns to the original `create table customers (...)` block (around line 89-98):
+```sql
+create table customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text,
+  phone text,
+  assigned_to uuid not null references profiles (id),
+  stage_id uuid not null references pipeline_stages (id),
+  source_id uuid references lead_sources (id) on delete set null,
+  area_id uuid references areas (id) on delete set null,
+  sub_area_id uuid references sub_areas (id) on delete set null,
+  property_type_id uuid references property_types (id) on delete set null,
+  purpose_id uuid references purposes (id) on delete set null,
+  business_industry_id uuid references business_tag_industries (id) on delete set null,
+  business_category_id uuid references business_tag_categories (id) on delete set null,
+  business_type_id uuid references business_tag_types (id) on delete set null,
+  race_id uuid references races (id) on delete set null,
+  language_id uuid references languages (id) on delete set null,
+  business_name text,
+  firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null,
+  target_race_id uuid references target_races (id) on delete set null,
+  target_type_id uuid references target_types (id) on delete set null,
+  remark text,
+  created_by uuid references profiles (id),
+  created_at timestamptz not null default now()
+);
+```
+
+Add RLS enable + policies for the 8 new tables right after the existing `business_tag_types` RLS block (after line 300, before the `-- customers:` comment), using the same 4 policies per table already written in Step 2 above (copy that block verbatim into this location too — fresh installs need it enabled from the start, not just as a commented migration).
+
+Add the `protect_customer_remark_column` function + `customers_protect_remark` trigger to the "Column-level guards" section, right after `customers_protect_assignment` (after line 201).
+
+Add the two seed `insert into purposes ...` / `insert into firsttime_branch_types ...` statements to the "Seed" section at the bottom, right after the existing `insert into pipeline_stages ...` seed (after line 385).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/schema.sql
+git commit -m "Add Business Profile schema: 8 lookup tables + 15 customer columns
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+- [ ] **Step 5: Manual step — apply the migration**
+
+Tell the user: open the Supabase SQL editor for this project and run the following (this is the same SQL documented, `--`-commented, under "Migration: Customer Business Profile" in `supabase/schema.sql` — paste this uncommented version, not the file's commented copy):
+
+```sql
 create table lead_sources (
   id uuid primary key default gen_random_uuid(),
   name text not null unique
@@ -1001,55 +1208,9 @@ insert into purposes (name) values ('Rent'), ('Buy'), ('Buy/Rent');
 insert into firsttime_branch_types (name) values ('First Time'), ('Branch');
 ```
 
-- [ ] **Step 3: Also update the main (fresh-install) schema for consistency**
+Confirm no errors before continuing to Task 7.
 
-Add the same 15 columns to the original `create table customers (...)` block (around line 89-98):
-```sql
-create table customers (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  email text,
-  phone text,
-  assigned_to uuid not null references profiles (id),
-  stage_id uuid not null references pipeline_stages (id),
-  source_id uuid references lead_sources (id) on delete set null,
-  area_id uuid references areas (id) on delete set null,
-  sub_area_id uuid references sub_areas (id) on delete set null,
-  property_type_id uuid references property_types (id) on delete set null,
-  purpose_id uuid references purposes (id) on delete set null,
-  business_industry_id uuid references business_tag_industries (id) on delete set null,
-  business_category_id uuid references business_tag_categories (id) on delete set null,
-  business_type_id uuid references business_tag_types (id) on delete set null,
-  race_id uuid references races (id) on delete set null,
-  language_id uuid references languages (id) on delete set null,
-  business_name text,
-  firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null,
-  target_race_id uuid references target_races (id) on delete set null,
-  target_type_id uuid references target_types (id) on delete set null,
-  remark text,
-  created_by uuid references profiles (id),
-  created_at timestamptz not null default now()
-);
-```
-
-Add RLS enable + policies for the 8 new tables right after the existing `business_tag_types` RLS block (after line 300, before the `-- customers:` comment), using the same 4 policies per table already written in Step 2 above (copy that block verbatim into this location too — fresh installs need it enabled from the start, not just as a commented migration).
-
-Add the `protect_customer_remark_column` function + `customers_protect_remark` trigger to the "Column-level guards" section, right after `customers_protect_assignment` (after line 201).
-
-Add the two seed `insert into purposes ...` / `insert into firsttime_branch_types ...` statements to the "Seed" section at the bottom, right after the existing `insert into pipeline_stages ...` seed (after line 385).
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add supabase/schema.sql
-git commit -m "Add Business Profile schema: 8 lookup tables + 15 customer columns
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
-- [ ] **Step 5: Manual step — apply the migration**
-
-Tell the user: open the Supabase SQL editor for this project and run the SQL block from Step 2 above (the one under "Migration: Customer Business Profile"). Confirm no errors before continuing to Task 7.
+> **DEPLOY ORDERING — READ BEFORE DEPLOYING THIS BRANCH:** the migration SQL above MUST be run against the production Supabase project BEFORE this branch is deployed. `lib/store.tsx`'s `addCustomer` unconditionally names all 15 new Business Profile columns in its `insert`. Deploying the app code first, against a database that hasn't had this migration applied, does not just leave the new fields empty — it makes every `addCustomer` call fail outright (`{ok: false}`), breaking customer creation entirely.
 
 ---
 
