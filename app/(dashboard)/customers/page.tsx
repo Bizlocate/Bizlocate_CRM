@@ -183,16 +183,71 @@ export default function CustomersPage() {
 }
 
 function NewCustomerForm({ onClose }: { onClose: () => void }) {
-  const { users, addCustomer } = useStore();
+  const {
+    users,
+    addCustomer,
+    leadSources,
+    areas,
+    subAreas,
+    propertyTypes,
+    purposes,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
+    races,
+    languages,
+    firsttimeBranchTypes,
+    targetRaces,
+    targetTypes,
+  } = useStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState(users[0]?.id ?? "");
+  const [sourceId, setSourceId] = useState("");
+  const [areaId, setAreaId] = useState("");
+  const [subAreaId, setSubAreaId] = useState("");
+  const [propertyTypeId, setPropertyTypeId] = useState("");
+  const [purposeId, setPurposeId] = useState("");
+  const [businessIndustryId, setBusinessIndustryId] = useState("");
+  const [businessCategoryId, setBusinessCategoryId] = useState("");
+  const [businessTypeId, setBusinessTypeId] = useState("");
+  const [raceId, setRaceId] = useState("");
+  const [languageId, setLanguageId] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [firsttimeBranchId, setFirsttimeBranchId] = useState("");
+  const [targetRaceId, setTargetRaceId] = useState("");
+  const [targetTypeId, setTargetTypeId] = useState("");
+  const [remark, setRemark] = useState("");
+
+  const filteredSubAreas = subAreas.filter((s) => s.areaId === areaId);
+  const filteredCategories = businessTagCategories.filter((c) => c.industryId === businessIndustryId);
+  const filteredTypes = businessTagTypes.filter((t) => t.categoryId === businessCategoryId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !assignedToUserId) return;
-    const result = await addCustomer({ name, email, phone, assignedToUserId });
+    const result = await addCustomer({
+      name,
+      email,
+      phone,
+      assignedToUserId,
+      sourceId: sourceId || null,
+      areaId: areaId || null,
+      subAreaId: subAreaId || null,
+      propertyTypeId: propertyTypeId || null,
+      purposeId: purposeId || null,
+      businessIndustryId: businessIndustryId || null,
+      businessCategoryId: businessCategoryId || null,
+      businessTypeId: businessTypeId || null,
+      raceId: raceId || null,
+      languageId: languageId || null,
+      businessName,
+      firsttimeBranchId: firsttimeBranchId || null,
+      targetRaceId: targetRaceId || null,
+      targetTypeId: targetTypeId || null,
+      remark,
+    });
     if (!result.ok) {
       alert(result.error ?? "Could not add customer.");
       return;
@@ -222,6 +277,108 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
+        </div>
+        <div style={{ flexBasis: "100%", height: 0 }} />
+        <div style={{ fontSize: 13, fontWeight: 700, flexBasis: "100%", marginTop: 4 }}>Business Profile</div>
+
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Source</label>
+          <select className="field-input" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            <option value="">—</option>
+            {leadSources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Area</label>
+          <select className="field-input" value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); }}>
+            <option value="">—</option>
+            {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Subarea</label>
+          <select className="field-input" value={subAreaId} onChange={(e) => setSubAreaId(e.target.value)} disabled={!areaId}>
+            <option value="">—</option>
+            {filteredSubAreas.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Property Type</label>
+          <select className="field-input" value={propertyTypeId} onChange={(e) => setPropertyTypeId(e.target.value)}>
+            <option value="">—</option>
+            {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Purpose</label>
+          <select className="field-input" value={purposeId} onChange={(e) => setPurposeId(e.target.value)}>
+            <option value="">—</option>
+            {purposes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Business Industry</label>
+          <select className="field-input" value={businessIndustryId} onChange={(e) => { setBusinessIndustryId(e.target.value); setBusinessCategoryId(""); setBusinessTypeId(""); }}>
+            <option value="">—</option>
+            {businessTagIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Business Category</label>
+          <select className="field-input" value={businessCategoryId} onChange={(e) => { setBusinessCategoryId(e.target.value); setBusinessTypeId(""); }} disabled={!businessIndustryId}>
+            <option value="">—</option>
+            {filteredCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Business Type</label>
+          <select className="field-input" value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)} disabled={!businessCategoryId}>
+            <option value="">—</option>
+            {filteredTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Race</label>
+          <select className="field-input" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
+            <option value="">—</option>
+            {races.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Language</label>
+          <select className="field-input" value={languageId} onChange={(e) => setLanguageId(e.target.value)}>
+            <option value="">—</option>
+            {languages.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 200px" }}>
+          <label className="field-label">Business Name</label>
+          <input className="field-input" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Firsttime / Branch</label>
+          <select className="field-input" value={firsttimeBranchId} onChange={(e) => setFirsttimeBranchId(e.target.value)}>
+            <option value="">—</option>
+            {firsttimeBranchTypes.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Target Race</label>
+          <select className="field-input" value={targetRaceId} onChange={(e) => setTargetRaceId(e.target.value)}>
+            <option value="">—</option>
+            {targetRaces.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Target Type</label>
+          <select className="field-input" value={targetTypeId} onChange={(e) => setTargetTypeId(e.target.value)}>
+            <option value="">—</option>
+            {targetTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 100%" }}>
+          <label className="field-label">Remark</label>
+          <input className="field-input" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Note for the assigned salesperson" />
         </div>
         <button className="btn btn-primary" type="submit">Create</button>
         <button className="btn btn-outline" type="button" onClick={onClose}>Cancel</button>
