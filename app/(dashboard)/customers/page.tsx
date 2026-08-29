@@ -199,6 +199,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
+    fieldRequirements,
   } = useStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -219,14 +220,45 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [targetRaceId, setTargetRaceId] = useState("");
   const [targetTypeId, setTargetTypeId] = useState("");
   const [remark, setRemark] = useState("");
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
 
   const filteredSubAreas = subAreas.filter((s) => s.areaId === areaId);
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === businessIndustryId);
   const filteredTypes = businessTagTypes.filter((t) => t.categoryId === businessCategoryId);
 
+  function isFieldRequired(fieldKey: string): boolean {
+    return fieldRequirements.find((f) => f.fieldKey === fieldKey)?.required ?? false;
+  }
+
+  function Asterisk({ fieldKey }: { fieldKey: string }) {
+    return isFieldRequired(fieldKey) ? <span style={{ color: "#a13a2b" }}> *</span> : null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !assignedToUserId) return;
+    if (!name.trim()) return;
+
+    const fieldValues: Record<string, string> = {
+      phone,
+      assigned_to: assignedToUserId,
+      source: sourceId,
+      area: areaId,
+      sub_area: subAreaId,
+      property_type: propertyTypeId,
+      purpose: purposeId,
+      business_industry: businessIndustryId,
+      business_category: businessCategoryId,
+      business_type: businessTypeId,
+    };
+    const failing = new Set<string>();
+    for (const [fieldKey, value] of Object.entries(fieldValues)) {
+      if (isFieldRequired(fieldKey) && !value) failing.add(fieldKey);
+    }
+    if (failing.size > 0) {
+      setInvalidFields(failing);
+      return;
+    }
+
     const result = await addCustomer({
       name,
       email,
@@ -255,6 +287,19 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
+  function clearInvalid(fieldKey: string) {
+    setInvalidFields((prev) => {
+      if (!prev.has(fieldKey)) return prev;
+      const next = new Set(prev);
+      next.delete(fieldKey);
+      return next;
+    });
+  }
+
+  function fieldStyle(fieldKey: string): React.CSSProperties {
+    return invalidFields.has(fieldKey) ? { borderColor: "#a13a2b" } : {};
+  }
+
   return (
     <div className="card" style={{ padding: 20, marginBottom: 20 }}>
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -267,12 +312,12 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div style={{ flex: "1 1 150px" }}>
-          <label className="field-label">Phone</label>
-          <input className="field-input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <label className="field-label">Phone<Asterisk fieldKey="phone" /></label>
+          <input className="field-input" style={fieldStyle("phone")} onFocus={() => clearInvalid("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div style={{ flex: "1 1 160px" }}>
-          <label className="field-label">Assigned To</label>
-          <select className="field-input" value={assignedToUserId} onChange={(e) => setAssignedToUserId(e.target.value)}>
+          <label className="field-label">Assigned To<Asterisk fieldKey="assigned_to" /></label>
+          <select className="field-input" style={fieldStyle("assigned_to")} onFocus={() => clearInvalid("assigned_to")} value={assignedToUserId} onChange={(e) => setAssignedToUserId(e.target.value)}>
             {users.filter((u) => u.active).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
@@ -282,57 +327,57 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 13, fontWeight: 700, flexBasis: "100%", marginTop: 4 }}>Business Profile</div>
 
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Source</label>
-          <select className="field-input" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+          <label className="field-label">Source<Asterisk fieldKey="source" /></label>
+          <select className="field-input" style={fieldStyle("source")} onFocus={() => clearInvalid("source")} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
             <option value="">—</option>
             {leadSources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Area</label>
-          <select className="field-input" value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); }}>
+          <label className="field-label">Area<Asterisk fieldKey="area" /></label>
+          <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); }}>
             <option value="">—</option>
             {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Subarea</label>
-          <select className="field-input" value={subAreaId} onChange={(e) => setSubAreaId(e.target.value)} disabled={!areaId}>
+          <label className="field-label">Subarea<Asterisk fieldKey="sub_area" /></label>
+          <select className="field-input" style={fieldStyle("sub_area")} onFocus={() => clearInvalid("sub_area")} value={subAreaId} onChange={(e) => setSubAreaId(e.target.value)} disabled={!areaId}>
             <option value="">—</option>
             {filteredSubAreas.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Property Type</label>
-          <select className="field-input" value={propertyTypeId} onChange={(e) => setPropertyTypeId(e.target.value)}>
+          <label className="field-label">Property Type<Asterisk fieldKey="property_type" /></label>
+          <select className="field-input" style={fieldStyle("property_type")} onFocus={() => clearInvalid("property_type")} value={propertyTypeId} onChange={(e) => setPropertyTypeId(e.target.value)}>
             <option value="">—</option>
             {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Purpose</label>
-          <select className="field-input" value={purposeId} onChange={(e) => setPurposeId(e.target.value)}>
+          <label className="field-label">Purpose<Asterisk fieldKey="purpose" /></label>
+          <select className="field-input" style={fieldStyle("purpose")} onFocus={() => clearInvalid("purpose")} value={purposeId} onChange={(e) => setPurposeId(e.target.value)}>
             <option value="">—</option>
             {purposes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Business Industry</label>
-          <select className="field-input" value={businessIndustryId} onChange={(e) => { setBusinessIndustryId(e.target.value); setBusinessCategoryId(""); setBusinessTypeId(""); }}>
+          <label className="field-label">Business Industry<Asterisk fieldKey="business_industry" /></label>
+          <select className="field-input" style={fieldStyle("business_industry")} onFocus={() => clearInvalid("business_industry")} value={businessIndustryId} onChange={(e) => { setBusinessIndustryId(e.target.value); setBusinessCategoryId(""); setBusinessTypeId(""); }}>
             <option value="">—</option>
             {businessTagIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Business Category</label>
-          <select className="field-input" value={businessCategoryId} onChange={(e) => { setBusinessCategoryId(e.target.value); setBusinessTypeId(""); }} disabled={!businessIndustryId}>
+          <label className="field-label">Business Category<Asterisk fieldKey="business_category" /></label>
+          <select className="field-input" style={fieldStyle("business_category")} onFocus={() => clearInvalid("business_category")} value={businessCategoryId} onChange={(e) => { setBusinessCategoryId(e.target.value); setBusinessTypeId(""); }} disabled={!businessIndustryId}>
             <option value="">—</option>
             {filteredCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Business Type</label>
-          <select className="field-input" value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)} disabled={!businessCategoryId}>
+          <label className="field-label">Business Type<Asterisk fieldKey="business_type" /></label>
+          <select className="field-input" style={fieldStyle("business_type")} onFocus={() => clearInvalid("business_type")} value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)} disabled={!businessCategoryId}>
             <option value="">—</option>
             {filteredTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
