@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { ACTIVITY_STYLES, ActivityType } from "@/lib/types";
+import { ACTIVITY_STYLES, Activity, ActivityType } from "@/lib/types";
 import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
 export default function CustomerDetailPage() {
@@ -108,6 +108,41 @@ export default function CustomerDetailPage() {
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === customer.businessIndustryId);
   const filteredTypes = businessTagTypes.filter((t) => t.categoryId === customer.businessCategoryId);
   const customerActivities = activities.filter((a) => a.customerId === customer.id);
+
+  const canLogActivity = currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
+
+  function roleLabel(role: string) {
+    return role === "SALESPERSON" ? "Sales Person" : role === "MANAGER" ? "Manager" : "Admin";
+  }
+
+  const logGroups: { key: string; label: string; roleLabel: string; entries: Activity[] }[] = [];
+  const groupedAuthorIds = new Set<string>();
+
+  assignedUsers.forEach(({ slot, user }) => {
+    groupedAuthorIds.add(user.id);
+    logGroups.push({
+      key: user.id,
+      label: assignedUsers.length > 1 ? `${user.name} (Assigned ${slot})` : user.name,
+      roleLabel: roleLabel(user.role),
+      entries: customerActivities.filter((a) => a.authorUserId === user.id),
+    });
+  });
+
+  const otherAuthorIds = Array.from(new Set(customerActivities.map((a) => a.authorUserId).filter((id) => !groupedAuthorIds.has(id))));
+  otherAuthorIds
+    .map((authorId) => ({ authorId, latest: customerActivities.find((a) => a.authorUserId === authorId)! }))
+    .sort((a, b) => new Date(b.latest.createdAt).getTime() - new Date(a.latest.createdAt).getTime())
+    .forEach(({ authorId }) => {
+      const entries = customerActivities.filter((a) => a.authorUserId === authorId);
+      const author = users.find((u) => u.id === authorId);
+      logGroups.push({
+        key: authorId,
+        label: author?.name ?? entries[0]?.author ?? "Unknown",
+        roleLabel: author ? roleLabel(author.role) : "",
+        entries,
+      });
+    });
+
   const customerTasks = tasks.filter((t) => t.customerId === customer.id);
   const openTasks = customerTasks.filter((t) => !t.done);
   const doneTasks = customerTasks.filter((t) => t.done);
@@ -352,54 +387,70 @@ export default function CustomerDetailPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, marginTop: 28 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Activity Log</div>
-          <form onSubmit={handleLogActivity} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <select
-                className="field-input"
-                style={{ width: 120 }}
-                value={activityType}
-                onChange={(e) => setActivityType(e.target.value as ActivityType)}
-              >
-                <option value="NOTE">Note</option>
-                <option value="CALL">Call</option>
-                <option value="VISIT">Visit</option>
-              </select>
+          {canLogActivity && (
+            <form onSubmit={handleLogActivity} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select
+                  className="field-input"
+                  style={{ width: 120 }}
+                  value={activityType}
+                  onChange={(e) => setActivityType(e.target.value as ActivityType)}
+                >
+                  <option value="NOTE">Note</option>
+                  <option value="CALL">Call</option>
+                  <option value="VISIT">Visit</option>
+                </select>
+                <input
+                  className="field-input"
+                  style={{ flex: 1 }}
+                  placeholder="What happened?"
+                  value={activityContent}
+                  onChange={(e) => setActivityContent(e.target.value)}
+                />
+                <button className="btn btn-primary" type="submit">Log</button>
+              </div>
               <input
                 className="field-input"
-                style={{ flex: 1 }}
-                placeholder="What happened?"
-                value={activityContent}
-                onChange={(e) => setActivityContent(e.target.value)}
+                placeholder="Follow-up date (optional)"
+                value={followUp}
+                onChange={(e) => setFollowUp(e.target.value)}
               />
-              <button className="btn btn-primary" type="submit">Log</button>
+            </form>
+          )}
+          {logGroups.length === 0 && (
+            <div className="card" style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
+          )}
+          {logGroups.map((group) => (
+            <div key={group.key} className="card" style={{ marginBottom: 16 }}>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid #eef0f2", background: "#f7f7f8", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>
+                  {group.label}{group.roleLabel ? ` · ${group.roleLabel}` : ""}
+                </span>
+                <span style={{ fontSize: 11.5, color: "#9aa0ab" }}>
+                  {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
+                </span>
+              </div>
+              {group.entries.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
+              ) : (
+                group.entries.map((a) => {
+                  const style = ACTIVITY_STYLES[a.type];
+                  return (
+                    <div key={a.id} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: style.bg, color: style.color }}>
+                          {style.label}
+                        </span>
+                        <span style={{ fontSize: 12, color: "#9aa0ab" }}>{a.time}</span>
+                      </div>
+                      <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{a.content}</div>
+                      {a.followUp && <div style={{ fontSize: 12, color: "#8a5a00", fontWeight: 500 }}>{a.followUp}</div>}
+                    </div>
+                  );
+                })
+              )}
             </div>
-            <input
-              className="field-input"
-              placeholder="Follow-up date (optional)"
-              value={followUp}
-              onChange={(e) => setFollowUp(e.target.value)}
-            />
-          </form>
-          <div className="card">
-            {customerActivities.length === 0 && (
-              <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
-            )}
-            {customerActivities.map((a) => {
-              const style = ACTIVITY_STYLES[a.type];
-              return (
-                <div key={a.id} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: style.bg, color: style.color }}>
-                      {style.label}
-                    </span>
-                    <span style={{ fontSize: 12, color: "#9aa0ab" }}>{a.time} · {a.author}</span>
-                  </div>
-                  <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{a.content}</div>
-                  {a.followUp && <div style={{ fontSize: 12, color: "#8a5a00", fontWeight: 500 }}>{a.followUp}</div>}
-                </div>
-              );
-            })}
-          </div>
+          ))}
         </div>
 
         <div>
