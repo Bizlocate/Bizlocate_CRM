@@ -155,12 +155,19 @@ export default function CustomerDetailPage() {
   const savedProfileDraft = draftFromCustomer(customer);
   const profileDirty = (Object.keys(profileDraft) as (keyof ProfileDraft)[]).some((k) => profileDraft[k] !== savedProfileDraft[k]);
   const remarkDirty = remarkDraft !== (customer.remark ?? "");
-  const nameDirty = nameDraft.trim() !== customer.name;
-  const phoneDirty = phoneDraft.trim() !== customer.phone;
+  const nameDirty = nameDraft.trim() !== "" && nameDraft !== customer.name;
+  const phoneDirty = phoneDraft !== customer.phone;
   const isDirty = profileDirty || remarkDirty || nameDirty || phoneDirty;
 
   function handleUpdate() {
-    if (profileDirty) updateCustomerProfile(customer!.id, profileDraft);
+    if (profileDirty) {
+      const changedProfile = Object.fromEntries(
+        (Object.keys(profileDraft) as (keyof ProfileDraft)[])
+          .filter((k) => profileDraft[k] !== savedProfileDraft[k])
+          .map((k) => [k, profileDraft[k]])
+      );
+      updateCustomerProfile(customer!.id, changedProfile);
+    }
     if (remarkDirty) updateCustomerRemark(customer!.id, remarkDraft);
     const identityPatch: { name?: string; phone?: string } = {};
     if (nameDirty && nameDraft.trim()) identityPatch.name = nameDraft.trim();
