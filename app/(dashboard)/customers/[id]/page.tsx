@@ -193,41 +193,48 @@ export default function CustomerDetailPage() {
 
       {currentUser.role === "ADMIN" && (
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
-          {([
-            { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: false },
-            { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignedToUserId2, clearable: true },
-            { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignedToUserId3, clearable: true },
-          ]).map(({ slot, value, setValue, current, clearable }) => (
-            <div key={slot} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#9aa0ab", fontWeight: 500 }}>Assigned {slot}:</span>
-              <select
-                className="field-input"
-                style={{ width: "auto" }}
-                value={value ?? current ?? ""}
-                onChange={(e) => setValue(e.target.value)}
-              >
-                {clearable && <option value="">—</option>}
-                {users.filter((u) => u.active).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-              {value !== null && value !== (current ?? "") && (
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    const result = reassignCustomer(customer.id, slot, value || null);
-                    if (!result.ok) {
-                      alert(result.error ?? "Could not reassign customer.");
-                      return;
-                    }
-                    setValue(null);
-                  }}
-                >
-                  Confirm
-                </button>
-              )}
-            </div>
-          ))}
+          {(() => {
+            const rows = [
+              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: false },
+              { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignedToUserId2, clearable: true },
+              { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignedToUserId3, clearable: true },
+            ];
+            return rows.map(({ slot, value, setValue, current, clearable }) => {
+              const otherCurrent = rows.filter((r) => r.slot !== slot).map((r) => r.current);
+              const options = users.filter((u) => u.active && !otherCurrent.includes(u.id));
+              return (
+                <div key={slot} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#9aa0ab", fontWeight: 500 }}>Assigned {slot}:</span>
+                  <select
+                    className="field-input"
+                    style={{ width: "auto" }}
+                    value={value ?? current ?? ""}
+                    onChange={(e) => setValue(e.target.value)}
+                  >
+                    {clearable && <option value="">—</option>}
+                    {options.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                  {value !== null && value !== (current ?? "") && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const result = reassignCustomer(customer.id, slot, value || null);
+                        if (!result.ok) {
+                          alert(result.error ?? "Could not reassign customer.");
+                          return;
+                        }
+                        setValue(null);
+                      }}
+                    >
+                      Confirm
+                    </button>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 
