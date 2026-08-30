@@ -37,6 +37,13 @@ Pool, sharing one Update/Cancel button pair:
   `currentUser.role === "ADMIN" || "MANAGER"` (`canEditIdentity`); unaffected
   by this change.
 
+**One layout change alongside this:** the Change History card currently
+renders directly after the Business Profile card. It moves to the very
+bottom of the page, after the Activity Log / Tasks grid — so the page
+reads as Business Profile (with its new Update/Cancel bar) → Activity Log
+/ Tasks → Change History last. No change to what it shows or who sees it,
+just where it sits.
+
 ## Design
 
 **Draft state:** every in-scope field already has (`businessNameDraft`,
