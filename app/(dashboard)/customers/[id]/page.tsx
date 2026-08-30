@@ -237,7 +237,7 @@ export default function CustomerDetailPage() {
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {(() => {
             const rows = [
-              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: false },
+              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: true },
               { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignedToUserId2, clearable: true },
               { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignedToUserId3, clearable: true },
             ];

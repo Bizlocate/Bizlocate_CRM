@@ -115,10 +115,10 @@ function mapCustomer(row: {
   name: string;
   email: string | null;
   phone: string | null;
-  assigned_to: string;
+  assigned_to: string | null;
   assigned_to_2: string | null;
   assigned_to_3: string | null;
-  pool_1: PoolStatus;
+  pool_1: PoolStatus | null;
   pool_2: PoolStatus | null;
   pool_3: PoolStatus | null;
   pool_1_since: string | null;
@@ -358,7 +358,7 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
@@ -577,20 +577,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
-  // Auto-removal for the inactive pool: any assignee slot (2 or 3 — slot 1
-  // can't be unassigned, see supabase/schema.sql) sitting in the inactive
-  // pool for 60+ days with no activity logged by that assignee gets
-  // cleared. No cron infra exists, so this runs as a compute-on-load sweep
-  // scoped to what the current session is allowed to touch: their own
-  // slots, or (for an admin) every slot.
+  // Auto-removal for the inactive pool: any assignee slot (1, 2, or 3 — all
+  // three are nullable now that a customer can go unassigned) sitting in
+  // the inactive pool for 60+ days with no activity logged by that
+  // assignee gets cleared. No cron infra exists, so this runs as a
+  // compute-on-load sweep scoped to what the current session is allowed to
+  // touch: their own slots, or (for an admin) every slot.
   // ponytail: compute-on-load sweep, not real-time. Upgrade to a cron/edge
   // function sweep if sub-day precision ever matters.
   function sweepStalePool(customersList: Customer[], activitiesList: Activity[], forUserId: string, isAdmin: boolean) {
     const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
     const now = Date.now();
-    const stale: { customerId: string; slot: 2 | 3 }[] = [];
+    const stale: { customerId: string; slot: 1 | 2 | 3 }[] = [];
     for (const c of customersList) {
       ([
+        { slot: 1 as const, pool: c.pool1, since: c.pool1Since, userId: c.assignedToUserId },
         { slot: 2 as const, pool: c.pool2, since: c.pool2Since, userId: c.assignedToUserId2 },
         { slot: 3 as const, pool: c.pool3, since: c.pool3Since, userId: c.assignedToUserId3 },
       ]).forEach(({ slot, pool, since, userId }) => {
@@ -606,11 +607,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (stale.length === 0) return;
     setCustomers((prev) =>
       prev.map((c) => {
+        const hit1 = stale.some((s) => s.customerId === c.id && s.slot === 1);
         const hit2 = stale.some((s) => s.customerId === c.id && s.slot === 2);
         const hit3 = stale.some((s) => s.customerId === c.id && s.slot === 3);
-        if (!hit2 && !hit3) return c;
+        if (!hit1 && !hit2 && !hit3) return c;
         return {
           ...c,
+          ...(hit1 ? { assignedToUserId: null, pool1: null, pool1Since: null } : {}),
           ...(hit2 ? { assignedToUserId2: null, pool2: null, pool2Since: null } : {}),
           ...(hit3 ? { assignedToUserId3: null, pool3: null, pool3Since: null } : {}),
         };
@@ -618,7 +621,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
     const supabase = createClient();
     for (const { customerId, slot } of stale) {
-      const update = slot === 2
+      const update = slot === 1
+        ? { assigned_to: null, pool_1: null, pool_1_since: null }
+        : slot === 2
         ? { assigned_to_2: null, pool_2: null, pool_2_since: null }
         : { assigned_to_3: null, pool_3: null, pool_3_since: null };
       supabase.from("customers").update(update).eq("id", customerId).then(() => {});
@@ -1324,7 +1329,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return undefined;
   }
 
-  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) {
+  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) {
     const assigneeIds = [input.assignedToUserId, input.assignedToUserId2, input.assignedToUserId3].filter((id): id is string => !!id);
     if (new Set(assigneeIds).size !== assigneeIds.length) return { ok: false, error: "The same person can't be assigned twice." };
     for (const id of assigneeIds) {
@@ -1341,10 +1346,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name: input.name,
         email: input.email || null,
         phone: input.phone || null,
-        assigned_to: input.assignedToUserId,
+        assigned_to: input.assignedToUserId || null,
         assigned_to_2: input.assignedToUserId2 || null,
         assigned_to_3: input.assignedToUserId3 || null,
-        pool_1: "ACTIVE",
+        pool_1: input.assignedToUserId ? "ACTIVE" : null,
         pool_2: input.assignedToUserId2 ? "ACTIVE" : null,
         pool_3: input.assignedToUserId3 ? "ACTIVE" : null,
         stage_id: defaultStage.id,
@@ -1376,7 +1381,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function reassignCustomer(customerId: string, slot: 1 | 2 | 3, userId: string | null) {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) return { ok: false, error: "Customer not found." };
-    if (slot === 1 && !userId) return { ok: false, error: "Assignee 1 is required." };
     const slotKey = slot === 1 ? "assignedToUserId" : slot === 2 ? "assignedToUserId2" : "assignedToUserId3";
     const columnKey = slot === 1 ? "assigned_to" : slot === 2 ? "assigned_to_2" : "assigned_to_3";
     const poolKey = slot === 1 ? "pool1" : slot === 2 ? "pool2" : "pool3";

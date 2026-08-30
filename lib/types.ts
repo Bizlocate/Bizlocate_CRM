@@ -212,10 +212,10 @@ export interface Customer {
   email: string;
   phone: string;
   stageId: string;
-  assignedToUserId: string;
+  assignedToUserId: string | null;
   assignedToUserId2: string | null;
   assignedToUserId3: string | null;
-  pool1: PoolStatus;
+  pool1: PoolStatus | null;
   pool2: PoolStatus | null;
   pool3: PoolStatus | null;
   pool1Since: string | null;

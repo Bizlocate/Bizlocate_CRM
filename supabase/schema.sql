@@ -144,10 +144,10 @@ create table customers (
   name text not null,
   email text,
   phone text,
-  assigned_to uuid not null references profiles (id),
+  assigned_to uuid references profiles (id),
   assigned_to_2 uuid references profiles (id),
   assigned_to_3 uuid references profiles (id),
-  pool_1 text not null default 'ACTIVE' check (pool_1 in ('ACTIVE', 'INACTIVE')),
+  pool_1 text check (pool_1 in ('ACTIVE', 'INACTIVE')),
   pool_2 text check (pool_2 in ('ACTIVE', 'INACTIVE')),
   pool_3 text check (pool_3 in ('ACTIVE', 'INACTIVE')),
   pool_1_since timestamptz,
@@ -276,14 +276,17 @@ create trigger profiles_protect_columns
   before update on profiles
   for each row execute function protect_profile_columns();
 
--- assigned_to (slot 1) is not-null so it can never be nulled out; slots 2/3
--- can additionally be self-cleared by the assignee currently in that slot
--- (used by the 60-day inactive-pool sweep, and generally reasonable as a
--- "drop myself from this customer" action)
+-- any of the 3 slots can be self-cleared by the assignee currently in that
+-- slot (used by the 60-day inactive-pool sweep, and generally reasonable
+-- as a "drop myself from this customer" action) — otherwise only an admin
+-- can change who's assigned
 create function protect_customer_assignment() returns trigger as $$
 begin
   if not is_admin() and (
-    new.assigned_to is distinct from old.assigned_to
+    (
+      new.assigned_to is distinct from old.assigned_to
+      and not (new.assigned_to is null and old.assigned_to = auth.uid())
+    )
     or (
       new.assigned_to_2 is distinct from old.assigned_to_2
       and not (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
@@ -1094,3 +1097,36 @@ insert into mandatory_field_settings (field_key, required) values
 -- create trigger customers_touch_updated_at
 --   before update on customers
 --   for each row execute function touch_customer_updated_at();
+
+-- ============================================================
+-- Migration: Assigned 1 (slot 1) becomes optional — a customer can have
+-- no assignee at all, same as slots 2/3. Run once against an
+-- already-provisioned database (everything below already exists in the
+-- main schema above for fresh installs).
+-- ============================================================
+--
+-- alter table customers alter column assigned_to drop not null;
+-- alter table customers alter column pool_1 drop not null;
+-- alter table customers alter column pool_1 drop default;
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- begin
+--   if not is_admin() and (
+--     (
+--       new.assigned_to is distinct from old.assigned_to
+--       and not (new.assigned_to is null and old.assigned_to = auth.uid())
+--     )
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;

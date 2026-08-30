@@ -142,11 +142,11 @@ export default function CustomersPage() {
     ? businessTagTypes.filter((t) => t.categoryId === filterBusinessCategoryId)
     : businessTagTypes;
 
-  function assigneeIds(c: { assignedToUserId: string; assignedToUserId2: string | null; assignedToUserId3: string | null }): string[] {
+  function assigneeIds(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string[] {
     return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
   }
 
-  function assigneeNames(c: { assignedToUserId: string; assignedToUserId2: string | null; assignedToUserId3: string | null }): string {
+  function assigneeNames(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string {
     return assigneeIds(c)
       .map((id) => users.find((u) => u.id === id)?.name ?? "")
       .filter(Boolean)
@@ -852,6 +852,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
               value={assignedToUserId}
               onChange={(e) => setAssignedToUserId(e.target.value)}
             >
+              <option value="">—</option>
               {assigneeOptions([assignedToUserId2, assignedToUserId3]).map((u) => (
                 <option key={u.id} value={u.id}>{u.name}</option>
               ))}
