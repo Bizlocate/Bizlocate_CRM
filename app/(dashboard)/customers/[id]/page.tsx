@@ -150,6 +150,10 @@ export default function CustomerDetailPage() {
       });
     });
 
+  const visibleLogGroups = currentUser.role === "SALESPERSON"
+    ? logGroups.filter((g) => g.key === currentUser.id)
+    : logGroups;
+
   const customerTasks = tasks.filter((t) => t.customerId === customer.id);
   const openTasks = customerTasks.filter((t) => !t.done);
   const doneTasks = customerTasks.filter((t) => t.done);
@@ -478,10 +482,10 @@ export default function CustomerDetailPage() {
               />
             </form>
           )}
-          {logGroups.length === 0 && (
+          {visibleLogGroups.length === 0 && (
             <div className="card" style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
           )}
-          {logGroups.map((group) => (
+          {visibleLogGroups.map((group) => (
             <div key={group.key} className="card" style={{ marginBottom: 16 }}>
               <div style={{ padding: "10px 16px", borderBottom: "1px solid #eef0f2", background: "#f7f7f8", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>
