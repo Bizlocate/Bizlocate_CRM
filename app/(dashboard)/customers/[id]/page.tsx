@@ -6,6 +6,44 @@ import { useStore } from "@/lib/store";
 import { ACTIVITY_STYLES, Activity, ActivityType, PROFILE_FIELD_LABELS } from "@/lib/types";
 import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
+interface ProfileDraft {
+  sourceId: string | null;
+  areaId: string | null;
+  subAreaId: string | null;
+  propertyTypeId: string | null;
+  purposeId: string | null;
+  businessIndustryId: string | null;
+  businessCategoryId: string | null;
+  businessTypeId: string | null;
+  raceId: string | null;
+  languageId: string | null;
+  businessName: string;
+  firsttimeBranchId: string | null;
+  targetRaceId: string | null;
+  targetTypeId: string | null;
+  budgetId: string | null;
+}
+
+function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetId: string | null } | undefined): ProfileDraft {
+  return {
+    sourceId: c?.sourceId ?? null,
+    areaId: c?.areaId ?? null,
+    subAreaId: c?.subAreaId ?? null,
+    propertyTypeId: c?.propertyTypeId ?? null,
+    purposeId: c?.purposeId ?? null,
+    businessIndustryId: c?.businessIndustryId ?? null,
+    businessCategoryId: c?.businessCategoryId ?? null,
+    businessTypeId: c?.businessTypeId ?? null,
+    raceId: c?.raceId ?? null,
+    languageId: c?.languageId ?? null,
+    businessName: c?.businessName ?? "",
+    firsttimeBranchId: c?.firsttimeBranchId ?? null,
+    targetRaceId: c?.targetRaceId ?? null,
+    targetTypeId: c?.targetTypeId ?? null,
+    budgetId: c?.budgetId ?? null,
+  };
+}
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -58,13 +96,13 @@ export default function CustomerDetailPage() {
   const [reassignTo2, setReassignTo2] = useState<string | null>(null);
   const [reassignTo3, setReassignTo3] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [businessNameDraft, setBusinessNameDraft] = useState(customer?.businessName ?? "");
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft>(draftFromCustomer(customer));
   const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
   const [nameDraft, setNameDraft] = useState(customer?.name ?? "");
   const [phoneDraft, setPhoneDraft] = useState(customer?.phone ?? "");
 
   useEffect(() => {
-    setBusinessNameDraft(customer?.businessName ?? "");
+    setProfileDraft(draftFromCustomer(customer));
     setRemarkDraft(customer?.remark ?? "");
     setNameDraft(customer?.name ?? "");
     setPhoneDraft(customer?.phone ?? "");
@@ -111,9 +149,31 @@ export default function CustomerDetailPage() {
     currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const canEditIdentity = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
-  const filteredSubAreas = subAreas.filter((s) => s.areaId === customer.areaId);
-  const filteredCategories = businessTagCategories.filter((c) => c.industryId === customer.businessIndustryId);
-  const filteredTypes = businessTagTypes.filter((t) => t.categoryId === customer.businessCategoryId);
+  const filteredSubAreas = subAreas.filter((s) => s.areaId === profileDraft.areaId);
+  const filteredCategories = businessTagCategories.filter((c) => c.industryId === profileDraft.businessIndustryId);
+  const filteredTypes = businessTagTypes.filter((t) => t.categoryId === profileDraft.businessCategoryId);
+  const savedProfileDraft = draftFromCustomer(customer);
+  const profileDirty = (Object.keys(profileDraft) as (keyof ProfileDraft)[]).some((k) => profileDraft[k] !== savedProfileDraft[k]);
+  const remarkDirty = remarkDraft !== (customer.remark ?? "");
+  const nameDirty = nameDraft.trim() !== customer.name;
+  const phoneDirty = phoneDraft.trim() !== customer.phone;
+  const isDirty = profileDirty || remarkDirty || nameDirty || phoneDirty;
+
+  function handleUpdate() {
+    if (profileDirty) updateCustomerProfile(customer!.id, profileDraft);
+    if (remarkDirty) updateCustomerRemark(customer!.id, remarkDraft);
+    const identityPatch: { name?: string; phone?: string } = {};
+    if (nameDirty && nameDraft.trim()) identityPatch.name = nameDraft.trim();
+    if (phoneDirty) identityPatch.phone = phoneDraft.trim();
+    if (Object.keys(identityPatch).length > 0) updateCustomerIdentity(customer!.id, identityPatch);
+  }
+
+  function handleCancel() {
+    setProfileDraft(draftFromCustomer(customer));
+    setRemarkDraft(customer!.remark ?? "");
+    setNameDraft(customer!.name ?? "");
+    setPhoneDraft(customer!.phone ?? "");
+  }
   const customerActivities = activities.filter((a) => a.customerId === customer.id);
 
   const canLogActivity = currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
@@ -218,11 +278,6 @@ export default function CustomerDetailPage() {
               style={{ fontSize: 22, fontWeight: 700, padding: "2px 8px", width: "auto", minWidth: 220 }}
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
-              onBlur={() => {
-                if (nameDraft.trim() && nameDraft !== customer.name) {
-                  updateCustomerIdentity(customer.id, { name: nameDraft.trim() });
-                }
-              }}
             />
           ) : (
             <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
@@ -235,11 +290,6 @@ export default function CustomerDetailPage() {
                   style={{ width: 130, display: "inline-block", padding: "2px 6px", fontSize: 13.5 }}
                   value={phoneDraft}
                   onChange={(e) => setPhoneDraft(e.target.value)}
-                  onBlur={() => {
-                    if (phoneDraft.trim() !== customer.phone) {
-                      updateCustomerIdentity(customer.id, { phone: phoneDraft.trim() });
-                    }
-                  }}
                 />
               ) : (
                 customer.phone
@@ -372,37 +422,32 @@ export default function CustomerDetailPage() {
       <div className="card" style={{ marginTop: 20, padding: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Business Profile</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-          {profileSelect("Source", customer.sourceId, leadSources, (v) => updateCustomerProfile(customer.id, { sourceId: v || null }))}
-          {profileSelect("Area", customer.areaId, areas, (v) => updateCustomerProfile(customer.id, { areaId: v || null, subAreaId: null }))}
-          {profileSelect("Subarea", customer.subAreaId, filteredSubAreas, (v) => updateCustomerProfile(customer.id, { subAreaId: v || null }), !customer.areaId)}
-          {profileSelect("Property Type", customer.propertyTypeId, propertyTypes, (v) => updateCustomerProfile(customer.id, { propertyTypeId: v || null }))}
-          {profileSelect("Purpose", customer.purposeId, purposes, (v) => updateCustomerProfile(customer.id, { purposeId: v || null }))}
-          {profileSelect("Business Industry", customer.businessIndustryId, businessTagIndustries, (v) => updateCustomerProfile(customer.id, { businessIndustryId: v || null, businessCategoryId: null, businessTypeId: null }))}
-          {profileSelect("Business Category", customer.businessCategoryId, filteredCategories, (v) => updateCustomerProfile(customer.id, { businessCategoryId: v || null, businessTypeId: null }), !customer.businessIndustryId)}
-          {profileSelect("Business Type", customer.businessTypeId, filteredTypes, (v) => updateCustomerProfile(customer.id, { businessTypeId: v || null }), !customer.businessCategoryId)}
-          {profileSelect("Race", customer.raceId, races, (v) => updateCustomerProfile(customer.id, { raceId: v || null }))}
-          {profileSelect("Language", customer.languageId, languages, (v) => updateCustomerProfile(customer.id, { languageId: v || null }))}
+          {profileSelect("Source", profileDraft.sourceId, leadSources, (v) => setProfileDraft((d) => ({ ...d, sourceId: v || null })))}
+          {profileSelect("Area", profileDraft.areaId, areas, (v) => setProfileDraft((d) => ({ ...d, areaId: v || null, subAreaId: null })))}
+          {profileSelect("Subarea", profileDraft.subAreaId, filteredSubAreas, (v) => setProfileDraft((d) => ({ ...d, subAreaId: v || null })), !profileDraft.areaId)}
+          {profileSelect("Property Type", profileDraft.propertyTypeId, propertyTypes, (v) => setProfileDraft((d) => ({ ...d, propertyTypeId: v || null })))}
+          {profileSelect("Purpose", profileDraft.purposeId, purposes, (v) => setProfileDraft((d) => ({ ...d, purposeId: v || null })))}
+          {profileSelect("Business Industry", profileDraft.businessIndustryId, businessTagIndustries, (v) => setProfileDraft((d) => ({ ...d, businessIndustryId: v || null, businessCategoryId: null, businessTypeId: null })))}
+          {profileSelect("Business Category", profileDraft.businessCategoryId, filteredCategories, (v) => setProfileDraft((d) => ({ ...d, businessCategoryId: v || null, businessTypeId: null })), !profileDraft.businessIndustryId)}
+          {profileSelect("Business Type", profileDraft.businessTypeId, filteredTypes, (v) => setProfileDraft((d) => ({ ...d, businessTypeId: v || null })), !profileDraft.businessCategoryId)}
+          {profileSelect("Race", profileDraft.raceId, races, (v) => setProfileDraft((d) => ({ ...d, raceId: v || null })))}
+          {profileSelect("Language", profileDraft.languageId, languages, (v) => setProfileDraft((d) => ({ ...d, languageId: v || null })))}
           <div>
             <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Business Name</div>
             {canEditProfile ? (
               <input
                 className="field-input"
-                value={businessNameDraft}
-                onChange={(e) => setBusinessNameDraft(e.target.value)}
-                onBlur={() => {
-                  if (businessNameDraft !== customer.businessName) {
-                    updateCustomerProfile(customer.id, { businessName: businessNameDraft });
-                  }
-                }}
+                value={profileDraft.businessName}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, businessName: e.target.value }))}
               />
             ) : (
               <div style={{ fontSize: 13.5 }}>{customer.businessName || "—"}</div>
             )}
           </div>
-          {profileSelect("Firsttime / Branch", customer.firsttimeBranchId, firsttimeBranchTypes, (v) => updateCustomerProfile(customer.id, { firsttimeBranchId: v || null }))}
-          {profileSelect("Target Race", customer.targetRaceId, targetRaces, (v) => updateCustomerProfile(customer.id, { targetRaceId: v || null }))}
-          {profileSelect("Target Type", customer.targetTypeId, targetTypes, (v) => updateCustomerProfile(customer.id, { targetTypeId: v || null }))}
-          {profileSelect("Budget", customer.budgetId, budgets, (v) => updateCustomerProfile(customer.id, { budgetId: v || null }))}
+          {profileSelect("Firsttime / Branch", profileDraft.firsttimeBranchId, firsttimeBranchTypes, (v) => setProfileDraft((d) => ({ ...d, firsttimeBranchId: v || null })))}
+          {profileSelect("Target Race", profileDraft.targetRaceId, targetRaces, (v) => setProfileDraft((d) => ({ ...d, targetRaceId: v || null })))}
+          {profileSelect("Target Type", profileDraft.targetTypeId, targetTypes, (v) => setProfileDraft((d) => ({ ...d, targetTypeId: v || null })))}
+          {profileSelect("Budget", profileDraft.budgetId, budgets, (v) => setProfileDraft((d) => ({ ...d, budgetId: v || null })))}
         </div>
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Remark</div>
@@ -411,43 +456,19 @@ export default function CustomerDetailPage() {
               className="field-input"
               value={remarkDraft}
               onChange={(e) => setRemarkDraft(e.target.value)}
-              onBlur={() => {
-                if (remarkDraft !== customer.remark) {
-                  updateCustomerRemark(customer.id, remarkDraft);
-                }
-              }}
               placeholder="Note for the assigned salesperson"
             />
           ) : (
             <div style={{ fontSize: 13.5 }}>{customer.remark || "—"}</div>
           )}
         </div>
+        {isDirty && (
+          <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+            <button className="btn btn-primary" type="button" onClick={handleUpdate}>Update</button>
+            <button className="btn btn-outline" type="button" onClick={handleCancel}>Cancel</button>
+          </div>
+        )}
       </div>
-
-      {canEditIdentity && (
-        <div className="card" style={{ marginTop: 20, padding: 20 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Change History</div>
-          {(() => {
-            const entries = changeLog.filter((l) => l.customerId === customer.id);
-            if (entries.length === 0) {
-              return <div style={{ fontSize: 13.5, color: "#9aa0ab" }}>No changes logged yet.</div>;
-            }
-            return entries.map((l) => (
-              <div key={l.id} style={{ padding: "10px 0", borderBottom: "1px solid #eef0f2", fontSize: 13 }}>
-                <span style={{ color: "#9aa0ab" }}>{l.time}</span>
-                {" · "}
-                <span style={{ fontWeight: 600 }}>{l.changedByName}</span>
-                {" · "}
-                <span>{PROFILE_FIELD_LABELS[l.fieldKey] ?? l.fieldKey}</span>
-                {": "}
-                <span style={{ color: "#6b7280" }}>{l.oldValue || "—"}</span>
-                {" → "}
-                <span>{l.newValue || "—"}</span>
-              </div>
-            ));
-          })()}
-        </div>
-      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, marginTop: 28 }}>
         <div>
@@ -567,6 +588,31 @@ export default function CustomerDetailPage() {
           </div>
         </div>
       </div>
+
+      {canEditIdentity && (
+        <div className="card" style={{ marginTop: 20, padding: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Change History</div>
+          {(() => {
+            const entries = changeLog.filter((l) => l.customerId === customer.id);
+            if (entries.length === 0) {
+              return <div style={{ fontSize: 13.5, color: "#9aa0ab" }}>No changes logged yet.</div>;
+            }
+            return entries.map((l) => (
+              <div key={l.id} style={{ padding: "10px 0", borderBottom: "1px solid #eef0f2", fontSize: 13 }}>
+                <span style={{ color: "#9aa0ab" }}>{l.time}</span>
+                {" · "}
+                <span style={{ fontWeight: 600 }}>{l.changedByName}</span>
+                {" · "}
+                <span>{PROFILE_FIELD_LABELS[l.fieldKey] ?? l.fieldKey}</span>
+                {": "}
+                <span style={{ color: "#6b7280" }}>{l.oldValue || "—"}</span>
+                {" → "}
+                <span>{l.newValue || "—"}</span>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
     </div>
   );
 }
