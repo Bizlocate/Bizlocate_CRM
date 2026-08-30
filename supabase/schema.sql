@@ -185,6 +185,16 @@ create table activities (
   created_at timestamptz not null default now()
 );
 
+create table customer_change_log (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  changed_by uuid not null references profiles (id),
+  field_key text not null,
+  old_value text,
+  new_value text,
+  created_at timestamptz not null default now()
+);
+
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
@@ -396,6 +406,7 @@ alter table sub_areas enable row level security;
 alter table customers enable row level security;
 alter table activities enable row level security;
 alter table tasks enable row level security;
+alter table customer_change_log enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -565,6 +576,29 @@ create policy "tasks_update" on tasks for update using (
   or exists (
     select 1 from customers c
     where c.id = tasks.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+
+-- customer_change_log: append-only, inherits customer visibility for insert;
+-- select limited to admin (all) / manager (own team) — salesperson can write
+-- but not read this log.
+create policy "customer_change_log_select" on customer_change_log for select using (
+  is_admin()
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and exists (
+      select 1 from customers c
+      where c.id = customer_change_log.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
+  )
+);
+create policy "customer_change_log_insert" on customer_change_log for insert with check (
+  is_admin()
+  or exists (
+    select 1 from customers c
+    where c.id = customer_change_log.customer_id
       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
@@ -1130,3 +1164,41 @@ insert into mandatory_field_settings (field_key, required) values
 --   return new;
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: Customer identity edit lock + change log — run once
+-- against an already-provisioned database (everything below already
+-- exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table customer_change_log (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers (id) on delete cascade,
+--   changed_by uuid not null references profiles (id),
+--   field_key text not null,
+--   old_value text,
+--   new_value text,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table customer_change_log enable row level security;
+--
+-- create policy "customer_change_log_select" on customer_change_log for select using (
+--   is_admin()
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and exists (
+--       select 1 from customers c
+--       where c.id = customer_change_log.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
+-- create policy "customer_change_log_insert" on customer_change_log for insert with check (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = customer_change_log.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
