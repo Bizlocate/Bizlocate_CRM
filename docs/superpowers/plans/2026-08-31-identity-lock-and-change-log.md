@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restrict editing a customer's `name`/`phone` to ADMIN/MANAGER (currently no one has an edit UI for them), and log every business-profile field change (including `name`/`phone`/`remark`) to a new `customer_change_log` table, visible to ADMIN/MANAGER on the customer detail page.
+**Goal:** Restrict editing a customer's `name`/`phone` to ADMIN/MANAGER (currently no one has an edit UI for them), log every business-profile field change (including `name`/`phone`/`remark`) to a new `customer_change_log` table visible to ADMIN/MANAGER, and restrict the existing per-agent Activity Log so a SALESPERSON only sees their own group (not other assignees' entries on a shared customer).
 
 **Architecture:** One new append-only table (`customer_change_log`, RLS mirrors the existing `activities` pattern). One shared diff-and-log helper in `lib/store.tsx` wraps the three functions that already write to `customers` (`updateCustomerProfile`, `updateCustomerRemark`, and the new `updateCustomerIdentity`) so the logging logic exists exactly once. One new UI card on the existing customer detail page — no new route, no new admin tab.
 
@@ -15,6 +15,7 @@
 - Pipeline stage changes, pool toggles, and reassignment are explicitly **not** logged by this table — out of scope (per `docs/superpowers/specs/2026-08-31-identity-lock-and-change-log-design.md`).
 - RLS: `customer_change_log` select is ADMIN (all rows) or MANAGER (rows for customers where an assignee shares the manager's team, via the existing `is_customer_assignee()` helper). Insert allowed for anyone who can already update that customer (any assignee, or admin) — a SALESPERSON's own edits are exactly what gets logged.
 - Match existing code style exactly: inline `style={{...}}` objects, `.field-input`/`.card` utility classes, fire-and-forget `.then(() => {})` on writes, no new dependencies.
+- A SALESPERSON sees only their own Activity Log group on a shared customer — this is a display-only restriction (no RLS change; a SALESPERSON's Supabase query for `activities` already only ever returns rows for customers they're an assignee on, per the existing `activities_select` policy, so the underlying rows for other assignees on the *same* customer are already visible to their session — this task hides them client-side). ADMIN/MANAGER see every group, unchanged.
 
 ---
 
@@ -697,6 +698,76 @@ Using the browser preview (`npm run dev`):
 ```bash
 git add "app/(dashboard)/customers/[id]/page.tsx"
 git commit -m "Customer profile: lock name/phone edit to admin/manager, add Change History card
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: UI — SALESPERSON only sees their own Activity Log group
+
+**Files:**
+- Modify: `app/(dashboard)/customers/[id]/page.tsx`
+
+**Interfaces:**
+- Consumes: existing local `logGroups: { key: string; label: string; roleLabel: string; entries: Activity[] }[]` (built earlier in the same component — unchanged by this task) and `currentUser`.
+- Produces: nothing consumed elsewhere — self-contained.
+
+- [ ] **Step 1: Add a `visibleLogGroups` filter**
+
+Right after the existing `logGroups` construction (ends with the `otherAuthorIds...forEach(...)` block, immediately before `const customerTasks = tasks.filter(...)`), add:
+
+```tsx
+  const visibleLogGroups = currentUser.role === "SALESPERSON"
+    ? logGroups.filter((g) => g.key === currentUser.id)
+    : logGroups;
+```
+
+- [ ] **Step 2: Render `visibleLogGroups` instead of `logGroups`**
+
+In the Activity Log section, replace:
+
+```tsx
+          {logGroups.length === 0 && (
+            <div className="card" style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
+          )}
+          {logGroups.map((group) => (
+```
+
+with:
+
+```tsx
+          {visibleLogGroups.length === 0 && (
+            <div className="card" style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
+          )}
+          {visibleLogGroups.map((group) => (
+```
+
+(The rest of that block — everything from `<div key={group.key} className="card" ...>` through its closing `))}` — is unchanged.)
+
+- [ ] **Step 3: Type-check**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected: build succeeds, no TypeScript errors.
+
+- [ ] **Step 4: Manual verification**
+
+Using the browser preview:
+1. Open a customer with 2 SALESPERSON assignees who each logged activities. Log in as assignee #1 → confirm only assignee #1's group shows (not #2's), and the "Log activity" form still works and posts into assignee #1's own group.
+2. Log in as assignee #2 on the same customer → confirm only assignee #2's group shows.
+3. Log in as ADMIN or MANAGER → confirm both groups still show, unchanged from before this task.
+4. Log in as a SALESPERSON who hasn't logged any activity yet on a customer they're newly assigned to → confirm their (empty) group still renders with "No activity logged yet." inside it, not the top-level empty-state message (their `logGroups` entry exists with `entries: []` per the existing grouping logic — this task doesn't change that).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add "app/(dashboard)/customers/[id]/page.tsx"
+git commit -m "Customer profile: salesperson sees only their own Activity Log group
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
