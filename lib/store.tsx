@@ -141,6 +141,8 @@ function mapCustomer(row: {
   target_type_id: string | null;
   budget_id: string | null;
   remark: string | null;
+  created_at: string;
+  updated_at: string;
 }): Customer {
   return {
     id: row.id,
@@ -173,6 +175,8 @@ function mapCustomer(row: {
     targetTypeId: row.target_type_id,
     budgetId: row.budget_id,
     remark: row.remark ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 

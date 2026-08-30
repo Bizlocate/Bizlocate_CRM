@@ -64,6 +64,16 @@ export default function CustomersPage() {
   const [searchStageId, setSearchStageId] = useState("");
   const [searchAssignedTo, setSearchAssignedTo] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterSourceId, setFilterSourceId] = useState("");
+  const [filterAreaId, setFilterAreaId] = useState("");
+  const [filterSubAreaId, setFilterSubAreaId] = useState("");
+  const [filterPropertyTypeId, setFilterPropertyTypeId] = useState("");
+  const [filterBusinessIndustryId, setFilterBusinessIndustryId] = useState("");
+  const [filterBusinessCategoryId, setFilterBusinessCategoryId] = useState("");
+  const [filterBusinessTypeId, setFilterBusinessTypeId] = useState("");
+  const [filterRaceId, setFilterRaceId] = useState("");
+  const [filterFirsttimeBranchId, setFilterFirsttimeBranchId] = useState("");
+  const [filterPurposeId, setFilterPurposeId] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
   const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
@@ -82,6 +92,16 @@ export default function CustomersPage() {
       if (phone && !c.phone.toLowerCase().includes(phone)) return false;
       if (searchStageId && c.stageId !== searchStageId) return false;
       if (showAssignedTo && searchAssignedTo && !assigneeIds(c).includes(searchAssignedTo)) return false;
+      if (filterSourceId && c.sourceId !== filterSourceId) return false;
+      if (filterAreaId && c.areaId !== filterAreaId) return false;
+      if (filterSubAreaId && c.subAreaId !== filterSubAreaId) return false;
+      if (filterPropertyTypeId && c.propertyTypeId !== filterPropertyTypeId) return false;
+      if (filterBusinessIndustryId && c.businessIndustryId !== filterBusinessIndustryId) return false;
+      if (filterBusinessCategoryId && c.businessCategoryId !== filterBusinessCategoryId) return false;
+      if (filterBusinessTypeId && c.businessTypeId !== filterBusinessTypeId) return false;
+      if (filterRaceId && c.raceId !== filterRaceId) return false;
+      if (filterFirsttimeBranchId && c.firsttimeBranchId !== filterFirsttimeBranchId) return false;
+      if (filterPurposeId && c.purposeId !== filterPurposeId) return false;
       if (isSalesperson && currentUser) {
         const myPool =
           c.assignedToUserId === currentUser.id ? c.pool1 :
@@ -98,13 +118,29 @@ export default function CustomersPage() {
       }
       return true;
     });
-  }, [visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo, isSalesperson, currentUser, poolTab]);
+  }, [
+    visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
+    filterSourceId, filterAreaId, filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId,
+    filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isSalesperson, currentUser, poolTab,
+  ]);
 
   if (!currentUser) return null;
 
   function stageName(stageId: string) {
     return stages.find((s) => s.id === stageId)?.name ?? "";
   }
+
+  function formatDate(iso: string): string {
+    return new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  const filterSubAreaOptions = filterAreaId ? subAreas.filter((s) => s.areaId === filterAreaId) : subAreas;
+  const filterCategoryOptions = filterBusinessIndustryId
+    ? businessTagCategories.filter((c) => c.industryId === filterBusinessIndustryId)
+    : businessTagCategories;
+  const filterTypeOptions = filterBusinessCategoryId
+    ? businessTagTypes.filter((t) => t.categoryId === filterBusinessCategoryId)
+    : businessTagTypes;
 
   function assigneeIds(c: { assignedToUserId: string; assignedToUserId2: string | null; assignedToUserId3: string | null }): string[] {
     return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
@@ -186,7 +222,10 @@ export default function CustomersPage() {
     setShowExportModal(false);
   }
 
-  const gridCols = `${canExport ? "32px " : ""}${showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr"}`;
+  // Created Date, Business Type, Business Name, Tel No, Customer Name, Sub Area, Source, Stage, [Assigned Agent(s)], Purpose, Last Updated
+  const LIST_COLS = [100, 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
+  const gridCols = `${canExport ? "32px " : ""}${LIST_COLS.map((w) => `${w}px`).join(" ")} 30px`;
+  const gridMinWidth = (canExport ? 32 : 0) + LIST_COLS.reduce((a, b) => a + b, 0) + 30;
   const allFilteredSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => selectedIds.has(c.id));
 
   return (
@@ -259,6 +298,76 @@ export default function CustomersPage() {
           <label className="field-label">Keyword (in log)</label>
           <input className="field-input" value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} placeholder="Search notes, calls, visits" />
         </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Source</label>
+          <select className="field-input" value={filterSourceId} onChange={(e) => setFilterSourceId(e.target.value)}>
+            <option value="">All</option>
+            {leadSources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Area</label>
+          <select className="field-input" value={filterAreaId} onChange={(e) => { setFilterAreaId(e.target.value); setFilterSubAreaId(""); }}>
+            <option value="">All</option>
+            {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Sub Area</label>
+          <select className="field-input" value={filterSubAreaId} onChange={(e) => setFilterSubAreaId(e.target.value)}>
+            <option value="">All</option>
+            {filterSubAreaOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Property Type</label>
+          <select className="field-input" value={filterPropertyTypeId} onChange={(e) => setFilterPropertyTypeId(e.target.value)}>
+            <option value="">All</option>
+            {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Industry</label>
+          <select className="field-input" value={filterBusinessIndustryId} onChange={(e) => { setFilterBusinessIndustryId(e.target.value); setFilterBusinessCategoryId(""); setFilterBusinessTypeId(""); }}>
+            <option value="">All</option>
+            {businessTagIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Category</label>
+          <select className="field-input" value={filterBusinessCategoryId} onChange={(e) => { setFilterBusinessCategoryId(e.target.value); setFilterBusinessTypeId(""); }}>
+            <option value="">All</option>
+            {filterCategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Type</label>
+          <select className="field-input" value={filterBusinessTypeId} onChange={(e) => setFilterBusinessTypeId(e.target.value)}>
+            <option value="">All</option>
+            {filterTypeOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Race</label>
+          <select className="field-input" value={filterRaceId} onChange={(e) => setFilterRaceId(e.target.value)}>
+            <option value="">All</option>
+            {races.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">FirstTime / Branch</label>
+          <select className="field-input" value={filterFirsttimeBranchId} onChange={(e) => setFilterFirsttimeBranchId(e.target.value)}>
+            <option value="">All</option>
+            {firsttimeBranchTypes.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Purpose</label>
+          <select className="field-input" value={filterPurposeId} onChange={(e) => setFilterPurposeId(e.target.value)}>
+            <option value="">All</option>
+            {purposes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
         <button
           className="btn btn-outline"
           type="button"
@@ -268,6 +377,16 @@ export default function CustomersPage() {
             setSearchStageId("");
             setSearchAssignedTo("");
             setSearchKeyword("");
+            setFilterSourceId("");
+            setFilterAreaId("");
+            setFilterSubAreaId("");
+            setFilterPropertyTypeId("");
+            setFilterBusinessIndustryId("");
+            setFilterBusinessCategoryId("");
+            setFilterBusinessTypeId("");
+            setFilterRaceId("");
+            setFilterFirsttimeBranchId("");
+            setFilterPurposeId("");
           }}
         >
           Clear
@@ -275,76 +394,99 @@ export default function CustomersPage() {
       </div>
 
       <div className="card">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: gridCols,
-            padding: "12px 20px",
-            background: "#f7f7f8",
-            borderBottom: "1px solid #e2e4e9",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#6b7280",
-            textTransform: "uppercase",
-            letterSpacing: ".03em",
-          }}
-        >
-          {canExport && (
-            <div>
-              <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
-            </div>
-          )}
-          <div>Name</div>
-          <div>Phone</div>
-          <div>Stage</div>
-          {showAssignedTo && <div>Assigned To</div>}
-          <div></div>
+        <div style={{ padding: "14px 20px 0", fontSize: 13.5 }}>
+          <span style={{ color: "#6b7280" }}>Total Customer</span>
+          <span style={{ color: "#6b7280" }}> : </span>
+          <span style={{ fontWeight: 700 }}>{filteredCustomers.length}</span>
         </div>
-        {filteredCustomers.length === 0 && (
-          <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
-        )}
-        {filteredCustomers.map((c) => {
-          const style = STAGE_STYLES[stageName(c.stageId)] ?? { bg: "#eef0f4", color: "#4b5566" };
-          return (
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ minWidth: gridMinWidth }}>
             <div
-              key={c.id}
-              onClick={() => router.push(`/customers/${c.id}`)}
               style={{
                 display: "grid",
                 gridTemplateColumns: gridCols,
-                padding: "14px 20px",
-                borderBottom: "1px solid #eef0f2",
-                alignItems: "center",
-                fontSize: 13.5,
-                cursor: "pointer",
+                padding: "12px 20px",
+                background: "#f7f7f8",
+                borderBottom: "1px solid #e2e4e9",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#6b7280",
+                textTransform: "uppercase",
+                letterSpacing: ".03em",
               }}
             >
               {canExport && (
-                <div onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleOne(c.id)} />
+                <div>
+                  <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
                 </div>
               )}
-              <div style={{ fontWeight: 500 }}>{c.name}</div>
-              <div style={{ color: "#6b7280" }}>{c.phone}</div>
-              <div>
-                <span
+              <div>Created Date</div>
+              <div>Business Type</div>
+              <div>Business Name</div>
+              <div>Tel No</div>
+              <div>Customer Name</div>
+              <div>Sub Area</div>
+              <div>Source</div>
+              <div>Stage</div>
+              {showAssignedTo && <div>Assigned Agent(s)</div>}
+              <div>Purpose</div>
+              <div>Last Updated</div>
+              <div></div>
+            </div>
+            {filteredCustomers.length === 0 && (
+              <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
+            )}
+            {filteredCustomers.map((c) => {
+              const style = STAGE_STYLES[stageName(c.stageId)] ?? { bg: "#eef0f4", color: "#4b5566" };
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => router.push(`/customers/${c.id}`)}
                   style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    padding: "4px 10px",
-                    borderRadius: 20,
-                    background: style.bg,
-                    color: style.color,
+                    display: "grid",
+                    gridTemplateColumns: gridCols,
+                    padding: "14px 20px",
+                    borderBottom: "1px solid #eef0f2",
+                    alignItems: "center",
+                    fontSize: 13.5,
+                    cursor: "pointer",
                   }}
                 >
-                  {stageName(c.stageId)}
-                </span>
-              </div>
-              {showAssignedTo && <div style={{ color: "#6b7280" }}>{assigneeNames(c)}</div>}
-              <div style={{ color: "#c5c8cf", fontSize: 16, textAlign: "right" }}>›</div>
-            </div>
-          );
-        })}
+                  {canExport && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleOne(c.id)} />
+                    </div>
+                  )}
+                  <div style={{ color: "#6b7280" }}>{formatDate(c.createdAt)}</div>
+                  <div style={{ color: "#6b7280" }}>{nameOf(businessTagTypes, c.businessTypeId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{c.businessName || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{c.phone}</div>
+                  <div style={{ fontWeight: 500 }}>{c.name}</div>
+                  <div style={{ color: "#6b7280" }}>{nameOf(subAreas, c.subAreaId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{nameOf(leadSources, c.sourceId) || "—"}</div>
+                  <div>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: "4px 10px",
+                        borderRadius: 20,
+                        background: style.bg,
+                        color: style.color,
+                      }}
+                    >
+                      {stageName(c.stageId)}
+                    </span>
+                  </div>
+                  {showAssignedTo && <div style={{ color: "#6b7280" }}>{assigneeNames(c)}</div>}
+                  <div style={{ color: "#6b7280" }}>{nameOf(purposes, c.purposeId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{formatDate(c.updatedAt)}</div>
+                  <div style={{ color: "#c5c8cf", fontSize: 16, textAlign: "right" }}>›</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

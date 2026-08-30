@@ -237,6 +237,8 @@ export interface Customer {
   targetTypeId: string | null;
   budgetId: string | null;
   remark: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ActivityType = "CALL" | "VISIT" | "NOTE";

@@ -171,7 +171,8 @@ create table customers (
   budget_id uuid references budgets (id) on delete set null,
   remark text,
   created_by uuid references profiles (id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table activities (
@@ -337,6 +338,17 @@ $$ language plpgsql security definer set search_path = public;
 create trigger customers_protect_remark
   before update on customers
   for each row execute function protect_customer_remark_column();
+
+create function touch_customer_updated_at() returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_touch_updated_at
+  before update on customers
+  for each row execute function touch_customer_updated_at();
 
 create function protect_task_columns() returns trigger as $$
 begin
@@ -1061,3 +1073,24 @@ insert into mandatory_field_settings (field_key, required) values
 -- create trigger customers_protect_pool
 --   before update on customers
 --   for each row execute function protect_pool_columns();
+
+-- ============================================================
+-- Migration: customers.updated_at (auto-touched on every update),
+-- for Created Date / Last Updated columns in the customer list —
+-- run once against an already-provisioned database (everything
+-- below already exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- alter table customers add column if not exists updated_at timestamptz not null default now();
+--
+-- create or replace function touch_customer_updated_at() returns trigger as $$
+-- begin
+--   new.updated_at = now();
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists customers_touch_updated_at on customers;
+-- create trigger customers_touch_updated_at
+--   before update on customers
+--   for each row execute function touch_customer_updated_at();
