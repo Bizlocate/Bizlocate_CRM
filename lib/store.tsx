@@ -8,6 +8,7 @@ import {
   Activity,
   ActivityType,
   Area,
+  Budget,
   BusinessTagCategory,
   BusinessTagIndustry,
   BusinessTagType,
@@ -96,6 +97,10 @@ function mapTargetType(row: { id: string; name: string }): TargetType {
   return { id: row.id, name: row.name };
 }
 
+function mapBudget(row: { id: string; name: string }): Budget {
+  return { id: row.id, name: row.name };
+}
+
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
   return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
 }
@@ -121,6 +126,7 @@ function mapCustomer(row: {
   firsttime_branch_id: string | null;
   target_race_id: string | null;
   target_type_id: string | null;
+  budget_id: string | null;
   remark: string | null;
 }): Customer {
   return {
@@ -144,6 +150,7 @@ function mapCustomer(row: {
     firsttimeBranchId: row.firsttime_branch_id,
     targetRaceId: row.target_race_id,
     targetTypeId: row.target_type_id,
+    budgetId: row.budget_id,
     remark: row.remark ?? "",
   };
 }
@@ -163,6 +170,7 @@ export interface CustomerProfileInput {
   firsttimeBranchId: string | null;
   targetRaceId: string | null;
   targetTypeId: string | null;
+  budgetId: string | null;
   remark: string;
 }
 
@@ -181,6 +189,7 @@ const emptyCustomerProfile: CustomerProfileInput = {
   firsttimeBranchId: null,
   targetRaceId: null,
   targetTypeId: null,
+  budgetId: null,
   remark: "",
 };
 
@@ -237,6 +246,7 @@ interface Store {
   races: Race[];
   targetRaces: TargetRace[];
   targetTypes: TargetType[];
+  budgets: Budget[];
   fieldRequirements: FieldRequirement[];
   stages: Stage[];
   customers: Customer[];
@@ -306,6 +316,9 @@ interface Store {
   addTargetType: (name: string) => void;
   updateTargetType: (id: string, name: string) => void;
   deleteTargetType: (id: string) => void;
+  addBudget: (name: string) => void;
+  updateBudget: (id: string, name: string) => void;
+  deleteBudget: (id: string) => void;
   updateFieldRequirement: (fieldKey: string, required: boolean) => void;
 
   previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
@@ -353,6 +366,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [races, setRaces] = useState<Race[]>([]);
   const [targetRaces, setTargetRaces] = useState<TargetRace[]>([]);
   const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [fieldRequirements, setFieldRequirements] = useState<FieldRequirement[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -482,6 +496,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadBudgets(): Promise<Budget[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("budgets").select("*").order("name");
+    const mapped = (data ?? []).map(mapBudget);
+    setBudgets(mapped);
+    return mapped;
+  }
+
   async function loadFieldRequirements(): Promise<FieldRequirement[]> {
     const supabase = createClient();
     const { data } = await supabase.from("mandatory_field_settings").select("*");
@@ -555,6 +577,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadRaces(),
           loadTargetRaces(),
           loadTargetTypes(),
+          loadBudgets(),
           loadFieldRequirements(),
           loadStages(),
           loadCustomers(),
@@ -598,6 +621,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadRaces(),
       loadTargetRaces(),
       loadTargetTypes(),
+      loadBudgets(),
       loadFieldRequirements(),
       loadStages(),
       loadCustomers(),
@@ -1057,6 +1081,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("target_types").delete().eq("id", id).then(() => {});
   }
 
+  function addBudget(name: string) {
+    const supabase = createClient();
+    supabase.from("budgets").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setBudgets((prev) => [...prev, mapBudget(data)]);
+    });
+  }
+  function updateBudget(id: string, name: string) {
+    setBudgets((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("budgets").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteBudget(id: string) {
+    setBudgets((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("budgets").delete().eq("id", id).then(() => {});
+  }
+
   function updateFieldRequirement(fieldKey: string, required: boolean) {
     setFieldRequirements((prev) => prev.map((f) => (f.fieldKey === fieldKey ? { ...f, required } : f)));
     const supabase = createClient();
@@ -1220,6 +1261,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         firsttime_branch_id: profile.firsttimeBranchId,
         target_race_id: profile.targetRaceId,
         target_type_id: profile.targetTypeId,
+        budget_id: profile.budgetId,
         remark: profile.remark || null,
       })
       .select()
@@ -1274,6 +1316,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       firsttimeBranchId: "firsttime_branch_id",
       targetRaceId: "target_race_id",
       targetTypeId: "target_type_id",
+      budgetId: "budget_id",
     };
     const dbPatch: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch)) {
@@ -1385,6 +1428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     races,
     targetRaces,
     targetTypes,
+    budgets,
     fieldRequirements,
     stages,
     customers,
@@ -1448,6 +1492,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addTargetType,
     updateTargetType,
     deleteTargetType,
+    addBudget,
+    updateBudget,
+    deleteBudget,
     updateFieldRequirement,
     previewBusinessTagCsv,
     confirmBusinessTagCsvImport,
