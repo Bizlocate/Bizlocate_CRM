@@ -101,6 +101,10 @@ function mapBudget(row: { id: string; name: string }): Budget {
   return { id: row.id, name: row.name };
 }
 
+function assigneeSlots(c: Customer): string[] {
+  return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
+}
+
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
   return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
 }
@@ -111,6 +115,8 @@ function mapCustomer(row: {
   email: string | null;
   phone: string | null;
   assigned_to: string;
+  assigned_to_2: string | null;
+  assigned_to_3: string | null;
   stage_id: string;
   source_id: string | null;
   area_id: string | null;
@@ -135,6 +141,8 @@ function mapCustomer(row: {
     email: row.email ?? "",
     phone: row.phone ?? "",
     assignedToUserId: row.assigned_to,
+    assignedToUserId2: row.assigned_to_2,
+    assignedToUserId3: row.assigned_to_3,
     stageId: row.stage_id,
     sourceId: row.source_id,
     areaId: row.area_id,
@@ -331,8 +339,8 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
-  reassignCustomer: (customerId: string, newAssigneeId: string) => { ok: boolean; error?: string };
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
+  reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
@@ -651,9 +659,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (currentUser.role === "ADMIN") return customers;
     if (currentUser.role === "MANAGER") {
       const teamUserIds = new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id));
-      return customers.filter((c) => teamUserIds.has(c.assignedToUserId));
+      return customers.filter((c) => assigneeSlots(c).some((id) => teamUserIds.has(id)));
     }
-    return customers.filter((c) => c.assignedToUserId === currentUser.id);
+    return customers.filter((c) => assigneeSlots(c).includes(currentUser.id));
   }, [customers, users, currentUser]);
 
   async function addUser(input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) {
@@ -1224,16 +1232,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function assignmentError(userId: string, excludeCustomerId?: string) {
     const user = users.find((u) => u.id === userId);
     if (!user || user.customerLimit === null) return undefined;
-    const count = customers.filter((c) => c.assignedToUserId === userId && c.id !== excludeCustomerId).length;
+    const count = customers.filter((c) => c.id !== excludeCustomerId && assigneeSlots(c).includes(userId)).length;
     if (count >= user.customerLimit) {
       return `${user.name} is at their customer limit (${user.customerLimit}).`;
     }
     return undefined;
   }
 
-  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string } & Partial<CustomerProfileInput>) {
-    const error = assignmentError(input.assignedToUserId);
-    if (error) return { ok: false, error };
+  async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId: string; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) {
+    const assigneeIds = [input.assignedToUserId, input.assignedToUserId2, input.assignedToUserId3].filter((id): id is string => !!id);
+    if (new Set(assigneeIds).size !== assigneeIds.length) return { ok: false, error: "The same person can't be assigned twice." };
+    for (const id of assigneeIds) {
+      const error = assignmentError(id);
+      if (error) return { ok: false, error };
+    }
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
     if (!defaultStage) return { ok: false, error: "No pipeline stage configured. Add one in Admin → Pipeline Stages first." };
     const profile = { ...emptyCustomerProfile, ...input };
@@ -1245,6 +1257,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         email: input.email || null,
         phone: input.phone || null,
         assigned_to: input.assignedToUserId,
+        assigned_to_2: input.assignedToUserId2 || null,
+        assigned_to_3: input.assignedToUserId3 || null,
         stage_id: defaultStage.id,
         created_by: currentUserId,
         source_id: profile.sourceId,
@@ -1271,18 +1285,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
-  function reassignCustomer(customerId: string, newAssigneeId: string) {
+  function reassignCustomer(customerId: string, slot: 1 | 2 | 3, userId: string | null) {
     const customer = customers.find((c) => c.id === customerId);
-    if (customer && customer.assignedToUserId !== newAssigneeId) {
-      const error = assignmentError(newAssigneeId, customerId);
+    if (!customer) return { ok: false, error: "Customer not found." };
+    if (slot === 1 && !userId) return { ok: false, error: "Assignee 1 is required." };
+    const slotKey = slot === 1 ? "assignedToUserId" : slot === 2 ? "assignedToUserId2" : "assignedToUserId3";
+    const columnKey = slot === 1 ? "assigned_to" : slot === 2 ? "assigned_to_2" : "assigned_to_3";
+    const otherSlotKeys = (["assignedToUserId", "assignedToUserId2", "assignedToUserId3"] as const).filter((k) => k !== slotKey);
+    const otherSlots = otherSlotKeys.map((k) => customer[k]).filter((id): id is string => !!id);
+    if (userId && otherSlots.includes(userId)) return { ok: false, error: "The same person can't be assigned twice." };
+    if (userId && customer[slotKey] !== userId) {
+      const error = assignmentError(userId, customerId);
       if (error) return { ok: false, error };
     }
-    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, assignedToUserId: newAssigneeId } : c)));
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [slotKey]: userId } : c)));
     const supabase = createClient();
-    supabase.from("customers").update({ assigned_to: newAssigneeId }).eq("id", customerId).then(() => {});
-    const assignee = users.find((u) => u.id === newAssigneeId);
-    if (assignee && customer) {
-      createNotification(newAssigneeId, `${assignee.name} was assigned ${customer.name}.`);
+    supabase.from("customers").update({ [columnKey]: userId }).eq("id", customerId).then(() => {});
+    const assignee = userId ? users.find((u) => u.id === userId) : undefined;
+    if (assignee) {
+      createNotification(userId!, `${assignee.name} was assigned ${customer.name}.`);
     }
     return { ok: true };
   }

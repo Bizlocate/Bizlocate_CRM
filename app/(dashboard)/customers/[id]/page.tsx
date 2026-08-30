@@ -51,7 +51,9 @@ export default function CustomerDetailPage() {
   const [followUp, setFollowUp] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDue, setTaskDue] = useState("");
-  const [reassignTo, setReassignTo] = useState("");
+  const [reassignTo1, setReassignTo1] = useState<string | null>(null);
+  const [reassignTo2, setReassignTo2] = useState<string | null>(null);
+  const [reassignTo3, setReassignTo3] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [businessNameDraft, setBusinessNameDraft] = useState(customer?.businessName ?? "");
   const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
@@ -63,25 +65,33 @@ export default function CustomerDetailPage() {
 
   if (!currentUser || !customer) return null;
 
-  const assignedUser = users.find((u) => u.id === customer.assignedToUserId);
-  const canSendWhatsApp = (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && !!assignedUser?.phone;
-  const whatsAppLink = canSendWhatsApp
-    ? buildWhatsAppLink(
-        assignedUser!.phone!,
-        buildAssignmentMessage({
-          customerName: customer.name,
-          customerPhone: customer.phone,
-          sourceName: leadSources.find((s) => s.id === customer.sourceId)?.name ?? "—",
-          areaName: areas.find((a) => a.id === customer.areaId)?.name ?? "—",
-          subAreaName: subAreas.find((s) => s.id === customer.subAreaId)?.name ?? "—",
-          businessTypeName: businessTagTypes.find((t) => t.id === customer.businessTypeId)?.name ?? "—",
-          raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
-          languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
-          budgetName: budgets.find((b) => b.id === customer.budgetId)?.name ?? "—",
-        })
-      )
-    : null;
-  const canEditProfile = currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || currentUser.id === customer.assignedToUserId;
+  const assignedSlots: { slot: 1 | 2 | 3; userId: string | null }[] = [
+    { slot: 1, userId: customer.assignedToUserId },
+    { slot: 2, userId: customer.assignedToUserId2 },
+    { slot: 3, userId: customer.assignedToUserId3 },
+  ];
+  const assignedUsers = assignedSlots
+    .map(({ slot, userId }) => ({ slot, user: userId ? users.find((u) => u.id === userId) : undefined }))
+    .filter((a): a is { slot: 1 | 2 | 3; user: NonNullable<typeof a.user> } => !!a.user);
+  const canSendWhatsApp = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
+  const assignmentMessage = buildAssignmentMessage({
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    sourceName: leadSources.find((s) => s.id === customer.sourceId)?.name ?? "—",
+    areaName: areas.find((a) => a.id === customer.areaId)?.name ?? "—",
+    subAreaName: subAreas.find((s) => s.id === customer.subAreaId)?.name ?? "—",
+    businessTypeName: businessTagTypes.find((t) => t.id === customer.businessTypeId)?.name ?? "—",
+    raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
+    languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
+    budgetName: budgets.find((b) => b.id === customer.budgetId)?.name ?? "—",
+  });
+  const whatsAppTargets = canSendWhatsApp
+    ? assignedUsers
+        .filter(({ user }) => !!user.phone)
+        .map(({ user }) => ({ user, link: buildWhatsAppLink(user.phone!, assignmentMessage) }))
+    : [];
+  const canEditProfile =
+    currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const filteredSubAreas = subAreas.filter((s) => s.areaId === customer.areaId);
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === customer.businessIndustryId);
@@ -146,13 +156,14 @@ export default function CustomerDetailPage() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
-          <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <span>
-              {customer.email} · {customer.phone} · Assigned: {assignedUser?.name ?? "—"}
+              {customer.email} · {customer.phone} · Assigned: {assignedUsers.length > 0 ? assignedUsers.map(({ user }) => user.name).join(", ") : "—"}
             </span>
-            {whatsAppLink && (
+            {whatsAppTargets.map(({ user, link }) => (
               <a
-                href={whatsAppLink}
+                key={user.id}
+                href={link}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -168,48 +179,57 @@ export default function CustomerDetailPage() {
                   textDecoration: "none",
                 }}
               >
-                WhatsApp
+                WhatsApp{whatsAppTargets.length > 1 ? ` — ${user.name}` : ""}
               </a>
-            )}
+            ))}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {currentUser.role === "ADMIN" && (
-            <>
+        {currentUser.role === "ADMIN" && (
+          <button className="btn btn-danger" onClick={handleDelete}>
+            {confirmDelete ? "Confirm delete?" : "Delete"}
+          </button>
+        )}
+      </div>
+
+      {currentUser.role === "ADMIN" && (
+        <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
+          {([
+            { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: false },
+            { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignedToUserId2, clearable: true },
+            { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignedToUserId3, clearable: true },
+          ]).map(({ slot, value, setValue, current, clearable }) => (
+            <div key={slot} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#9aa0ab", fontWeight: 500 }}>Assigned {slot}:</span>
               <select
                 className="field-input"
                 style={{ width: "auto" }}
-                value={reassignTo || customer.assignedToUserId}
-                onChange={(e) => setReassignTo(e.target.value)}
+                value={value ?? current ?? ""}
+                onChange={(e) => setValue(e.target.value)}
               >
+                {clearable && <option value="">—</option>}
                 {users.filter((u) => u.active).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
-              {reassignTo && reassignTo !== customer.assignedToUserId && (
+              {value !== null && value !== (current ?? "") && (
                 <button
                   className="btn btn-primary"
                   onClick={() => {
-                    const result = reassignCustomer(customer.id, reassignTo);
+                    const result = reassignCustomer(customer.id, slot, value || null);
                     if (!result.ok) {
                       alert(result.error ?? "Could not reassign customer.");
                       return;
                     }
-                    setReassignTo("");
+                    setValue(null);
                   }}
                 >
                   Confirm
                 </button>
               )}
-            </>
-          )}
-          {currentUser.role === "ADMIN" && (
-            <button className="btn btn-danger" onClick={handleDelete}>
-              {confirmDelete ? "Confirm delete?" : "Delete"}
-            </button>
-          )}
+            </div>
+          ))}
         </div>
-      </div>
+      )}
 
       <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>Stage:</span>

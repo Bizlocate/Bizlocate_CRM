@@ -210,6 +210,8 @@ export interface Customer {
   phone: string;
   stageId: string;
   assignedToUserId: string;
+  assignedToUserId2: string | null;
+  assignedToUserId3: string | null;
   sourceId: string | null;
   areaId: string | null;
   subAreaId: string | null;

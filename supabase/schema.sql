@@ -142,6 +142,8 @@ create table customers (
   email text,
   phone text,
   assigned_to uuid not null references profiles (id),
+  assigned_to_2 uuid references profiles (id),
+  assigned_to_3 uuid references profiles (id),
   stage_id uuid not null references pipeline_stages (id),
   source_id uuid references lead_sources (id) on delete set null,
   area_id uuid references areas (id) on delete set null,
@@ -204,6 +206,15 @@ create function my_team_id() returns uuid as $$
   select team_id from profiles where id = auth.uid();
 $$ language sql security definer stable set search_path = public;
 
+-- true if the caller is one of a customer's (up to 3) assignees, or shares
+-- a team with one of them
+create function is_customer_assignee(a1 uuid, a2 uuid, a3 uuid) returns boolean as $$
+  select auth.uid() = a1 or auth.uid() = a2 or auth.uid() = a3
+    or a1 in (select id from profiles where team_id = my_team_id())
+    or a2 in (select id from profiles where team_id = my_team_id())
+    or a3 in (select id from profiles where team_id = my_team_id());
+$$ language sql security definer stable set search_path = public;
+
 -- ============================================================
 -- New auth user -> profiles row
 -- ============================================================
@@ -255,7 +266,11 @@ create trigger profiles_protect_columns
 
 create function protect_customer_assignment() returns trigger as $$
 begin
-  if not is_admin() and new.assigned_to is distinct from old.assigned_to then
+  if not is_admin() and (
+    new.assigned_to is distinct from old.assigned_to
+    or new.assigned_to_2 is distinct from old.assigned_to_2
+    or new.assigned_to_3 is distinct from old.assigned_to_3
+  ) then
     raise exception 'only an admin can reassign a customer';
   end if;
   return new;
@@ -441,19 +456,15 @@ create policy "budgets_insert_admin" on budgets for insert with check (is_admin(
 create policy "budgets_update_admin" on budgets for update using (is_admin());
 create policy "budgets_delete_admin" on budgets for delete using (is_admin());
 
--- customers: admin all, manager own team, salesperson own assigned
+-- customers: admin all, manager own team, salesperson own assigned (any of up to 3 slots)
 create policy "customers_select" on customers for select using (
-  is_admin()
-  or assigned_to = auth.uid()
-  or assigned_to in (select id from profiles where team_id = my_team_id())
+  is_admin() or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
 );
 create policy "customers_insert" on customers for insert with check (
   is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 );
 create policy "customers_update" on customers for update using (
-  is_admin()
-  or assigned_to = auth.uid()
-  or assigned_to in (select id from profiles where team_id = my_team_id())
+  is_admin() or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
 );
 create policy "customers_delete_admin" on customers for delete using (is_admin());
 
@@ -463,7 +474,7 @@ create policy "activities_select" on activities for select using (
   or exists (
     select 1 from customers c
     where c.id = activities.customer_id
-      and (c.assigned_to = auth.uid() or c.assigned_to in (select id from profiles where team_id = my_team_id()))
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
 create policy "activities_insert" on activities for insert with check (
@@ -471,7 +482,7 @@ create policy "activities_insert" on activities for insert with check (
   or exists (
     select 1 from customers c
     where c.id = activities.customer_id
-      and (c.assigned_to = auth.uid() or c.assigned_to in (select id from profiles where team_id = my_team_id()))
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
 
@@ -481,7 +492,7 @@ create policy "tasks_select" on tasks for select using (
   or exists (
     select 1 from customers c
     where c.id = tasks.customer_id
-      and (c.assigned_to = auth.uid() or c.assigned_to in (select id from profiles where team_id = my_team_id()))
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
 create policy "tasks_insert" on tasks for insert with check (
@@ -489,7 +500,7 @@ create policy "tasks_insert" on tasks for insert with check (
   or exists (
     select 1 from customers c
     where c.id = tasks.customer_id
-      and (c.assigned_to = auth.uid() or c.assigned_to in (select id from profiles where team_id = my_team_id()))
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
 create policy "tasks_update" on tasks for update using (
@@ -497,7 +508,7 @@ create policy "tasks_update" on tasks for update using (
   or exists (
     select 1 from customers c
     where c.id = tasks.customer_id
-      and (c.assigned_to = auth.uid() or c.assigned_to in (select id from profiles where team_id = my_team_id()))
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
 
@@ -830,3 +841,88 @@ insert into mandatory_field_settings (field_key, required) values
 -- create policy "budgets_insert_admin" on budgets for insert with check (is_admin());
 -- create policy "budgets_update_admin" on budgets for update using (is_admin());
 -- create policy "budgets_delete_admin" on budgets for delete using (is_admin());
+
+-- ============================================================
+-- Migration: Multi-assign (up to 3 assignees per customer) — run once
+-- against an already-provisioned database (everything below already
+-- exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- alter table customers add column if not exists assigned_to_2 uuid references profiles (id);
+-- alter table customers add column if not exists assigned_to_3 uuid references profiles (id);
+--
+-- create or replace function is_customer_assignee(a1 uuid, a2 uuid, a3 uuid) returns boolean as $$
+--   select auth.uid() = a1 or auth.uid() = a2 or auth.uid() = a3
+--     or a1 in (select id from profiles where team_id = my_team_id())
+--     or a2 in (select id from profiles where team_id = my_team_id())
+--     or a3 in (select id from profiles where team_id = my_team_id());
+-- $$ language sql security definer stable set search_path = public;
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- begin
+--   if not is_admin() and (
+--     new.assigned_to is distinct from old.assigned_to
+--     or new.assigned_to_2 is distinct from old.assigned_to_2
+--     or new.assigned_to_3 is distinct from old.assigned_to_3
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop policy if exists "customers_select" on customers;
+-- create policy "customers_select" on customers for select using (
+--   is_admin() or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
+-- );
+-- drop policy if exists "customers_update" on customers;
+-- create policy "customers_update" on customers for update using (
+--   is_admin() or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
+-- );
+--
+-- drop policy if exists "activities_select" on activities;
+-- create policy "activities_select" on activities for select using (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = activities.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- drop policy if exists "activities_insert" on activities;
+-- create policy "activities_insert" on activities for insert with check (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = activities.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+--
+-- drop policy if exists "tasks_select" on tasks;
+-- create policy "tasks_select" on tasks for select using (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = tasks.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- drop policy if exists "tasks_insert" on tasks;
+-- create policy "tasks_insert" on tasks for insert with check (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = tasks.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- drop policy if exists "tasks_update" on tasks;
+-- create policy "tasks_update" on tasks for update using (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = tasks.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
