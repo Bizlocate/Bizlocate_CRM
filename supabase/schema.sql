@@ -339,10 +339,14 @@ create trigger customers_protect_pool
 
 create function protect_customer_remark_column() returns trigger as $$
 begin
-  if new.remark is distinct from old.remark and not (
+  if (
+    new.remark is distinct from old.remark
+    or new.name is distinct from old.name
+    or new.phone is distinct from old.phone
+  ) and not (
     is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
   ) then
-    raise exception 'only an admin or manager can change the remark';
+    raise exception 'only an admin or manager can change the name, phone, or remark';
   end if;
   return new;
 end;
@@ -595,11 +599,14 @@ create policy "customer_change_log_select" on customer_change_log for select usi
   )
 );
 create policy "customer_change_log_insert" on customer_change_log for insert with check (
-  is_admin()
-  or exists (
-    select 1 from customers c
-    where c.id = customer_change_log.customer_id
-      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  changed_by = auth.uid()
+  and (
+    is_admin()
+    or exists (
+      select 1 from customers c
+      where c.id = customer_change_log.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
   )
 );
 
@@ -1195,10 +1202,28 @@ insert into mandatory_field_settings (field_key, required) values
 --   )
 -- );
 -- create policy "customer_change_log_insert" on customer_change_log for insert with check (
---   is_admin()
---   or exists (
---     select 1 from customers c
---     where c.id = customer_change_log.customer_id
---       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   changed_by = auth.uid()
+--   and (
+--     is_admin()
+--     or exists (
+--       select 1 from customers c
+--       where c.id = customer_change_log.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
 --   )
 -- );
+--
+-- create or replace function protect_customer_remark_column() returns trigger as $$
+-- begin
+--   if (
+--     new.remark is distinct from old.remark
+--     or new.name is distinct from old.name
+--     or new.phone is distinct from old.phone
+--   ) and not (
+--     is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--   ) then
+--     raise exception 'only an admin or manager can change the name, phone, or remark';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;

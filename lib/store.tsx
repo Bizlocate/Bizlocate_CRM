@@ -1541,16 +1541,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     if (rows.length === 0) return;
     const supabase = createClient();
-    supabase
-      .from("customer_change_log")
-      .insert(rows)
-      .select()
-      .then(({ data, error }) => {
-        if (!error && data) {
-          const usersById = new Map(users.map((u) => [u.id, u]));
-          setChangeLog((prev) => [...data.map((row) => mapChangeLog(row, usersById)), ...prev]);
-        }
-      });
+    supabase.from("customer_change_log").insert(rows).then(() => {});
+    const now = new Date().toISOString();
+    setChangeLog((prev) => [
+      ...rows.map((r) => ({
+        id: crypto.randomUUID(),
+        customerId: r.customer_id,
+        fieldKey: r.field_key,
+        oldValue: r.old_value,
+        newValue: r.new_value,
+        changedByName: currentUser.name,
+        changedByUserId: r.changed_by,
+        time: formatTimestamp(now),
+        createdAt: now,
+      })),
+      ...prev,
+    ]);
   }
 
   function updateCustomerStage(customerId: string, stageId: string) {

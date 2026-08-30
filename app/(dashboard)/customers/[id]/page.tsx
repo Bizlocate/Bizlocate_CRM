@@ -236,8 +236,8 @@ export default function CustomerDetailPage() {
                   value={phoneDraft}
                   onChange={(e) => setPhoneDraft(e.target.value)}
                   onBlur={() => {
-                    if (phoneDraft !== customer.phone) {
-                      updateCustomerIdentity(customer.id, { phone: phoneDraft });
+                    if (phoneDraft.trim() !== customer.phone) {
+                      updateCustomerIdentity(customer.id, { phone: phoneDraft.trim() });
                     }
                   }}
                 />
