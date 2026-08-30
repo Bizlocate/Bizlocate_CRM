@@ -209,15 +209,6 @@ export default function Header() {
                   User Control
                 </Link>
               )}
-              {currentUser.role === "MANAGER" && (
-                <Link
-                  href="/team/agent-logs"
-                  onClick={() => setMenuOpen(false)}
-                  style={{ display: "block", padding: "10px 14px", fontSize: 13.5, color: "#20222b", borderBottom: "1px solid #eef0f2" }}
-                >
-                  Team Logs
-                </Link>
-              )}
               <Link
                 href="/settings"
                 onClick={() => setMenuOpen(false)}

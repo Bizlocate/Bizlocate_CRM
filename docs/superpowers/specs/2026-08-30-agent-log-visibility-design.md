@@ -72,16 +72,22 @@ users, based on follow-up direction: the tool should be customer-list-first,
 not log-first). Shared component `components/AgentLogBrowser.tsx`, used by
 two thin pages:
 
-- **Admin** — `/admin/agent-logs`, added as a tab in `AdminTabs`. Agent
-  picker offers every `SALESPERSON`/`MANAGER` company-wide; customer pool is
-  the full `customers` list.
+- **Admin** — `/admin/agent-logs`. Agent picker offers every
+  `SALESPERSON`/`MANAGER` company-wide; customer pool is the full
+  `customers` list.
 - **Manager** — `/team/agent-logs`, a new route group with its own
   role-gated layout (mirrors `admin/layout.tsx` but requires `MANAGER`).
   Agent picker offers only `SALESPERSON`s on the manager's own team
   (`teamId` match) — a manager doesn't need this tool to check their own
-  customers, only their reports'. Reachable via a "Team Logs" link in the
-  Header dropdown, shown only to Managers. Customer pool is `visibleCustomers`
+  customers, only their reports'. Customer pool is `visibleCustomers`
   (already team-scoped by the store).
+- **Top-level nav, not admin-nested**: reachable via a primary "Agent Log"
+  tab next to "Customers" (`components/MainNav.tsx`, rendered in the
+  dashboard layout for every page), not folded into `AdminTabs`'s
+  Users/Teams/Stages config sub-nav — this tool is a daily oversight view,
+  not a one-off admin config screen. Shown only to Admin and Manager;
+  Salesperson sees no tab bar (unchanged). The tab's target route depends
+  on role (`/admin/agent-logs` vs `/team/agent-logs`).
 
 **Filters, applied together:**
 1. **Area** (dropdown, default "All Areas") — customer's `areaId`.

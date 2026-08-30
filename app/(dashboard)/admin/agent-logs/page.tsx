@@ -1,7 +1,6 @@
 "use client";
 
 import { useStore } from "@/lib/store";
-import AdminTabs from "@/components/AdminTabs";
 import AgentLogBrowser from "@/components/AgentLogBrowser";
 
 export default function AdminAgentLogsPage() {
@@ -10,8 +9,7 @@ export default function AdminAgentLogsPage() {
 
   return (
     <div style={{ padding: "28px 32px" }}>
-      <AdminTabs />
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Agent Logs</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Agent Log</div>
       <AgentLogBrowser agents={agents} customers={customers} />
     </div>
   );

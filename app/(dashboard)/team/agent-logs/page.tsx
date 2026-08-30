@@ -9,7 +9,7 @@ export default function TeamAgentLogsPage() {
 
   return (
     <div style={{ padding: "28px 32px" }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Team Agent Logs</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Agent Log</div>
       <AgentLogBrowser agents={agents} customers={visibleCustomers} />
     </div>
   );
