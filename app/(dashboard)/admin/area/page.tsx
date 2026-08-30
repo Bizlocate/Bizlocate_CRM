@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useStore } from "@/lib/store";
@@ -99,7 +99,7 @@ export default function AdminAreaPage() {
     <div style={{ padding: "28px 32px" }}>
       <AdminTabs />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>Admin â€” Area</div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Admin — Area</div>
         <div style={{ display: "flex", gap: 10 }}>
           <label className="btn btn-outline" style={{ cursor: "pointer" }}>
             Upload CSV
@@ -134,7 +134,7 @@ export default function AdminAreaPage() {
                 }}
               >
                 <span style={{ color: r.approved ? "#1e7a41" : "#a13a2b", fontWeight: 700, width: 14 }}>
-                  {r.approved ? "âœ”" : "âœ—"}
+                  {r.approved ? "✔" : "✗"}
                 </span>
                 <span style={{ color: "#6b7280", width: 40 }}>row {r.row}</span>
                 <span>{r.area || "(no area)"} / {r.subArea || "(blank)"}</span>
@@ -142,7 +142,7 @@ export default function AdminAreaPage() {
                   style={{ color: "#9aa0ab", cursor: "pointer", fontWeight: 600 }}
                   onClick={() => setPreview(removeCsvRow(preview, r.row))}
                 >
-                  âœ•
+                  ✕
                 </span>
                 {!r.approved && <span style={{ color: "#a13a2b" }}>{r.reason}</span>}
                 <span style={{ flex: 1 }} />
@@ -151,7 +151,7 @@ export default function AdminAreaPage() {
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="btn btn-primary" disabled={preview.approvedCount === 0 || importing} onClick={handleConfirmImport}>
-              {importing ? "Uploadingâ€¦" : "Confirm Upload"}
+              {importing ? "Uploading…" : "Confirm Upload"}
             </button>
             <button className="btn btn-outline" type="button" onClick={() => setPreview(null)}>Cancel</button>
           </div>
@@ -185,7 +185,7 @@ export default function AdminAreaPage() {
                     <input className="field-input" style={{ flex: "1 1 200px" }} value={editingAreaName} onChange={(e) => setEditingAreaName(e.target.value)} onBlur={saveEditArea} autoFocus />
                   ) : (
                     <span style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => setExpandedAreaId(expanded ? null : a.id)}>
-                      {expanded ? "â–¾" : "â–¸"} {a.name}
+                      {expanded ? "▾" : "▸"} {a.name}
                     </span>
                   )}
                   <span style={{ color: "#4046c9", fontWeight: 500, cursor: "pointer" }} onClick={() => startEditArea(a.id, a.name)}>Edit</span>
@@ -240,5 +240,3 @@ export default function AdminAreaPage() {
     </div>
   );
 }
-
-
