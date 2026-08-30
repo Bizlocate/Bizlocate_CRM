@@ -8,7 +8,8 @@
 create table teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  manager_id uuid -- fk added after profiles exists (circular ref)
+  manager_id uuid, -- fk added after profiles exists (circular ref)
+  last_auto_assigned_user_id uuid -- fk added after profiles exists, same as manager_id
 );
 
 create table profiles (
@@ -49,7 +50,8 @@ create table profiles (
 -- $$ language plpgsql security definer set search_path = public;
 
 alter table teams
-  add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null;
+  add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null,
+  add constraint teams_last_auto_assigned_user_id_fkey foreign key (last_auto_assigned_user_id) references profiles (id) on delete set null;
 
 create table pipeline_stages (
   id uuid primary key default gen_random_uuid(),
@@ -60,7 +62,8 @@ create table pipeline_stages (
 
 create table areas (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique
+  name text not null unique,
+  team_id uuid references teams (id) on delete set null
 );
 
 create table sub_areas (
@@ -1227,3 +1230,12 @@ insert into mandatory_field_settings (field_key, required) values
 --   return new;
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: Auto second-assignment — run once against an
+-- already-provisioned database (everything below already exists in
+-- the main schema above for fresh installs).
+-- ============================================================
+--
+-- alter table areas add column if not exists team_id uuid references teams (id) on delete set null;
+-- alter table teams add column if not exists last_auto_assigned_user_id uuid references profiles (id) on delete set null;
