@@ -71,10 +71,13 @@ export default function CustomerDetailPage() {
         buildAssignmentMessage({
           customerName: customer.name,
           customerPhone: customer.phone,
+          sourceName: leadSources.find((s) => s.id === customer.sourceId)?.name ?? "—",
           areaName: areas.find((a) => a.id === customer.areaId)?.name ?? "—",
+          subAreaName: subAreas.find((s) => s.id === customer.subAreaId)?.name ?? "—",
           businessTypeName: businessTagTypes.find((t) => t.id === customer.businessTypeId)?.name ?? "—",
           raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
           languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
+          budgetName: budgets.find((b) => b.id === customer.budgetId)?.name ?? "—",
         })
       )
     : null;

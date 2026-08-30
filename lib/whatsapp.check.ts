@@ -17,10 +17,13 @@ assert.equal(normalizeMyPhone("123456789"), "60123456789");
 const message = buildAssignmentMessage({
   customerName: "Kedai Runcit Maju Jaya",
   customerPhone: "012-345 6789",
+  sourceName: "Facebook Ads",
   areaName: "Petaling Jaya",
+  subAreaName: "Damansara",
   businessTypeName: "Restaurant- Fast Food",
   raceName: "Malay",
   languageName: "Malay",
+  budgetName: "RM50k-100k",
 });
 assert.equal(
   message,
@@ -28,10 +31,13 @@ assert.equal(
     "New customer assigned to you:",
     "Name: Kedai Runcit Maju Jaya",
     "Phone: 012-345 6789",
+    "Source: Facebook Ads",
     "Area: Petaling Jaya",
+    "Subarea: Damansara",
     "Business Type: Restaurant- Fast Food",
     "Race: Malay",
     "Language: Malay",
+    "Budget: RM50k-100k",
   ].join("\n")
 );
 

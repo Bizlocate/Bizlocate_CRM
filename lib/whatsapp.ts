@@ -8,19 +8,25 @@ export function normalizeMyPhone(raw: string): string {
 export function buildAssignmentMessage(input: {
   customerName: string;
   customerPhone: string;
+  sourceName: string;
   areaName: string;
+  subAreaName: string;
   businessTypeName: string;
   raceName: string;
   languageName: string;
+  budgetName: string;
 }): string {
   return [
     "New customer assigned to you:",
     `Name: ${input.customerName}`,
     `Phone: ${input.customerPhone}`,
+    `Source: ${input.sourceName}`,
     `Area: ${input.areaName}`,
+    `Subarea: ${input.subAreaName}`,
     `Business Type: ${input.businessTypeName}`,
     `Race: ${input.raceName}`,
     `Language: ${input.languageName}`,
+    `Budget: ${input.budgetName}`,
   ].join("\n");
 }
 
