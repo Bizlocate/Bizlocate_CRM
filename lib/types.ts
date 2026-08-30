@@ -275,3 +275,36 @@ export interface Notification {
   time: string;
   unread: boolean;
 }
+
+export interface CustomerChangeLogEntry {
+  id: string;
+  customerId: string;
+  fieldKey: string;
+  oldValue: string | null;
+  newValue: string | null;
+  changedByName: string;
+  changedByUserId: string;
+  time: string;
+  createdAt: string;
+}
+
+export const PROFILE_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  phone: "Phone",
+  source_id: "Source",
+  area_id: "Area",
+  sub_area_id: "Subarea",
+  property_type_id: "Property Type",
+  purpose_id: "Purpose",
+  business_industry_id: "Business Industry",
+  business_category_id: "Business Category",
+  business_type_id: "Business Type",
+  race_id: "Race",
+  language_id: "Language",
+  business_name: "Business Name",
+  firsttime_branch_id: "Firsttime / Branch",
+  target_race_id: "Target Race",
+  target_type_id: "Target Type",
+  budget_id: "Budget",
+  remark: "Remark",
+};
