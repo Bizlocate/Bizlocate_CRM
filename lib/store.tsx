@@ -686,6 +686,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const supabase = createClient();
+    // The `teamsList`/`customersList` params are a frozen snapshot, but a
+    // single sweep call can assign multiple customers off the same team in
+    // one pass (this is a batch catch-up sweep, not a one-at-a-time
+    // trigger). Track this call's own round-robin pointer and each
+    // candidate's in-progress assignment count locally so the second
+    // customer processed in the same sweep sees the first one's pick,
+    // instead of both re-reading the same stale pointer/pool-count and
+    // colliding on the same winner.
+    const pointerByTeam = new Map<string, string | null>();
+    const extraAssignedCount = new Map<string, number>();
     for (const c of customersList) {
       if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
       if (now - new Date(c.createdAt).getTime() < THREE_DAYS_MS) continue;
@@ -698,7 +708,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .filter((u) => u.active && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       if (candidates.length === 0) continue;
-      const lastIndex = candidates.findIndex((u) => u.id === team.lastAutoAssignedUserId);
+      const currentPointer = pointerByTeam.has(team.id) ? pointerByTeam.get(team.id)! : team.lastAutoAssignedUserId;
+      const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
       const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
       let winner: User | undefined;
       for (let i = 0; i < candidates.length; i++) {
@@ -709,7 +720,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             (other.assignedToUserId === candidate.id && other.pool1 === "ACTIVE") ||
             (other.assignedToUserId2 === candidate.id && other.pool2 === "ACTIVE") ||
             (other.assignedToUserId3 === candidate.id && other.pool3 === "ACTIVE")
-          ).length;
+          ).length + (extraAssignedCount.get(candidate.id) ?? 0);
           if (activeCount >= limit) continue;
         }
         winner = candidate;
@@ -718,6 +729,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!winner) continue;
       const winnerId = winner.id;
       const winnerName = winner.name;
+      pointerByTeam.set(team.id, winnerId);
+      extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
       setCustomers((prev) =>
         prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null } : row))
       );
