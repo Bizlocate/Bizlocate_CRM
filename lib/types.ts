@@ -9,8 +9,11 @@ export interface User {
   role: Role;
   teamId: string | null;
   active: boolean;
-  customerLimit: number | null;
+  activePoolLimit: number | null;
+  inactivePoolLimit: number | null;
 }
+
+export type PoolStatus = "ACTIVE" | "INACTIVE";
 
 export interface Team {
   id: string;
@@ -212,6 +215,12 @@ export interface Customer {
   assignedToUserId: string;
   assignedToUserId2: string | null;
   assignedToUserId3: string | null;
+  pool1: PoolStatus;
+  pool2: PoolStatus | null;
+  pool3: PoolStatus | null;
+  pool1Since: string | null;
+  pool2Since: string | null;
+  pool3Since: string | null;
   sourceId: string | null;
   areaId: string | null;
   subAreaId: string | null;
@@ -245,7 +254,9 @@ export interface Activity {
   content: string;
   followUp: string;
   author: string;
+  authorUserId: string;
   time: string;
+  createdAt: string;
 }
 
 export interface Task {

@@ -20,16 +20,18 @@ create table profiles (
   role text not null check (role in ('ADMIN', 'MANAGER', 'SALESPERSON')),
   team_id uuid references teams (id) on delete set null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
-  customer_limit int check (customer_limit is null or customer_limit >= 0)
+  active_pool_limit int check (active_pool_limit is null or active_pool_limit >= 0),
+  inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0)
 );
 
 -- Run this alone against an already-provisioned database:
 -- alter table profiles add column if not exists phone text;
--- alter table profiles add column if not exists customer_limit int check (customer_limit is null or customer_limit >= 0);
 -- alter table profiles add column if not exists ic text;
+-- alter table profiles rename column customer_limit to active_pool_limit;
+-- alter table profiles add column if not exists inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0);
 -- create or replace function handle_new_user() returns trigger as $$
 -- begin
---   insert into public.profiles (id, name, email, phone, ic, role, team_id, status, customer_limit)
+--   insert into public.profiles (id, name, email, phone, ic, role, team_id, status, active_pool_limit, inactive_pool_limit)
 --   values (
 --     new.id,
 --     coalesce(new.raw_user_meta_data ->> 'name', new.email),
@@ -39,7 +41,8 @@ create table profiles (
 --     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
 --     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
 --     'ACTIVE',
---     nullif(new.raw_user_meta_data ->> 'customer_limit', '')::int
+--     nullif(new.raw_user_meta_data ->> 'active_pool_limit', '')::int,
+--     nullif(new.raw_user_meta_data ->> 'inactive_pool_limit', '')::int
 --   );
 --   return new;
 -- end;
@@ -144,6 +147,12 @@ create table customers (
   assigned_to uuid not null references profiles (id),
   assigned_to_2 uuid references profiles (id),
   assigned_to_3 uuid references profiles (id),
+  pool_1 text not null default 'ACTIVE' check (pool_1 in ('ACTIVE', 'INACTIVE')),
+  pool_2 text check (pool_2 in ('ACTIVE', 'INACTIVE')),
+  pool_3 text check (pool_3 in ('ACTIVE', 'INACTIVE')),
+  pool_1_since timestamptz,
+  pool_2_since timestamptz,
+  pool_3_since timestamptz,
   stage_id uuid not null references pipeline_stages (id),
   source_id uuid references lead_sources (id) on delete set null,
   area_id uuid references areas (id) on delete set null,
@@ -221,7 +230,7 @@ $$ language sql security definer stable set search_path = public;
 
 create function handle_new_user() returns trigger as $$
 begin
-  insert into public.profiles (id, name, email, phone, ic, role, team_id, status, customer_limit)
+  insert into public.profiles (id, name, email, phone, ic, role, team_id, status, active_pool_limit, inactive_pool_limit)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', new.email),
@@ -231,7 +240,8 @@ begin
     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
     'ACTIVE',
-    nullif(new.raw_user_meta_data ->> 'customer_limit', '')::int
+    nullif(new.raw_user_meta_data ->> 'active_pool_limit', '')::int,
+    nullif(new.raw_user_meta_data ->> 'inactive_pool_limit', '')::int
   );
   return new;
 end;
@@ -252,9 +262,10 @@ begin
     new.role is distinct from old.role
     or new.team_id is distinct from old.team_id
     or new.status is distinct from old.status
-    or new.customer_limit is distinct from old.customer_limit
+    or new.active_pool_limit is distinct from old.active_pool_limit
+    or new.inactive_pool_limit is distinct from old.inactive_pool_limit
   ) then
-    raise exception 'only an admin can change role, team, status, or customer limit';
+    raise exception 'only an admin can change role, team, status, or pool limits';
   end if;
   return new;
 end;
@@ -264,12 +275,22 @@ create trigger profiles_protect_columns
   before update on profiles
   for each row execute function protect_profile_columns();
 
+-- assigned_to (slot 1) is not-null so it can never be nulled out; slots 2/3
+-- can additionally be self-cleared by the assignee currently in that slot
+-- (used by the 60-day inactive-pool sweep, and generally reasonable as a
+-- "drop myself from this customer" action)
 create function protect_customer_assignment() returns trigger as $$
 begin
   if not is_admin() and (
     new.assigned_to is distinct from old.assigned_to
-    or new.assigned_to_2 is distinct from old.assigned_to_2
-    or new.assigned_to_3 is distinct from old.assigned_to_3
+    or (
+      new.assigned_to_2 is distinct from old.assigned_to_2
+      and not (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+    )
+    or (
+      new.assigned_to_3 is distinct from old.assigned_to_3
+      and not (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+    )
   ) then
     raise exception 'only an admin can reassign a customer';
   end if;
@@ -280,6 +301,27 @@ $$ language plpgsql security definer set search_path = public;
 create trigger customers_protect_assignment
   before update on customers
   for each row execute function protect_customer_assignment();
+
+-- a slot's pool status can only be changed by that slot's own assignee, or
+-- an admin
+create function protect_pool_columns() returns trigger as $$
+begin
+  if not is_admin() and new.pool_1 is distinct from old.pool_1 and auth.uid() is distinct from old.assigned_to then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if not is_admin() and new.pool_2 is distinct from old.pool_2 and auth.uid() is distinct from old.assigned_to_2 then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if not is_admin() and new.pool_3 is distinct from old.pool_3 and auth.uid() is distinct from old.assigned_to_3 then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_pool
+  before update on customers
+  for each row execute function protect_pool_columns();
 
 create function protect_customer_remark_column() returns trigger as $$
 begin
@@ -926,3 +968,96 @@ insert into mandatory_field_settings (field_key, required) values
 --       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
 --   )
 -- );
+
+-- ============================================================
+-- Migration: Customer pool system — active/inactive per assignee slot,
+-- dual pool limits, 60-day auto-removal. Run once against an
+-- already-provisioned database (everything below already exists in the
+-- main schema above for fresh installs).
+-- ============================================================
+--
+-- alter table profiles rename column customer_limit to active_pool_limit;
+-- alter table profiles add column if not exists inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0);
+--
+-- alter table customers add column if not exists pool_1 text not null default 'ACTIVE' check (pool_1 in ('ACTIVE', 'INACTIVE'));
+-- alter table customers add column if not exists pool_2 text check (pool_2 in ('ACTIVE', 'INACTIVE'));
+-- alter table customers add column if not exists pool_3 text check (pool_3 in ('ACTIVE', 'INACTIVE'));
+-- alter table customers add column if not exists pool_1_since timestamptz;
+-- alter table customers add column if not exists pool_2_since timestamptz;
+-- alter table customers add column if not exists pool_3_since timestamptz;
+-- -- existing rows: slot 2/3 pool stays null unless that slot already has an assignee
+-- update customers set pool_2 = 'ACTIVE' where assigned_to_2 is not null and pool_2 is null;
+-- update customers set pool_3 = 'ACTIVE' where assigned_to_3 is not null and pool_3 is null;
+--
+-- create or replace function handle_new_user() returns trigger as $$
+-- begin
+--   insert into public.profiles (id, name, email, phone, ic, role, team_id, status, active_pool_limit, inactive_pool_limit)
+--   values (
+--     new.id,
+--     coalesce(new.raw_user_meta_data ->> 'name', new.email),
+--     new.email,
+--     nullif(new.raw_user_meta_data ->> 'phone', ''),
+--     nullif(new.raw_user_meta_data ->> 'ic', ''),
+--     coalesce(new.raw_user_meta_data ->> 'role', 'SALESPERSON'),
+--     nullif(new.raw_user_meta_data ->> 'team_id', '')::uuid,
+--     'ACTIVE',
+--     nullif(new.raw_user_meta_data ->> 'active_pool_limit', '')::int,
+--     nullif(new.raw_user_meta_data ->> 'inactive_pool_limit', '')::int
+--   );
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_profile_columns() returns trigger as $$
+-- begin
+--   if not is_admin() and (
+--     new.role is distinct from old.role
+--     or new.team_id is distinct from old.team_id
+--     or new.status is distinct from old.status
+--     or new.active_pool_limit is distinct from old.active_pool_limit
+--     or new.inactive_pool_limit is distinct from old.inactive_pool_limit
+--   ) then
+--     raise exception 'only an admin can change role, team, status, or pool limits';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- begin
+--   if not is_admin() and (
+--     new.assigned_to is distinct from old.assigned_to
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_pool_columns() returns trigger as $$
+-- begin
+--   if not is_admin() and new.pool_1 is distinct from old.pool_1 and auth.uid() is distinct from old.assigned_to then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if not is_admin() and new.pool_2 is distinct from old.pool_2 and auth.uid() is distinct from old.assigned_to_2 then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if not is_admin() and new.pool_3 is distinct from old.pool_3 and auth.uid() is distinct from old.assigned_to_3 then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists customers_protect_pool on customers;
+-- create trigger customers_protect_pool
+--   before update on customers
+--   for each row execute function protect_pool_columns();

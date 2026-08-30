@@ -6,7 +6,7 @@ import { Role, User } from "@/lib/types";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserCustomerLimit, deleteUser, resetUserPassword } = useStore();
+  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserPoolLimit, deleteUser, resetUserPassword } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -16,7 +16,8 @@ export default function AdminUsersPage() {
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("SALESPERSON");
   const [teamId, setTeamId] = useState<string>("");
-  const [customerLimit, setCustomerLimit] = useState("");
+  const [activePoolLimit, setActivePoolLimit] = useState("");
+  const [inactivePoolLimit, setInactivePoolLimit] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,7 +29,8 @@ export default function AdminUsersPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState<Role>("SALESPERSON");
   const [editTeamId, setEditTeamId] = useState("");
-  const [editCustomerLimit, setEditCustomerLimit] = useState("");
+  const [editActivePoolLimit, setEditActivePoolLimit] = useState("");
+  const [editInactivePoolLimit, setEditInactivePoolLimit] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [editError, setEditError] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -64,7 +66,8 @@ export default function AdminUsersPage() {
     setEditEmail(u.email);
     setEditRole(u.role);
     setEditTeamId(u.teamId ?? "");
-    setEditCustomerLimit(u.customerLimit != null ? String(u.customerLimit) : "");
+    setEditActivePoolLimit(u.activePoolLimit != null ? String(u.activePoolLimit) : "");
+    setEditInactivePoolLimit(u.inactivePoolLimit != null ? String(u.inactivePoolLimit) : "");
     setEditActive(u.active);
     setEditError("");
     setResetPassword("");
@@ -75,9 +78,10 @@ export default function AdminUsersPage() {
     e.preventDefault();
     if (!editTarget) return;
     if (!editName.trim() || !editEmail.trim() || !editPhone.trim()) return;
-    const limit = editCustomerLimit.trim() ? Number(editCustomerLimit) : null;
-    if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
-      setEditError("Customer limit must be a non-negative whole number.");
+    const activeLimit = editActivePoolLimit.trim() ? Number(editActivePoolLimit) : null;
+    const inactiveLimit = editInactivePoolLimit.trim() ? Number(editInactivePoolLimit) : null;
+    if ([activeLimit, inactiveLimit].some((l) => l !== null && (!Number.isInteger(l) || l < 0))) {
+      setEditError("Pool limits must be non-negative whole numbers.");
       return;
     }
     setEditSubmitting(true);
@@ -89,7 +93,8 @@ export default function AdminUsersPage() {
       ic: editIc.trim() || null,
       role: editRole,
       teamId: editTeamId || null,
-      customerLimit: limit,
+      activePoolLimit: activeLimit,
+      inactivePoolLimit: inactiveLimit,
       active: editActive,
     });
     setEditSubmitting(false);
@@ -122,9 +127,10 @@ export default function AdminUsersPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !phone.trim()) return;
-    const limit = customerLimit.trim() ? Number(customerLimit) : null;
-    if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
-      setFormError("Customer limit must be a non-negative whole number.");
+    const activeLimit = activePoolLimit.trim() ? Number(activePoolLimit) : null;
+    const inactiveLimit = inactivePoolLimit.trim() ? Number(inactivePoolLimit) : null;
+    if ([activeLimit, inactiveLimit].some((l) => l !== null && (!Number.isInteger(l) || l < 0))) {
+      setFormError("Pool limits must be non-negative whole numbers.");
       return;
     }
     if (password.trim() !== confirmPassword.trim()) {
@@ -133,7 +139,7 @@ export default function AdminUsersPage() {
     }
     setSubmitting(true);
     setFormError("");
-    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), ic: ic.trim() || null, role, teamId: teamId || null, customerLimit: limit, password: password.trim() || undefined });
+    const result = await addUser({ name: name.trim(), email: email.trim(), phone: phone.trim(), ic: ic.trim() || null, role, teamId: teamId || null, activePoolLimit: activeLimit, inactivePoolLimit: inactiveLimit, password: password.trim() || undefined });
     setSubmitting(false);
     if (result.error) {
       setFormError(result.error);
@@ -146,7 +152,8 @@ export default function AdminUsersPage() {
     setPhone("");
     setRole("SALESPERSON");
     setTeamId("");
-    setCustomerLimit("");
+    setActivePoolLimit("");
+    setInactivePoolLimit("");
     setPassword("");
     setConfirmPassword("");
     setShowAddModal(false);
@@ -212,14 +219,26 @@ export default function AdminUsersPage() {
                 </select>
               </div>
               <div style={{ flex: "1 1 140px" }}>
-                <label className="field-label">Customer limit</label>
+                <label className="field-label">Active pool limit</label>
                 <input
                   className="field-input"
                   type="number"
                   min={0}
                   step={1}
-                  value={editCustomerLimit}
-                  onChange={(e) => setEditCustomerLimit(e.target.value)}
+                  value={editActivePoolLimit}
+                  onChange={(e) => setEditActivePoolLimit(e.target.value)}
+                  placeholder="Unlimited"
+                />
+              </div>
+              <div style={{ flex: "1 1 140px" }}>
+                <label className="field-label">Potential pool limit</label>
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={editInactivePoolLimit}
+                  onChange={(e) => setEditInactivePoolLimit(e.target.value)}
                   placeholder="Unlimited"
                 />
               </div>
@@ -330,14 +349,26 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div style={{ flex: "1 1 140px" }}>
-                <label className="field-label">Customer limit</label>
+                <label className="field-label">Active pool limit</label>
                 <input
                   className="field-input"
                   type="number"
                   min={0}
                   step={1}
-                  value={customerLimit}
-                  onChange={(e) => setCustomerLimit(e.target.value)}
+                  value={activePoolLimit}
+                  onChange={(e) => setActivePoolLimit(e.target.value)}
+                  placeholder="Unlimited"
+                />
+              </div>
+              <div style={{ flex: "1 1 140px" }}>
+                <label className="field-label">Potential pool limit</label>
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={inactivePoolLimit}
+                  onChange={(e) => setInactivePoolLimit(e.target.value)}
                   placeholder="Unlimited"
                 />
               </div>
@@ -376,8 +407,8 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Limit</div><div>Status</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Active limit</div><div>Potential limit</div><div>Status</div><div>Actions</div>
         </div>
         {filteredUsers.length === 0 && (
           <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>
@@ -385,7 +416,7 @@ export default function AdminUsersPage() {
           </div>
         )}
         {filteredUsers.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.8fr 1.1fr 1fr 1.1fr 0.9fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ color: "#6b7280" }}>{u.email}</div>
             <div style={{ color: "#6b7280" }}>{u.phone ?? "—"}</div>
@@ -404,19 +435,37 @@ export default function AdminUsersPage() {
             <div style={{ color: "#6b7280" }}>{teamName(u.teamId)}</div>
             <div>
               <input
-                key={u.customerLimit ?? "unlimited"}
+                key={u.activePoolLimit ?? "unlimited"}
                 className="field-input"
-                style={{ fontSize: 13, padding: "4px 8px", width: 70 }}
+                style={{ fontSize: 13, padding: "4px 8px", width: 60 }}
                 type="number"
                 min={0}
                 step={1}
-                defaultValue={u.customerLimit ?? ""}
+                defaultValue={u.activePoolLimit ?? ""}
                 placeholder="∞"
                 onBlur={(e) => {
                   const raw = e.target.value.trim();
                   const next = raw ? Number(raw) : null;
                   if (next !== null && (!Number.isInteger(next) || next < 0)) return;
-                  if (next !== u.customerLimit) updateUserCustomerLimit(u.id, next);
+                  if (next !== u.activePoolLimit) updateUserPoolLimit(u.id, "ACTIVE", next);
+                }}
+              />
+            </div>
+            <div>
+              <input
+                key={u.inactivePoolLimit ?? "unlimited"}
+                className="field-input"
+                style={{ fontSize: 13, padding: "4px 8px", width: 60 }}
+                type="number"
+                min={0}
+                step={1}
+                defaultValue={u.inactivePoolLimit ?? ""}
+                placeholder="∞"
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  const next = raw ? Number(raw) : null;
+                  if (next !== null && (!Number.isInteger(next) || next < 0)) return;
+                  if (next !== u.inactivePoolLimit) updateUserPoolLimit(u.id, "INACTIVE", next);
                 }}
               />
             </div>

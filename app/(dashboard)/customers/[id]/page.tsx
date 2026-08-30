@@ -20,6 +20,7 @@ export default function CustomerDetailPage() {
     updateCustomerProfile,
     updateCustomerRemark,
     reassignCustomer,
+    togglePool,
     deleteCustomer,
     addActivity,
     addTask,
@@ -73,6 +74,16 @@ export default function CustomerDetailPage() {
   const assignedUsers = assignedSlots
     .map(({ slot, userId }) => ({ slot, user: userId ? users.find((u) => u.id === userId) : undefined }))
     .filter((a): a is { slot: 1 | 2 | 3; user: NonNullable<typeof a.user> } => !!a.user);
+
+  function poolOf(slot: 1 | 2 | 3) {
+    return slot === 1 ? customer!.pool1 : slot === 2 ? customer!.pool2 : customer!.pool3;
+  }
+
+  function handleTogglePool(slot: 1 | 2 | 3, pool: "ACTIVE" | "INACTIVE") {
+    const next = pool === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    const result = togglePool(customer!.id, slot, next);
+    if (!result.ok) alert(result.error ?? "Could not change pool status.");
+  }
   const canSendWhatsApp = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const assignmentMessage = buildAssignmentMessage({
     customerName: customer.name,
@@ -158,7 +169,38 @@ export default function CustomerDetailPage() {
           <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
           <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <span>
-              {customer.phone} · Assigned: {assignedUsers.length > 0 ? assignedUsers.map(({ user }) => user.name).join(", ") : "—"}
+              {customer.phone} · Assigned:{" "}
+              {assignedUsers.length > 0 ? (
+                assignedUsers.map(({ slot, user }, i) => {
+                  const pool = poolOf(slot);
+                  const canToggle = currentUser.role === "ADMIN" || currentUser.id === user.id;
+                  const badgeStyle: React.CSSProperties = {
+                    marginLeft: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: "2px 8px",
+                    borderRadius: 20,
+                    border: "none",
+                    background: pool === "ACTIVE" ? "#e7f6ec" : "#eceef1",
+                    color: pool === "ACTIVE" ? "#1e7a41" : "#6b7280",
+                  };
+                  return (
+                    <span key={user.id}>
+                      {i > 0 && ", "}
+                      {user.name}
+                      {pool && (
+                        canToggle ? (
+                          <button type="button" onClick={() => handleTogglePool(slot, pool)} style={{ ...badgeStyle, cursor: "pointer" }}>
+                            {pool === "ACTIVE" ? "Active" : "Potential"}
+                          </button>
+                        ) : (
+                          <span style={badgeStyle}>{pool === "ACTIVE" ? "Active" : "Potential"}</span>
+                        )
+                      )}
+                    </span>
+                  );
+                })
+              ) : "—"}
             </span>
             {whatsAppTargets.map(({ user, link }) => (
               <a

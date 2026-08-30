@@ -20,6 +20,7 @@ import {
   Language,
   LeadSource,
   Notification,
+  PoolStatus,
   PropertyType,
   Purpose,
   Race,
@@ -33,8 +34,8 @@ import {
   User,
 } from "./types";
 
-function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; customer_limit: number | null }): User {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", customerLimit: row.customer_limit };
+function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; active_pool_limit: number | null; inactive_pool_limit: number | null }): User {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit };
 }
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
@@ -117,6 +118,12 @@ function mapCustomer(row: {
   assigned_to: string;
   assigned_to_2: string | null;
   assigned_to_3: string | null;
+  pool_1: PoolStatus;
+  pool_2: PoolStatus | null;
+  pool_3: PoolStatus | null;
+  pool_1_since: string | null;
+  pool_2_since: string | null;
+  pool_3_since: string | null;
   stage_id: string;
   source_id: string | null;
   area_id: string | null;
@@ -143,6 +150,12 @@ function mapCustomer(row: {
     assignedToUserId: row.assigned_to,
     assignedToUserId2: row.assigned_to_2,
     assignedToUserId3: row.assigned_to_3,
+    pool1: row.pool_1,
+    pool2: row.pool_2,
+    pool3: row.pool_3,
+    pool1Since: row.pool_1_since,
+    pool2Since: row.pool_2_since,
+    pool3Since: row.pool_3_since,
     stageId: row.stage_id,
     sourceId: row.source_id,
     areaId: row.area_id,
@@ -217,7 +230,9 @@ function mapActivity(row: {
     content: row.content,
     followUp: row.follow_up ?? "",
     author: usersById.get(row.user_id)?.name ?? "",
+    authorUserId: row.user_id,
     time: formatTimestamp(row.created_at),
+    createdAt: row.created_at,
   };
 }
 
@@ -269,11 +284,11 @@ interface Store {
 
   visibleCustomers: Customer[];
 
-  addUser: (input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
-  updateUser: (id: string, input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; active: boolean }) => Promise<{ ok?: boolean; error?: string }>;
+  addUser: (input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; activePoolLimit: number | null; inactivePoolLimit: number | null; password?: string }) => Promise<{ tempPassword?: string; error?: string }>;
+  updateUser: (id: string, input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; activePoolLimit: number | null; inactivePoolLimit: number | null; active: boolean }) => Promise<{ ok?: boolean; error?: string }>;
   updateUserRole: (id: string, role: Role) => void;
   updateUserTeam: (id: string, teamId: string | null) => void;
-  updateUserCustomerLimit: (id: string, customerLimit: number | null) => void;
+  updateUserPoolLimit: (id: string, pool: PoolStatus, limit: number | null) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
   resetUserPassword: (id: string, password?: string) => Promise<{ tempPassword?: string; error?: string }>;
 
@@ -341,6 +356,7 @@ interface Store {
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId: string; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
+  togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
@@ -557,6 +573,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  // Auto-removal for the inactive pool: any assignee slot (2 or 3 — slot 1
+  // can't be unassigned, see supabase/schema.sql) sitting in the inactive
+  // pool for 60+ days with no activity logged by that assignee gets
+  // cleared. No cron infra exists, so this runs as a compute-on-load sweep
+  // scoped to what the current session is allowed to touch: their own
+  // slots, or (for an admin) every slot.
+  // ponytail: compute-on-load sweep, not real-time. Upgrade to a cron/edge
+  // function sweep if sub-day precision ever matters.
+  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], forUserId: string, isAdmin: boolean) {
+    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const stale: { customerId: string; slot: 2 | 3 }[] = [];
+    for (const c of customersList) {
+      ([
+        { slot: 2 as const, pool: c.pool2, since: c.pool2Since, userId: c.assignedToUserId2 },
+        { slot: 3 as const, pool: c.pool3, since: c.pool3Since, userId: c.assignedToUserId3 },
+      ]).forEach(({ slot, pool, since, userId }) => {
+        if (pool !== "INACTIVE" || !userId || !since) return;
+        if (!isAdmin && userId !== forUserId) return;
+        const lastOwnActivity = activitiesList
+          .filter((a) => a.customerId === c.id && a.authorUserId === userId)
+          .reduce((max, a) => Math.max(max, new Date(a.createdAt).getTime()), 0);
+        const lastTouched = Math.max(new Date(since).getTime(), lastOwnActivity);
+        if (now - lastTouched > SIXTY_DAYS_MS) stale.push({ customerId: c.id, slot });
+      });
+    }
+    if (stale.length === 0) return;
+    setCustomers((prev) =>
+      prev.map((c) => {
+        const hit2 = stale.some((s) => s.customerId === c.id && s.slot === 2);
+        const hit3 = stale.some((s) => s.customerId === c.id && s.slot === 3);
+        if (!hit2 && !hit3) return c;
+        return {
+          ...c,
+          ...(hit2 ? { assignedToUserId2: null, pool2: null, pool2Since: null } : {}),
+          ...(hit3 ? { assignedToUserId3: null, pool3: null, pool3Since: null } : {}),
+        };
+      })
+    );
+    const supabase = createClient();
+    for (const { customerId, slot } of stale) {
+      const update = slot === 2
+        ? { assigned_to_2: null, pool_2: null, pool_2_since: null }
+        : { assigned_to_3: null, pool_3: null, pool_3_since: null };
+      supabase.from("customers").update(update).eq("id", customerId).then(() => {});
+    }
+  }
+
   async function loadTasks(): Promise<Task[]> {
     const supabase = createClient();
     const { data } = await supabase.from("tasks").select("*").order("created_at");
@@ -569,7 +633,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
-        const [, loadedUsers] = await Promise.all([
+        const loadResults = await Promise.all([
           loadTeams(),
           loadUsers(),
           loadAreas(),
@@ -591,11 +655,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadCustomers(),
           loadTasks(),
         ]);
-        await loadActivities(loadedUsers);
+        const loadedUsers = loadResults[1];
+        const loadedCustomers = loadResults[18];
+        const loadedActivities = await loadActivities(loadedUsers);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
+          sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -613,7 +680,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (error || !data.user) {
       return { ok: false, error: "Invalid email or password." };
     }
-    const [, loadedUsers] = await Promise.all([
+    const loadResults = await Promise.all([
       loadTeams(),
       loadUsers(),
       loadAreas(),
@@ -635,7 +702,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadCustomers(),
       loadTasks(),
     ]);
-    await loadActivities(loadedUsers);
+    const loadedUsers = loadResults[1];
+    const loadedCustomers = loadResults[18];
+    const loadedActivities = await loadActivities(loadedUsers);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -643,6 +712,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
+    sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
     return { ok: true };
   }
 
@@ -664,7 +734,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return customers.filter((c) => assigneeSlots(c).includes(currentUser.id));
   }, [customers, users, currentUser]);
 
-  async function addUser(input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; customerLimit: number | null; password?: string }) {
+  async function addUser(input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; activePoolLimit: number | null; inactivePoolLimit: number | null; password?: string }) {
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -678,7 +748,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { tempPassword: body.tempPassword as string };
   }
 
-  async function updateUser(id: string, input: { name: string; email: string; phone: string; ic: string | null; role: Role; teamId: string | null; customerLimit: number | null; active: boolean }) {
+  async function updateUser(id: string, input: { name: string; email: string; phone: string; ic: string | null; role: Role; teamId: string | null; activePoolLimit: number | null; inactivePoolLimit: number | null; active: boolean }) {
     const res = await fetch(`/api/admin/users/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -722,18 +792,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
-  function updateUserCustomerLimit(id: string, customerLimit: number | null) {
+  function updateUserPoolLimit(id: string, pool: PoolStatus, limit: number | null) {
     const target = users.find((u) => u.id === id);
     if (!target) return;
-    const prevLimit = target.customerLimit;
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, customerLimit } : u)));
+    const field = pool === "ACTIVE" ? "activePoolLimit" : "inactivePoolLimit";
+    const column = pool === "ACTIVE" ? "active_pool_limit" : "inactive_pool_limit";
+    const prevLimit = target[field];
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, [field]: limit } : u)));
     const supabase = createClient();
     supabase
       .from("profiles")
-      .update({ customer_limit: customerLimit })
+      .update({ [column]: limit })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, customerLimit: prevLimit } : u)));
+        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, [field]: prevLimit } : u)));
       });
   }
 
@@ -1229,12 +1301,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
-  function assignmentError(userId: string, excludeCustomerId?: string) {
+  function assignmentError(userId: string, pool: PoolStatus, excludeCustomerId?: string) {
     const user = users.find((u) => u.id === userId);
-    if (!user || user.customerLimit === null) return undefined;
-    const count = customers.filter((c) => c.id !== excludeCustomerId && assigneeSlots(c).includes(userId)).length;
-    if (count >= user.customerLimit) {
-      return `${user.name} is at their customer limit (${user.customerLimit}).`;
+    const limit = pool === "ACTIVE" ? user?.activePoolLimit : user?.inactivePoolLimit;
+    if (!user || limit === null || limit === undefined) return undefined;
+    const count = customers.filter((c) => {
+      if (c.id === excludeCustomerId) return false;
+      return (
+        (c.assignedToUserId === userId && c.pool1 === pool) ||
+        (c.assignedToUserId2 === userId && c.pool2 === pool) ||
+        (c.assignedToUserId3 === userId && c.pool3 === pool)
+      );
+    }).length;
+    if (count >= limit) {
+      const poolLabel = pool === "ACTIVE" ? "active" : "potential";
+      return `${user.name} is at their ${poolLabel} pool limit (${limit}).`;
     }
     return undefined;
   }
@@ -1243,7 +1324,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const assigneeIds = [input.assignedToUserId, input.assignedToUserId2, input.assignedToUserId3].filter((id): id is string => !!id);
     if (new Set(assigneeIds).size !== assigneeIds.length) return { ok: false, error: "The same person can't be assigned twice." };
     for (const id of assigneeIds) {
-      const error = assignmentError(id);
+      const error = assignmentError(id, "ACTIVE");
       if (error) return { ok: false, error };
     }
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
@@ -1259,6 +1340,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         assigned_to: input.assignedToUserId,
         assigned_to_2: input.assignedToUserId2 || null,
         assigned_to_3: input.assignedToUserId3 || null,
+        pool_1: "ACTIVE",
+        pool_2: input.assignedToUserId2 ? "ACTIVE" : null,
+        pool_3: input.assignedToUserId3 ? "ACTIVE" : null,
         stage_id: defaultStage.id,
         created_by: currentUserId,
         source_id: profile.sourceId,
@@ -1291,20 +1375,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (slot === 1 && !userId) return { ok: false, error: "Assignee 1 is required." };
     const slotKey = slot === 1 ? "assignedToUserId" : slot === 2 ? "assignedToUserId2" : "assignedToUserId3";
     const columnKey = slot === 1 ? "assigned_to" : slot === 2 ? "assigned_to_2" : "assigned_to_3";
+    const poolKey = slot === 1 ? "pool1" : slot === 2 ? "pool2" : "pool3";
+    const poolColumn = slot === 1 ? "pool_1" : slot === 2 ? "pool_2" : "pool_3";
+    const sinceKey = slot === 1 ? "pool1Since" : slot === 2 ? "pool2Since" : "pool3Since";
+    const sinceColumn = slot === 1 ? "pool_1_since" : slot === 2 ? "pool_2_since" : "pool_3_since";
     const otherSlotKeys = (["assignedToUserId", "assignedToUserId2", "assignedToUserId3"] as const).filter((k) => k !== slotKey);
     const otherSlots = otherSlotKeys.map((k) => customer[k]).filter((id): id is string => !!id);
     if (userId && otherSlots.includes(userId)) return { ok: false, error: "The same person can't be assigned twice." };
-    if (userId && customer[slotKey] !== userId) {
-      const error = assignmentError(userId, customerId);
+    const changing = customer[slotKey] !== userId;
+    if (userId && changing) {
+      const error = assignmentError(userId, "ACTIVE", customerId);
       if (error) return { ok: false, error };
     }
-    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [slotKey]: userId } : c)));
+    // a newly (re)assigned slot always starts in the active pool; clearing a slot clears its pool state too
+    const newPool: PoolStatus | null = userId ? "ACTIVE" : null;
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customerId
+          ? { ...c, [slotKey]: userId, ...(changing ? { [poolKey]: newPool, [sinceKey]: null } : {}) }
+          : c
+      )
+    );
     const supabase = createClient();
-    supabase.from("customers").update({ [columnKey]: userId }).eq("id", customerId).then(() => {});
+    const update: Record<string, string | null> = { [columnKey]: userId };
+    if (changing) {
+      update[poolColumn] = newPool;
+      update[sinceColumn] = null;
+    }
+    supabase.from("customers").update(update).eq("id", customerId).then(() => {});
     const assignee = userId ? users.find((u) => u.id === userId) : undefined;
     if (assignee) {
       createNotification(userId!, `${assignee.name} was assigned ${customer.name}.`);
     }
+    return { ok: true };
+  }
+
+  function togglePool(customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) {
+    const customer = customers.find((c) => c.id === customerId);
+    if (!customer) return { ok: false, error: "Customer not found." };
+    const userId = slot === 1 ? customer.assignedToUserId : slot === 2 ? customer.assignedToUserId2 : customer.assignedToUserId3;
+    if (!userId) return { ok: false, error: "This slot has no assignee." };
+    if (currentUser?.role !== "ADMIN" && currentUser?.id !== userId) {
+      return { ok: false, error: "Only the assignee or an admin can change this pool status." };
+    }
+    if (pool === "INACTIVE") {
+      const error = assignmentError(userId, "INACTIVE", customerId);
+      if (error) return { ok: false, error };
+    }
+    const poolKey = slot === 1 ? "pool1" : slot === 2 ? "pool2" : "pool3";
+    const poolColumn = slot === 1 ? "pool_1" : slot === 2 ? "pool_2" : "pool_3";
+    const sinceKey = slot === 1 ? "pool1Since" : slot === 2 ? "pool2Since" : "pool3Since";
+    const sinceColumn = slot === 1 ? "pool_1_since" : slot === 2 ? "pool_2_since" : "pool_3_since";
+    const since = pool === "INACTIVE" ? new Date().toISOString() : null;
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [poolKey]: pool, [sinceKey]: since } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ [poolColumn]: pool, [sinceColumn]: since }).eq("id", customerId).then(() => {});
     return { ok: true };
   }
 
@@ -1466,7 +1591,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateUser,
     updateUserRole,
     updateUserTeam,
-    updateUserCustomerLimit,
+    updateUserPoolLimit,
     deleteUser,
     resetUserPassword,
     addTeam,
@@ -1524,6 +1649,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     moveStage,
     deleteStage,
     reassignCustomer,
+    togglePool,
     deleteCustomer,
     updateCustomerStage,
     updateCustomerProfile,

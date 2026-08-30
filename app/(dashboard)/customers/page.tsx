@@ -66,10 +66,12 @@ export default function CustomersPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
+  const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
 
   const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const canExport = currentUser?.role === "ADMIN";
   const showAssignedTo = currentUser?.role !== "SALESPERSON";
+  const isSalesperson = currentUser?.role === "SALESPERSON";
 
   const filteredCustomers = useMemo(() => {
     const name = searchName.trim().toLowerCase();
@@ -80,6 +82,14 @@ export default function CustomersPage() {
       if (phone && !c.phone.toLowerCase().includes(phone)) return false;
       if (searchStageId && c.stageId !== searchStageId) return false;
       if (showAssignedTo && searchAssignedTo && !assigneeIds(c).includes(searchAssignedTo)) return false;
+      if (isSalesperson && currentUser) {
+        const myPool =
+          c.assignedToUserId === currentUser.id ? c.pool1 :
+          c.assignedToUserId2 === currentUser.id ? c.pool2 :
+          c.assignedToUserId3 === currentUser.id ? c.pool3 :
+          null;
+        if (myPool !== poolTab) return false;
+      }
       if (keyword) {
         const hit = activities.some(
           (a) => a.customerId === c.id && (a.content.toLowerCase().includes(keyword) || a.followUp.toLowerCase().includes(keyword))
@@ -88,7 +98,7 @@ export default function CustomersPage() {
       }
       return true;
     });
-  }, [visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo]);
+  }, [visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo, isSalesperson, currentUser, poolTab]);
 
   if (!currentUser) return null;
 
@@ -203,6 +213,21 @@ export default function CustomersPage() {
 
       {showExportModal && (
         <ExportModal onClose={() => setShowExportModal(false)} onExport={runExport} />
+      )}
+
+      {isSalesperson && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {(["ACTIVE", "INACTIVE"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={poolTab === p ? "btn btn-primary" : "btn btn-outline"}
+              onClick={() => setPoolTab(p)}
+            >
+              {p === "ACTIVE" ? "Active Pool" : "Potential Pool"}
+            </button>
+          ))}
+        </div>
       )}
 
       <div className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>

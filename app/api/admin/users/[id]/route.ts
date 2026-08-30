@@ -40,12 +40,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { name, email, phone, ic, role, teamId, customerLimit, active } = await request.json();
+  const { name, email, phone, ic, role, teamId, activePoolLimit, inactivePoolLimit, active } = await request.json();
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !role) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
-  if (customerLimit !== null && customerLimit !== undefined && (!Number.isInteger(customerLimit) || customerLimit < 0)) {
-    return NextResponse.json({ error: "Customer limit must be a non-negative whole number." }, { status: 400 });
+  for (const limit of [activePoolLimit, inactivePoolLimit]) {
+    if (limit !== null && limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
+      return NextResponse.json({ error: "Pool limits must be non-negative whole numbers." }, { status: 400 });
+    }
   }
 
   const supabase = await createServerClient();
@@ -81,7 +83,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ic: (ic || "").trim() || null,
       role,
       team_id: teamId || null,
-      customer_limit: customerLimit ?? null,
+      active_pool_limit: activePoolLimit ?? null,
+      inactive_pool_limit: inactivePoolLimit ?? null,
       status: active ? "ACTIVE" : "INACTIVE",
     })
     .eq("id", id);
