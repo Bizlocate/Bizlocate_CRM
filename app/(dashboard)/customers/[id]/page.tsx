@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { ACTIVITY_STYLES, Activity, ActivityType } from "@/lib/types";
+import { ACTIVITY_STYLES, Activity, ActivityType, PROFILE_FIELD_LABELS } from "@/lib/types";
 import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
 export default function CustomerDetailPage() {
@@ -15,9 +15,11 @@ export default function CustomerDetailPage() {
     users,
     stages,
     activities,
+    changeLog,
     tasks,
     updateCustomerStage,
     updateCustomerProfile,
+    updateCustomerIdentity,
     updateCustomerRemark,
     reassignCustomer,
     togglePool,
@@ -58,10 +60,14 @@ export default function CustomerDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [businessNameDraft, setBusinessNameDraft] = useState(customer?.businessName ?? "");
   const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
+  const [nameDraft, setNameDraft] = useState(customer?.name ?? "");
+  const [phoneDraft, setPhoneDraft] = useState(customer?.phone ?? "");
 
   useEffect(() => {
     setBusinessNameDraft(customer?.businessName ?? "");
     setRemarkDraft(customer?.remark ?? "");
+    setNameDraft(customer?.name ?? "");
+    setPhoneDraft(customer?.phone ?? "");
   }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!currentUser || !customer) return null;
@@ -104,6 +110,7 @@ export default function CustomerDetailPage() {
   const canEditProfile =
     currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
+  const canEditIdentity = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const filteredSubAreas = subAreas.filter((s) => s.areaId === customer.areaId);
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === customer.businessIndustryId);
   const filteredTypes = businessTagTypes.filter((t) => t.categoryId === customer.businessCategoryId);
@@ -201,10 +208,39 @@ export default function CustomerDetailPage() {
       </a>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14 }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
+          {canEditIdentity ? (
+            <input
+              className="field-input"
+              style={{ fontSize: 22, fontWeight: 700, padding: "2px 8px", width: "auto", minWidth: 220 }}
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={() => {
+                if (nameDraft.trim() && nameDraft !== customer.name) {
+                  updateCustomerIdentity(customer.id, { name: nameDraft.trim() });
+                }
+              }}
+            />
+          ) : (
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
+          )}
           <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <span>
-              {customer.phone} · Assigned:{" "}
+              {canEditIdentity ? (
+                <input
+                  className="field-input"
+                  style={{ width: 130, display: "inline-block", padding: "2px 6px", fontSize: 13.5 }}
+                  value={phoneDraft}
+                  onChange={(e) => setPhoneDraft(e.target.value)}
+                  onBlur={() => {
+                    if (phoneDraft !== customer.phone) {
+                      updateCustomerIdentity(customer.id, { phone: phoneDraft });
+                    }
+                  }}
+                />
+              ) : (
+                customer.phone
+              )}
+              {" "}· Assigned:{" "}
               {assignedUsers.length > 0 ? (
                 assignedUsers.map(({ slot, user }, i) => {
                   const pool = poolOf(slot);
@@ -383,6 +419,31 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      {canEditIdentity && (
+        <div className="card" style={{ marginTop: 20, padding: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Change History</div>
+          {(() => {
+            const entries = changeLog.filter((l) => l.customerId === customer.id);
+            if (entries.length === 0) {
+              return <div style={{ fontSize: 13.5, color: "#9aa0ab" }}>No changes logged yet.</div>;
+            }
+            return entries.map((l) => (
+              <div key={l.id} style={{ padding: "10px 0", borderBottom: "1px solid #eef0f2", fontSize: 13 }}>
+                <span style={{ color: "#9aa0ab" }}>{l.time}</span>
+                {" · "}
+                <span style={{ fontWeight: 600 }}>{l.changedByName}</span>
+                {" · "}
+                <span>{PROFILE_FIELD_LABELS[l.fieldKey] ?? l.fieldKey}</span>
+                {": "}
+                <span style={{ color: "#6b7280" }}>{l.oldValue || "—"}</span>
+                {" → "}
+                <span>{l.newValue || "—"}</span>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, marginTop: 28 }}>
         <div>
