@@ -43,12 +43,13 @@ Two new nullable columns, no new tables:
   customer (can't assign the same person twice — existing rule).
 - **If the picked candidate is at their active-pool limit:** try the next
   candidate in rotation order instead of giving up on the customer
-  entirely (existing `assignmentError`/`reassignCustomer` already reports
-  this as a plain `{ ok:false, error }` — the sweep just moves to the next
-  name in the same ordered list rather than failing the whole slot).
-  Advance the team's pointer only to whoever actually got assigned, so the
-  rotation naturally continues from there next time — full members are
-  skipped for this assignment, not permanently skipped forever.
+  entirely (checked the same way `assignmentError` checks it — count that
+  candidate's current `ACTIVE`-pool customers against their
+  `activePoolLimit` — the sweep just moves to the next name in the same
+  ordered list rather than failing the whole slot). Advance the team's
+  pointer only to whoever actually got assigned, so the rotation
+  naturally continues from there next time — full members are skipped for
+  this assignment, not permanently skipped forever.
 - If every candidate is at their limit (or the pool is empty after
   excluding slot 1/3), skip this customer for now — it's picked up again
   on a later sweep once someone has room.
@@ -60,14 +61,23 @@ project, so none is added:
 
 - On store load (and on login), after customers/teams/areas/users are
   loaded, for every customer meeting the trigger conditions, resolve the
-  next eligible candidate as above and call the **existing**
-  `reassignCustomer(customerId, 2, userId)` — reused as-is, not
-  reimplemented. That function already handles the dedup check, the
-  active-pool-limit check, setting the new slot's pool to `ACTIVE`, the DB
-  write, and sending the existing assignment notification
-  (`createNotification`). Then update `teams.last_auto_assigned_user_id`
-  to the assigned user (local state + one `customers`-style Supabase
-  update on `teams`).
+  next eligible candidate as above and assign them to slot 2: set
+  `assignedToUserId2`/`pool2 = ACTIVE`/`pool2Since = null` (local state +
+  one `customers` update), send the existing assignment notification
+  (`createNotification`, already used by manual reassignment), and update
+  `teams.last_auto_assigned_user_id` to the assigned user (local state +
+  one `teams` update).
+  **Not** a call to the existing `reassignCustomer`/`assignmentError`
+  functions, even though their logic is what this mirrors: both read the
+  `customers` state variable from closure, which is still the *stale,
+  pre-load* value (often `[]`) at the exact point in the initial-load
+  effect (and in `login()`) where this sweep needs to run — before
+  React has re-rendered with the freshly-loaded data. `sweepStalePool`
+  (the existing 60-day pool sweep) avoids this same trap by only ever
+  operating on the snapshot arrays passed into it and functional
+  `setState` updaters, never the closure variables — this sweep follows
+  that exact precedent instead of reusing the two closure-reading
+  functions.
 - `ponytail: compute-on-load sweep, not real-time. Same accepted
   imprecision as the pool sweep — upgrade path is a real cron/edge
   function sweep if sub-day precision ever matters.`
