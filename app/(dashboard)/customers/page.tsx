@@ -2,20 +2,73 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
 import { useStore } from "@/lib/store";
-import { STAGE_STYLES } from "@/lib/types";
+import { STAGE_STYLES, type Customer } from "@/lib/types";
+
+type LookupItem = { id: string; name: string };
+
+function nameOf(list: LookupItem[], id: string | null): string {
+  return list.find((x) => x.id === id)?.name ?? "";
+}
+
+const EXPORT_FIELDS: { key: string; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "phone", label: "Phone" },
+  { key: "stage", label: "Stage" },
+  { key: "assignedTo", label: "Assigned To" },
+  { key: "source", label: "Source" },
+  { key: "area", label: "Area" },
+  { key: "subArea", label: "Subarea" },
+  { key: "propertyType", label: "Property Type" },
+  { key: "purpose", label: "Purpose" },
+  { key: "businessIndustry", label: "Business Industry" },
+  { key: "businessCategory", label: "Business Category" },
+  { key: "businessType", label: "Business Type" },
+  { key: "race", label: "Race" },
+  { key: "language", label: "Language" },
+  { key: "businessName", label: "Business Name" },
+  { key: "firsttimeBranch", label: "Firsttime/Branch" },
+  { key: "targetRace", label: "Target Race" },
+  { key: "targetType", label: "Target Type" },
+  { key: "budget", label: "Budget" },
+  { key: "remark", label: "Remark" },
+];
 
 export default function CustomersPage() {
   const router = useRouter();
-  const { currentUser, visibleCustomers, users, stages, activities } = useStore();
+  const {
+    currentUser,
+    visibleCustomers,
+    users,
+    stages,
+    activities,
+    leadSources,
+    areas,
+    subAreas,
+    propertyTypes,
+    purposes,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
+    races,
+    languages,
+    firsttimeBranchTypes,
+    targetRaces,
+    targetTypes,
+    budgets,
+  } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [searchName, setSearchName] = useState("");
   const [searchPhone, setSearchPhone] = useState("");
   const [searchStageId, setSearchStageId] = useState("");
   const [searchAssignedTo, setSearchAssignedTo] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+  const canExport = currentUser?.role === "ADMIN";
   const showAssignedTo = currentUser?.role !== "SALESPERSON";
 
   const filteredCustomers = useMemo(() => {
@@ -54,19 +107,102 @@ export default function CustomersPage() {
       .join(", ");
   }
 
+  const fieldResolvers: Record<string, (c: Customer) => string> = {
+    name: (c) => c.name,
+    phone: (c) => c.phone,
+    stage: (c) => stageName(c.stageId),
+    assignedTo: (c) => assigneeNames(c),
+    source: (c) => nameOf(leadSources, c.sourceId),
+    area: (c) => nameOf(areas, c.areaId),
+    subArea: (c) => nameOf(subAreas, c.subAreaId),
+    propertyType: (c) => nameOf(propertyTypes, c.propertyTypeId),
+    purpose: (c) => nameOf(purposes, c.purposeId),
+    businessIndustry: (c) => nameOf(businessTagIndustries, c.businessIndustryId),
+    businessCategory: (c) => nameOf(businessTagCategories, c.businessCategoryId),
+    businessType: (c) => nameOf(businessTagTypes, c.businessTypeId),
+    race: (c) => nameOf(races, c.raceId),
+    language: (c) => nameOf(languages, c.languageId),
+    businessName: (c) => c.businessName,
+    firsttimeBranch: (c) => nameOf(firsttimeBranchTypes, c.firsttimeBranchId),
+    targetRace: (c) => nameOf(targetRaces, c.targetRaceId),
+    targetType: (c) => nameOf(targetTypes, c.targetTypeId),
+    budget: (c) => nameOf(budgets, c.budgetId),
+    remark: (c) => c.remark,
+  };
+
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      const allSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => prev.has(c.id));
+      if (allSelected) return new Set();
+      return new Set(filteredCustomers.map((c) => c.id));
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function runExport(format: "csv" | "xlsx", fieldKeys: string[]) {
+    const rows = visibleCustomers.filter((c) => selectedIds.has(c.id));
+    const data = rows.map((c) => {
+      const row: Record<string, string> = {};
+      for (const key of fieldKeys) {
+        const label = EXPORT_FIELDS.find((f) => f.key === key)?.label ?? key;
+        row[label] = fieldResolvers[key](c);
+      }
+      return row;
+    });
+    const sheet = XLSX.utils.json_to_sheet(data);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    if (format === "csv") {
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customers-export-${dateStr}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, sheet, "Customers");
+      XLSX.writeFile(book, `customers-export-${dateStr}.xlsx`);
+    }
+    setShowExportModal(false);
+  }
+
+  const gridCols = `${canExport ? "32px " : ""}${showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr"}`;
+  const allFilteredSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => selectedIds.has(c.id));
+
   return (
     <div style={{ padding: "28px 32px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Customers</div>
-        {canCreate && (
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-            + New Customer
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 10 }}>
+          {canExport && selectedIds.size > 0 && (
+            <button className="btn btn-outline" onClick={() => setShowExportModal(true)}>
+              Export ({selectedIds.size})
+            </button>
+          )}
+          {canCreate && (
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+              + New Customer
+            </button>
+          )}
+        </div>
       </div>
 
       {showForm && canCreate && (
         <NewCustomerForm onClose={() => setShowForm(false)} />
+      )}
+
+      {showExportModal && (
+        <ExportModal onClose={() => setShowExportModal(false)} onExport={runExport} />
       )}
 
       <div className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -117,7 +253,7 @@ export default function CustomersPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr",
+            gridTemplateColumns: gridCols,
             padding: "12px 20px",
             background: "#f7f7f8",
             borderBottom: "1px solid #e2e4e9",
@@ -128,6 +264,11 @@ export default function CustomersPage() {
             letterSpacing: ".03em",
           }}
         >
+          {canExport && (
+            <div>
+              <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
+            </div>
+          )}
           <div>Name</div>
           <div>Phone</div>
           <div>Stage</div>
@@ -145,7 +286,7 @@ export default function CustomersPage() {
               onClick={() => router.push(`/customers/${c.id}`)}
               style={{
                 display: "grid",
-                gridTemplateColumns: showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr",
+                gridTemplateColumns: gridCols,
                 padding: "14px 20px",
                 borderBottom: "1px solid #eef0f2",
                 alignItems: "center",
@@ -153,6 +294,11 @@ export default function CustomersPage() {
                 cursor: "pointer",
               }}
             >
+              {canExport && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleOne(c.id)} />
+                </div>
+              )}
               <div style={{ fontWeight: 500 }}>{c.name}</div>
               <div style={{ color: "#6b7280" }}>{c.phone}</div>
               <div>
@@ -174,6 +320,72 @@ export default function CustomersPage() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ExportModal({
+  onClose,
+  onExport,
+}: {
+  onClose: () => void;
+  onExport: (format: "csv" | "xlsx", fieldKeys: string[]) => void;
+}) {
+  const [format, setFormat] = useState<"csv" | "xlsx">("csv");
+  const [fieldKeys, setFieldKeys] = useState<Set<string>>(new Set(EXPORT_FIELDS.map((f) => f.key)));
+
+  function toggleField(key: string) {
+    setFieldKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="card modal-card" style={{ maxWidth: 480 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Export Customers</div>
+          <button className="btn btn-outline" type="button" onClick={onClose}>×</button>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Format</label>
+          <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+              <input type="radio" checked={format === "csv"} onChange={() => setFormat("csv")} /> CSV
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+              <input type="radio" checked={format === "xlsx"} onChange={() => setFormat("xlsx")} /> Excel (.xlsx)
+            </label>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Fields</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: 4, maxHeight: 260, overflowY: "auto" }}>
+            {EXPORT_FIELDS.map((f) => (
+              <label key={f.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+                <input type="checkbox" checked={fieldKeys.has(f.key)} onChange={() => toggleField(f.key)} /> {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={fieldKeys.size === 0}
+            onClick={() => onExport(format, EXPORT_FIELDS.map((f) => f.key).filter((k) => fieldKeys.has(k)))}
+          >
+            Export
+          </button>
+          <button className="btn btn-outline" type="button" onClick={onClose}>Cancel</button>
+        </div>
       </div>
     </div>
   );
