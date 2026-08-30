@@ -10,7 +10,6 @@ export default function CustomersPage() {
   const { currentUser, visibleCustomers, users, stages, activities } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [searchName, setSearchName] = useState("");
-  const [searchEmail, setSearchEmail] = useState("");
   const [searchPhone, setSearchPhone] = useState("");
   const [searchStageId, setSearchStageId] = useState("");
   const [searchAssignedTo, setSearchAssignedTo] = useState("");
@@ -21,12 +20,10 @@ export default function CustomersPage() {
 
   const filteredCustomers = useMemo(() => {
     const name = searchName.trim().toLowerCase();
-    const email = searchEmail.trim().toLowerCase();
     const phone = searchPhone.trim().toLowerCase();
     const keyword = searchKeyword.trim().toLowerCase();
     return visibleCustomers.filter((c) => {
       if (name && !c.name.toLowerCase().includes(name)) return false;
-      if (email && !c.email.toLowerCase().includes(email)) return false;
       if (phone && !c.phone.toLowerCase().includes(phone)) return false;
       if (searchStageId && c.stageId !== searchStageId) return false;
       if (showAssignedTo && searchAssignedTo && !assigneeIds(c).includes(searchAssignedTo)) return false;
@@ -38,7 +35,7 @@ export default function CustomersPage() {
       }
       return true;
     });
-  }, [visibleCustomers, activities, searchName, searchEmail, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo]);
+  }, [visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo]);
 
   if (!currentUser) return null;
 
@@ -77,10 +74,6 @@ export default function CustomersPage() {
           <label className="field-label">Name</label>
           <input className="field-input" value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Search name" />
         </div>
-        <div style={{ flex: "1 1 180px" }}>
-          <label className="field-label">Email</label>
-          <input className="field-input" value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)} placeholder="Search email" />
-        </div>
         <div style={{ flex: "1 1 140px" }}>
           <label className="field-label">Phone</label>
           <input className="field-input" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} placeholder="Search phone" />
@@ -110,7 +103,6 @@ export default function CustomersPage() {
           type="button"
           onClick={() => {
             setSearchName("");
-            setSearchEmail("");
             setSearchPhone("");
             setSearchStageId("");
             setSearchAssignedTo("");
@@ -125,7 +117,7 @@ export default function CustomersPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: showAssignedTo ? "2.2fr 2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 2fr 1.3fr 1fr 0.4fr",
+            gridTemplateColumns: showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr",
             padding: "12px 20px",
             background: "#f7f7f8",
             borderBottom: "1px solid #e2e4e9",
@@ -137,7 +129,6 @@ export default function CustomersPage() {
           }}
         >
           <div>Name</div>
-          <div>Email</div>
           <div>Phone</div>
           <div>Stage</div>
           {showAssignedTo && <div>Assigned To</div>}
@@ -154,7 +145,7 @@ export default function CustomersPage() {
               onClick={() => router.push(`/customers/${c.id}`)}
               style={{
                 display: "grid",
-                gridTemplateColumns: showAssignedTo ? "2.2fr 2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 2fr 1.3fr 1fr 0.4fr",
+                gridTemplateColumns: showAssignedTo ? "2.2fr 1.3fr 1fr 1.6fr 0.4fr" : "2.2fr 1.3fr 1fr 0.4fr",
                 padding: "14px 20px",
                 borderBottom: "1px solid #eef0f2",
                 alignItems: "center",
@@ -163,7 +154,6 @@ export default function CustomersPage() {
               }}
             >
               <div style={{ fontWeight: 500 }}>{c.name}</div>
-              <div style={{ color: "#6b7280" }}>{c.email}</div>
               <div style={{ color: "#6b7280" }}>{c.phone}</div>
               <div>
                 <span
@@ -222,7 +212,6 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     fieldRequirements,
   } = useStore();
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const activeUsers = users.filter((u) => u.active);
   const [assignedToUserId, setAssignedToUserId] = useState(activeUsers[0]?.id ?? "");
@@ -294,7 +283,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     setSubmitting(true);
     const result = await addCustomer({
       name,
-      email,
+      email: "",
       phone,
       assignedToUserId,
       assignedToUserId2: assignedToUserId2 || null,
@@ -353,10 +342,6 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           <FormField>
             <label className="field-label">Phone<Asterisk fieldKey="phone" /></label>
             <input className="field-input" style={fieldStyle("phone")} onFocus={() => clearInvalid("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </FormField>
-          <FormField>
-            <label className="field-label">Email</label>
-            <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </FormField>
         </FormRow>
 

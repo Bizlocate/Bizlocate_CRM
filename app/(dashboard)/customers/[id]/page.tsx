@@ -158,7 +158,7 @@ export default function CustomerDetailPage() {
           <div style={{ fontSize: 22, fontWeight: 700 }}>{customer.name}</div>
           <div style={{ fontSize: 13.5, color: "#6b7280", marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <span>
-              {customer.email} · {customer.phone} · Assigned: {assignedUsers.length > 0 ? assignedUsers.map(({ user }) => user.name).join(", ") : "—"}
+              {customer.phone} · Assigned: {assignedUsers.length > 0 ? assignedUsers.map(({ user }) => user.name).join(", ") : "—"}
             </span>
             {whatsAppTargets.map(({ user, link }) => (
               <a
