@@ -39,12 +39,12 @@ function mapProfile(row: { id: string; name: string; email: string; phone: strin
   return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit };
 }
 
-function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
-  return { id: row.id, name: row.name, managerId: row.manager_id };
+function mapTeam(row: { id: string; name: string; manager_id: string | null; last_auto_assigned_user_id: string | null }): Team {
+  return { id: row.id, name: row.name, managerId: row.manager_id, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
 }
 
-function mapArea(row: { id: string; name: string }): Area {
-  return { id: row.id, name: row.name };
+function mapArea(row: { id: string; name: string; team_id: string | null }): Area {
+  return { id: row.id, name: row.name, teamId: row.team_id };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
@@ -326,6 +326,7 @@ interface Store {
 
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
+  updateAreaTeam: (id: string, teamId: string | null) => void;
   deleteArea: (id: string) => void;
   addSubArea: (areaId: string, name: string) => void;
   updateSubArea: (id: string, name: string) => void;
@@ -665,6 +666,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Auto second-assignment: 3 days after a customer is created (slot 1
+  // already assigned), if slot 2 is still empty, round-robin the next
+  // active SALESPERSON from the team that owns the customer's area into
+  // slot 2. Deliberately does NOT call reassignCustomer/assignmentError —
+  // both read `customers` from closure, which is still stale at the exact
+  // point in the initial-load effect (and in login()) where this sweep
+  // runs, before React has re-rendered with the freshly-loaded data.
+  // Operates only on the snapshot arrays passed in and functional setState
+  // updaters, same discipline sweepStalePool already follows.
+  // Admin-only: teams' RLS only allows ADMIN to update
+  // last_auto_assigned_user_id, so a non-admin session never attempts
+  // this (mirrors sweepStalePool's own isAdmin branch).
+  // ponytail: compute-on-load sweep, not real-time — same accepted
+  // imprecision as the pool sweep. Upgrade to a cron/edge function sweep
+  // if sub-day precision ever matters.
+  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], isAdmin: boolean) {
+    if (!isAdmin) return;
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const supabase = createClient();
+    for (const c of customersList) {
+      if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
+      if (now - new Date(c.createdAt).getTime() < THREE_DAYS_MS) continue;
+      const area = areasList.find((a) => a.id === c.areaId);
+      if (!area?.teamId) continue;
+      const team = teamsList.find((t) => t.id === area.teamId);
+      if (!team) continue;
+      const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
+      const candidates = usersList
+        .filter((u) => u.active && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      if (candidates.length === 0) continue;
+      const lastIndex = candidates.findIndex((u) => u.id === team.lastAutoAssignedUserId);
+      const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
+      let winner: User | undefined;
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[(startIndex + i) % candidates.length];
+        const limit = candidate.activePoolLimit;
+        if (limit !== null && limit !== undefined) {
+          const activeCount = customersList.filter((other) =>
+            (other.assignedToUserId === candidate.id && other.pool1 === "ACTIVE") ||
+            (other.assignedToUserId2 === candidate.id && other.pool2 === "ACTIVE") ||
+            (other.assignedToUserId3 === candidate.id && other.pool3 === "ACTIVE")
+          ).length;
+          if (activeCount >= limit) continue;
+        }
+        winner = candidate;
+        break;
+      }
+      if (!winner) continue;
+      const winnerId = winner.id;
+      const winnerName = winner.name;
+      setCustomers((prev) =>
+        prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null } : row))
+      );
+      supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null }).eq("id", c.id).then(() => {});
+      setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, lastAutoAssignedUserId: winnerId } : t)));
+      supabase.from("teams").update({ last_auto_assigned_user_id: winnerId }).eq("id", team.id).then(() => {});
+      createNotification(winnerId, `${winnerName} was assigned ${c.name}.`);
+    }
+  }
+
   async function loadTasks(): Promise<Task[]> {
     const supabase = createClient();
     const { data } = await supabase.from("tasks").select("*").order("created_at");
@@ -708,6 +771,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -759,6 +823,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, profile.role === "ADMIN");
     return { ok: true };
   }
 
@@ -923,6 +988,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, name } : a)));
     const supabase = createClient();
     supabase.from("areas").update({ name }).eq("id", id).then(() => {});
+  }
+
+  function updateAreaTeam(id: string, teamId: string | null) {
+    const target = areas.find((a) => a.id === id);
+    if (!target) return;
+    const prevTeamId = target.teamId;
+    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, teamId } : a)));
+    const supabase = createClient();
+    supabase
+      .from("areas")
+      .update({ team_id: teamId })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, teamId: prevTeamId } : a)));
+      });
   }
 
   function deleteArea(id: string) {
@@ -1735,6 +1815,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteTeam,
     addArea,
     updateArea,
+    updateAreaTeam,
     deleteArea,
     addSubArea,
     updateSubArea,
