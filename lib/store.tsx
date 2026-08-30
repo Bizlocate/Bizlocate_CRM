@@ -13,6 +13,7 @@ import {
   BusinessTagIndustry,
   BusinessTagType,
   Customer,
+  CustomerChangeLogEntry,
   CsvBusinessTagPreview,
   CsvPreview,
   FieldRequirement,
@@ -240,6 +241,28 @@ function mapActivity(row: {
   };
 }
 
+function mapChangeLog(row: {
+  id: string;
+  customer_id: string;
+  field_key: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_by: string;
+  created_at: string;
+}, usersById: Map<string, User>): CustomerChangeLogEntry {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    fieldKey: row.field_key,
+    oldValue: row.old_value,
+    newValue: row.new_value,
+    changedByName: usersById.get(row.changed_by)?.name ?? "",
+    changedByUserId: row.changed_by,
+    time: formatTimestamp(row.created_at),
+    createdAt: row.created_at,
+  };
+}
+
 function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
   return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
 }
@@ -278,6 +301,7 @@ interface Store {
   stages: Stage[];
   customers: Customer[];
   activities: Activity[];
+  changeLog: CustomerChangeLogEntry[];
   tasks: Task[];
   notifications: Notification[];
   currentUser: User | null;
@@ -364,6 +388,7 @@ interface Store {
   deleteCustomer: (customerId: string) => void;
   updateCustomerStage: (customerId: string, stageId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
+  updateCustomerIdentity: (customerId: string, patch: { name?: string; phone?: string }) => void;
   updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
@@ -399,6 +424,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -577,6 +603,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadChangeLog(usersList: User[]): Promise<CustomerChangeLogEntry[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("customer_change_log").select("*").order("created_at", { ascending: false });
+    const usersById = new Map(usersList.map((u) => [u.id, u]));
+    const mapped = (data ?? []).map((row) => mapChangeLog(row, usersById));
+    setChangeLog(mapped);
+    return mapped;
+  }
+
   // Auto-removal for the inactive pool: any assignee slot (1, 2, or 3 — all
   // three are nullable now that a customer can go unassigned) sitting in
   // the inactive pool for 60+ days with no activity logged by that
@@ -667,6 +702,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedUsers = loadResults[1];
         const loadedCustomers = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
+        await loadChangeLog(loadedUsers);
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
@@ -714,6 +750,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedUsers = loadResults[1];
     const loadedCustomers = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
+    await loadChangeLog(loadedUsers);
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -1447,6 +1484,75 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("customers").delete().eq("id", customerId).then(() => {});
   }
 
+  // Business-profile field change log: resolves a raw stored value (a
+  // lookup id, or a plain string for name/phone/businessName/remark) to
+  // the human-readable text that gets written to customer_change_log, so
+  // the log stays readable even if a lookup entry is later renamed.
+  function resolveProfileFieldDisplay(key: string, value: unknown): string {
+    if (value === null || value === undefined || value === "") return "";
+    const str = String(value);
+    const lookupByCamelKey: Record<string, { id: string; name: string }[]> = {
+      sourceId: leadSources,
+      areaId: areas,
+      subAreaId: subAreas,
+      propertyTypeId: propertyTypes,
+      purposeId: purposes,
+      businessIndustryId: businessTagIndustries,
+      businessCategoryId: businessTagCategories,
+      businessTypeId: businessTagTypes,
+      raceId: races,
+      languageId: languages,
+      firsttimeBranchId: firsttimeBranchTypes,
+      targetRaceId: targetRaces,
+      targetTypeId: targetTypes,
+      budgetId: budgets,
+    };
+    const list = lookupByCamelKey[key];
+    if (list) return list.find((x) => x.id === str)?.name ?? str;
+    return str;
+  }
+
+  // Shared by updateCustomerProfile / updateCustomerRemark / updateCustomerIdentity:
+  // diffs `patch` (camelCase keys) against `before` (the pre-update Customer),
+  // resolves each changed field to display text, and inserts one
+  // customer_change_log row per field that actually changed.
+  // `columnMap` maps each patch key to its DB column name (used as field_key).
+  function logProfileChanges(
+    customerId: string,
+    columnMap: Record<string, string>,
+    before: Record<string, unknown>,
+    patch: Record<string, unknown>
+  ) {
+    if (!currentUser) return;
+    const rows: { customer_id: string; changed_by: string; field_key: string; old_value: string | null; new_value: string | null }[] = [];
+    for (const [key, newRaw] of Object.entries(patch)) {
+      const column = columnMap[key];
+      if (!column) continue;
+      const oldDisplay = resolveProfileFieldDisplay(key, before[key]);
+      const newDisplay = resolveProfileFieldDisplay(key, newRaw === "" ? null : newRaw);
+      if (oldDisplay === newDisplay) continue;
+      rows.push({
+        customer_id: customerId,
+        changed_by: currentUser.id,
+        field_key: column,
+        old_value: oldDisplay || null,
+        new_value: newDisplay || null,
+      });
+    }
+    if (rows.length === 0) return;
+    const supabase = createClient();
+    supabase
+      .from("customer_change_log")
+      .insert(rows)
+      .select()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          const usersById = new Map(users.map((u) => [u.id, u]));
+          setChangeLog((prev) => [...data.map((row) => mapChangeLog(row, usersById)), ...prev]);
+        }
+      });
+  }
+
   function updateCustomerStage(customerId: string, stageId: string) {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, stageId } : c)));
     const supabase = createClient();
@@ -1454,6 +1560,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
+    const before = customers.find((c) => c.id === customerId);
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
     const columnMap: Record<string, string> = {
       sourceId: "source_id",
@@ -1479,12 +1586,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     const supabase = createClient();
     supabase.from("customers").update(dbPatch).eq("id", customerId).then(() => {});
+    if (before) logProfileChanges(customerId, columnMap, before as unknown as Record<string, unknown>, patch as Record<string, unknown>);
   }
 
   function updateCustomerRemark(customerId: string, remark: string) {
+    const before = customers.find((c) => c.id === customerId);
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, remark } : c)));
     const supabase = createClient();
     supabase.from("customers").update({ remark: remark || null }).eq("id", customerId).then(() => {});
+    if (before) logProfileChanges(customerId, { remark: "remark" }, before as unknown as Record<string, unknown>, { remark });
+  }
+
+  function updateCustomerIdentity(customerId: string, patch: { name?: string; phone?: string }) {
+    const before = customers.find((c) => c.id === customerId);
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.phone !== undefined) dbPatch.phone = patch.phone || null;
+    const supabase = createClient();
+    supabase.from("customers").update(dbPatch).eq("id", customerId).then(() => {});
+    if (before) logProfileChanges(customerId, { name: "name", phone: "phone" }, before as unknown as Record<string, unknown>, patch as Record<string, unknown>);
   }
 
   function addActivity(customerId: string, type: ActivityType, content: string, followUp: string) {
@@ -1587,6 +1708,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     stages,
     customers,
     activities,
+    changeLog,
     tasks,
     notifications,
     currentUser,
@@ -1661,6 +1783,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteCustomer,
     updateCustomerStage,
     updateCustomerProfile,
+    updateCustomerIdentity,
     updateCustomerRemark,
     addActivity,
     addTask,
