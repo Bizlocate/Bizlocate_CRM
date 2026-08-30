@@ -37,6 +37,7 @@ export default function CustomerDetailPage() {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
+    budgets,
   } = useStore();
 
   const customer = visibleCustomers.find((c) => c.id === id);
@@ -254,6 +255,7 @@ export default function CustomerDetailPage() {
           {profileSelect("Firsttime / Branch", customer.firsttimeBranchId, firsttimeBranchTypes, (v) => updateCustomerProfile(customer.id, { firsttimeBranchId: v || null }))}
           {profileSelect("Target Race", customer.targetRaceId, targetRaces, (v) => updateCustomerProfile(customer.id, { targetRaceId: v || null }))}
           {profileSelect("Target Type", customer.targetTypeId, targetTypes, (v) => updateCustomerProfile(customer.id, { targetTypeId: v || null }))}
+          {profileSelect("Budget", customer.budgetId, budgets, (v) => updateCustomerProfile(customer.id, { budgetId: v || null }))}
         </div>
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Remark</div>
