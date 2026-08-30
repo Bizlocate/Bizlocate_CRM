@@ -64,25 +64,40 @@ no tabs, no dropdown filter, all blocks visible on the page at once.
   with a `useMemo` keyed on `[customerActivities, customer]`, no store or
   type changes.
 
-## 2. Admin global agent-log page — `/admin/agent-logs`
+## 2. Agent Logs — customer-directory drill-down (`/admin/agent-logs`, `/team/agent-logs`)
 
-A new page under the existing `admin` route group, following the pattern of
-`admin/users`, `admin/teams`, etc. Admin-only (same role guard as the rest
-of `/admin/*`).
+**Revised** (superseded the first cut of this section, which rendered a
+flat activity feed per agent — replaced before that version shipped to
+users, based on follow-up direction: the tool should be customer-list-first,
+not log-first). Shared component `components/AgentLogBrowser.tsx`, used by
+two thin pages:
 
-- **Agent picker**: dropdown of all users with role `SALESPERSON` or
-  `MANAGER` (skip other Admins — they don't keep a followup log).
-- **Log list**: every `Activity` where `authorUserId` matches the picked
-  agent, across *all* customers (not scoped to the agent's current
-  assignments — same historical-record reasoning as section 1), newest
-  first. Each row: timestamp, customer name (links to
-  `/customers/[id]`), type badge, content, follow-up.
-- Read-only — no write form on this page.
-- No new backend query: `activities` and `users` are already loaded
-  client-side by `useStore()`; this page filters what's already in memory,
-  same as every other list page in this app.
-- Nav: add an "Agent Logs" link to the admin sidebar (`admin/layout.tsx`),
-  alongside Users/Teams/Stages.
+- **Admin** — `/admin/agent-logs`, added as a tab in `AdminTabs`. Agent
+  picker offers every `SALESPERSON`/`MANAGER` company-wide; customer pool is
+  the full `customers` list.
+- **Manager** — `/team/agent-logs`, a new route group with its own
+  role-gated layout (mirrors `admin/layout.tsx` but requires `MANAGER`).
+  Agent picker offers only `SALESPERSON`s on the manager's own team
+  (`teamId` match) — a manager doesn't need this tool to check their own
+  customers, only their reports'. Reachable via a "Team Logs" link in the
+  Header dropdown, shown only to Managers. Customer pool is `visibleCustomers`
+  (already team-scoped by the store).
+
+**Filters, applied together:**
+1. **Area** (dropdown, default "All Areas") — customer's `areaId`.
+2. **Stage** (dropdown, default "All Stages") — customer's `stageId`.
+3. **Agent** (dropdown, required — defaults to the first agent in the list).
+
+These aren't a two-step narrow-then-drill-down: Area/Stage filter the
+*picked agent's customer list* directly, and stay applied if set. Left on
+"All", they don't restrict anything.
+
+**Result list**: every customer where the picked agent is one of the three
+assignee slots, filtered by Area/Stage, sorted by `updatedAt` descending
+(most recently touched on top). Each row: business name (or name),
+area, stage badge, last-updated date — click through to `/customers/[id]`
+(section 1's grouped log blocks live there). No write form, no activity
+rows — this page's job is "find the customer," not "read the log entry."
 
 ## 3. Manager write-form visibility
 
