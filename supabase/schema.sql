@@ -131,6 +131,11 @@ create table mandatory_field_settings (
   required boolean not null default true
 );
 
+create table budgets (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -152,6 +157,7 @@ create table customers (
   firsttime_branch_id uuid references firsttime_branch_types (id) on delete set null,
   target_race_id uuid references target_races (id) on delete set null,
   target_type_id uuid references target_types (id) on delete set null,
+  budget_id uuid references budgets (id) on delete set null,
   remark text,
   created_by uuid references profiles (id),
   created_at timestamptz not null default now()
@@ -427,6 +433,13 @@ alter table mandatory_field_settings enable row level security;
 
 create policy "mandatory_field_settings_select" on mandatory_field_settings for select using (auth.uid() is not null);
 create policy "mandatory_field_settings_update_admin" on mandatory_field_settings for update using (is_admin());
+
+alter table budgets enable row level security;
+
+create policy "budgets_select" on budgets for select using (auth.uid() is not null);
+create policy "budgets_insert_admin" on budgets for insert with check (is_admin());
+create policy "budgets_update_admin" on budgets for update using (is_admin());
+create policy "budgets_delete_admin" on budgets for delete using (is_admin());
 
 -- customers: admin all, manager own team, salesperson own assigned
 create policy "customers_select" on customers for select using (
@@ -797,3 +810,23 @@ insert into mandatory_field_settings (field_key, required) values
 --   ('business_industry', true),
 --   ('business_category', true),
 --   ('business_type', true);
+
+-- ============================================================
+-- Migration: Budget field — run once against an already-provisioned
+-- database (everything below already exists in the main schema
+-- above for fresh installs).
+-- ============================================================
+--
+-- create table budgets (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- alter table customers add column if not exists budget_id uuid references budgets (id) on delete set null;
+--
+-- alter table budgets enable row level security;
+--
+-- create policy "budgets_select" on budgets for select using (auth.uid() is not null);
+-- create policy "budgets_insert_admin" on budgets for insert with check (is_admin());
+-- create policy "budgets_update_admin" on budgets for update using (is_admin());
+-- create policy "budgets_delete_admin" on budgets for delete using (is_admin());

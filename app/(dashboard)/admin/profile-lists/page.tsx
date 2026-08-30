@@ -14,6 +14,7 @@ const LISTS = [
   "Race",
   "Target Race",
   "Target Type",
+  "Budget",
 ] as const;
 
 type ListName = (typeof LISTS)[number];
@@ -52,6 +53,10 @@ export default function AdminProfileListsPage() {
     addTargetType,
     updateTargetType,
     deleteTargetType,
+    budgets,
+    addBudget,
+    updateBudget,
+    deleteBudget,
   } = useStore();
 
   const [selected, setSelected] = useState<ListName>("Source");
@@ -65,6 +70,7 @@ export default function AdminProfileListsPage() {
     Race: { items: races, onAdd: addRace, onUpdate: updateRace, onDelete: deleteRace },
     "Target Race": { items: targetRaces, onAdd: addTargetRace, onUpdate: updateTargetRace, onDelete: deleteTargetRace },
     "Target Type": { items: targetTypes, onAdd: addTargetType, onUpdate: updateTargetType, onDelete: deleteTargetType },
+    Budget: { items: budgets, onAdd: addBudget, onUpdate: updateBudget, onDelete: deleteBudget },
   };
 
   const active = config[selected];

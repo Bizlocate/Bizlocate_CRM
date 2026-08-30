@@ -199,6 +199,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
+    budgets,
     fieldRequirements,
   } = useStore();
   const [name, setName] = useState("");
@@ -219,6 +220,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [firsttimeBranchId, setFirsttimeBranchId] = useState("");
   const [targetRaceId, setTargetRaceId] = useState("");
   const [targetTypeId, setTargetTypeId] = useState("");
+  const [budgetId, setBudgetId] = useState("");
   const [remark, setRemark] = useState("");
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
 
@@ -278,6 +280,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
       firsttimeBranchId: firsttimeBranchId || null,
       targetRaceId: targetRaceId || null,
       targetTypeId: targetTypeId || null,
+      budgetId: budgetId || null,
       remark,
     });
     if (!result.ok) {
@@ -419,6 +422,13 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           <select className="field-input" value={targetTypeId} onChange={(e) => setTargetTypeId(e.target.value)}>
             <option value="">—</option>
             {targetTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 180px" }}>
+          <label className="field-label">Budget</label>
+          <select className="field-input" value={budgetId} onChange={(e) => setBudgetId(e.target.value)}>
+            <option value="">—</option>
+            {budgets.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
         <div style={{ flex: "1 1 100%" }}>

@@ -69,6 +69,11 @@ export interface TargetType {
   name: string;
 }
 
+export interface Budget {
+  id: string;
+  name: string;
+}
+
 export interface FieldRequirement {
   fieldKey: string;
   required: boolean;
@@ -219,6 +224,7 @@ export interface Customer {
   firsttimeBranchId: string | null;
   targetRaceId: string | null;
   targetTypeId: string | null;
+  budgetId: string | null;
   remark: string;
 }
 
