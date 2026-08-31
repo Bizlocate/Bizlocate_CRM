@@ -106,20 +106,27 @@ create policy "removal_requests_update" on removal_requests for update using (
 create policy "sales_targets_select" on sales_targets for select using (
   is_admin()
   or user_id = auth.uid()
-  or user_id in (select id from profiles where team_id = my_team_id())
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and user_id in (select id from profiles where team_id = my_team_id())
+  )
 );
 create policy "sales_targets_insert" on sales_targets for insert with check (
   set_by = auth.uid()
   and (
     is_admin()
-    or user_id = auth.uid()
-    or user_id in (select id from profiles where team_id = my_team_id())
+    or (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and user_id in (select id from profiles where team_id = my_team_id())
+    )
   )
 );
 create policy "sales_targets_update" on sales_targets for update using (
   is_admin()
-  or user_id = auth.uid()
-  or user_id in (select id from profiles where team_id = my_team_id())
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and user_id in (select id from profiles where team_id = my_team_id())
+  )
 );
 
 -- notifications: recipient only; inserted by admin/manager on customer assignment
@@ -152,20 +159,27 @@ The file ends with the `activities_delete` migration comment block. Append after
 -- create policy "sales_targets_select" on sales_targets for select using (
 --   is_admin()
 --   or user_id = auth.uid()
---   or user_id in (select id from profiles where team_id = my_team_id())
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and user_id in (select id from profiles where team_id = my_team_id())
+--   )
 -- );
 -- create policy "sales_targets_insert" on sales_targets for insert with check (
 --   set_by = auth.uid()
 --   and (
 --     is_admin()
---     or user_id = auth.uid()
---     or user_id in (select id from profiles where team_id = my_team_id())
+--     or (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and user_id in (select id from profiles where team_id = my_team_id())
+--     )
 --   )
 -- );
 -- create policy "sales_targets_update" on sales_targets for update using (
 --   is_admin()
---   or user_id = auth.uid()
---   or user_id in (select id from profiles where team_id = my_team_id())
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and user_id in (select id from profiles where team_id = my_team_id())
+--   )
 -- );
 ```
 
