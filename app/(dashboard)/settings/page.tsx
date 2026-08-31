@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { currentUser, updateProfileName, updatePassword } = useStore();
   const [name, setName] = useState(currentUser?.name ?? "");
   const [nameMsg, setNameMsg] = useState("");
@@ -13,7 +15,11 @@ export default function SettingsPage() {
   const [pwMsg, setPwMsg] = useState("");
   const [pwError, setPwError] = useState("");
 
-  if (!currentUser) return null;
+  useEffect(() => {
+    if (currentUser && currentUser.role !== "ADMIN") router.replace("/customers");
+  }, [currentUser, router]);
+
+  if (!currentUser || currentUser.role !== "ADMIN") return null;
 
   function saveName(e: React.FormEvent) {
     e.preventDefault();

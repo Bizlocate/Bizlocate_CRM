@@ -209,13 +209,15 @@ export default function Header() {
                   User Control
                 </Link>
               )}
-              <Link
-                href="/settings"
-                onClick={() => setMenuOpen(false)}
-                style={{ display: "block", padding: "10px 14px", fontSize: 13.5, color: "#20222b" }}
-              >
-                Settings
-              </Link>
+              {currentUser.role === "ADMIN" && (
+                <Link
+                  href="/settings"
+                  onClick={() => setMenuOpen(false)}
+                  style={{ display: "block", padding: "10px 14px", fontSize: 13.5, color: "#20222b" }}
+                >
+                  Settings
+                </Link>
+              )}
               <button
                 onClick={handleLogout}
                 style={{
