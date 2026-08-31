@@ -7,15 +7,20 @@ import { useStore } from "@/lib/store";
 export default function MainNav() {
   const { currentUser } = useStore();
   const pathname = usePathname();
-  if (!currentUser || currentUser.role === "SALESPERSON") return null;
+  if (!currentUser) return null;
 
-  const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
-  const removeApprovalsHref = currentUser.role === "ADMIN" ? "/admin/remove-approvals" : "/team/remove-approvals";
   const tabs = [
+    { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
-    { href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) },
-    { href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref) },
   ];
+  if (currentUser.role !== "SALESPERSON") {
+    const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
+    const removeApprovalsHref = currentUser.role === "ADMIN" ? "/admin/remove-approvals" : "/team/remove-approvals";
+    tabs.push(
+      { href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) },
+      { href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref) }
+    );
+  }
 
   return (
     <div style={{ display: "flex", gap: 8, padding: "12px 28px 0", background: "#ffffff", borderBottom: "1px solid #e2e4e9" }}>
