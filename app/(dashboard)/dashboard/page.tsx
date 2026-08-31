@@ -168,6 +168,10 @@ export default function DashboardPage() {
   if (!currentUser) return null;
 
   const canManage = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
+  // ADMIN picks from every area; MANAGER only from areas admin has assigned
+  // to their team (Area.teamId) — zero assigned areas means no dropdown at
+  // all, since there's nothing to narrow down to.
+  const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => a.teamId === currentUser.teamId);
 
   // Area filter (ADMIN/MANAGER only) narrows every section below to one
   // area's customers — "" means all areas, no filtering.
@@ -223,10 +227,10 @@ export default function DashboardPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Dashboard — {monthLabel(yearMonth)}</div>
         <div style={{ display: "flex", gap: 8 }}>
-          {canManage && (
+          {canManage && availableAreas.length > 0 && (
             <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
               <option value="">All areas</option>
-              {areas.map((a) => (
+              {availableAreas.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
