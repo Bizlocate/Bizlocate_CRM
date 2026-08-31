@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso: string): string {
@@ -36,12 +37,12 @@ export default function RemovalApprovalsBrowser() {
       )}
       {pending.map((r) => (
         <div key={r.id} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div>
+          <Link href={`/customers/${r.customerId}`} style={{ color: "inherit" }}>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>{customerName(r.customerId)} — Assigned {r.slot}</div>
             <div style={{ fontSize: 12, color: "#9aa0ab", marginTop: 2 }}>
               {userName(r.requestedBy)} · {reasonName(r.reasonId)} · {formatDate(r.createdAt)}
             </div>
-          </div>
+          </Link>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" type="button" onClick={() => resolveClientRemoval(r.id, true)}>Approve</button>
             <button className="btn btn-outline" type="button" onClick={() => resolveClientRemoval(r.id, false)}>Reject</button>
