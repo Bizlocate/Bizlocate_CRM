@@ -26,6 +26,9 @@ import {
   PropertyType,
   Purpose,
   Race,
+  RemovalReason,
+  RemovalRequest,
+  RemovalRequestStatus,
   Role,
   Stage,
   SubArea,
@@ -101,6 +104,10 @@ function mapTargetType(row: { id: string; name: string }): TargetType {
 }
 
 function mapBudget(row: { id: string; name: string }): Budget {
+  return { id: row.id, name: row.name };
+}
+
+function mapRemovalReason(row: { id: string; name: string }): RemovalReason {
   return { id: row.id, name: row.name };
 }
 
@@ -288,6 +295,30 @@ function mapDealClosure(row: {
   };
 }
 
+function mapRemovalRequest(row: {
+  id: string;
+  customer_id: string;
+  slot: number;
+  requested_by: string;
+  reason_id: string;
+  status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}): RemovalRequest {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    slot: row.slot as 1 | 2 | 3,
+    requestedBy: row.requested_by,
+    reasonId: row.reason_id,
+    status: row.status as RemovalRequestStatus,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
 function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
   return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
 }
@@ -328,6 +359,8 @@ interface Store {
   activities: Activity[];
   changeLog: CustomerChangeLogEntry[];
   dealClosures: DealClosure[];
+  removalReasons: RemovalReason[];
+  removalRequests: RemovalRequest[];
   tasks: Task[];
   notifications: Notification[];
   currentUser: User | null;
@@ -397,6 +430,9 @@ interface Store {
   addBudget: (name: string) => void;
   updateBudget: (id: string, name: string) => void;
   deleteBudget: (id: string) => void;
+  addRemovalReason: (name: string) => void;
+  updateRemovalReason: (id: string, name: string) => void;
+  deleteRemovalReason: (id: string) => void;
   updateFieldRequirement: (fieldKey: string, required: boolean) => void;
 
   previewBusinessTagCsv: (csvText: string) => CsvBusinessTagPreview;
@@ -420,6 +456,8 @@ interface Store {
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
   logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
+  requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string) => { ok: boolean; error?: string };
+  resolveClientRemoval: (requestId: string, approve: boolean) => void;
   addTask: (customerId: string, title: string, due: string) => void;
   toggleTaskDone: (taskId: string) => void;
 
@@ -454,6 +492,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
+  const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
+  const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -587,6 +627,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadRemovalReasons(): Promise<RemovalReason[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("removal_reasons").select("*").order("name");
+    const mapped = (data ?? []).map(mapRemovalReason);
+    setRemovalReasons(mapped);
+    return mapped;
+  }
+
   async function loadFieldRequirements(): Promise<FieldRequirement[]> {
     const supabase = createClient();
     const { data } = await supabase.from("mandatory_field_settings").select("*");
@@ -646,6 +694,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase.from("deal_closures").select("*").order("created_at", { ascending: false });
     const mapped = (data ?? []).map(mapDealClosure);
     setDealClosures(mapped);
+    return mapped;
+  }
+
+  async function loadRemovalRequests(): Promise<RemovalRequest[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("removal_requests").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapRemovalRequest);
+    setRemovalRequests(mapped);
     return mapped;
   }
 
@@ -817,6 +873,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
+        await loadRemovalReasons();
+        await loadRemovalRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
@@ -867,6 +925,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
+    await loadRemovalReasons();
+    await loadRemovalRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -1355,6 +1415,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     supabase.from("budgets").delete().eq("id", id).then(() => {});
   }
+  function addRemovalReason(name: string) {
+    const supabase = createClient();
+    supabase.from("removal_reasons").insert({ name }).select().single().then(({ data, error }) => {
+      if (!error && data) setRemovalReasons((prev) => [...prev, mapRemovalReason(data)]);
+    });
+  }
+  function updateRemovalReason(id: string, name: string) {
+    setRemovalReasons((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
+    const supabase = createClient();
+    supabase.from("removal_reasons").update({ name }).eq("id", id).then(() => {});
+  }
+  function deleteRemovalReason(id: string) {
+    setRemovalReasons((prev) => prev.filter((i) => i.id !== id));
+    const supabase = createClient();
+    supabase.from("removal_reasons").delete().eq("id", id).then(() => {});
+  }
 
   function updateFieldRequirement(fieldKey: string, required: boolean) {
     setFieldRequirements((prev) => prev.map((f) => (f.fieldKey === fieldKey ? { ...f, required } : f)));
@@ -1809,6 +1885,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Whoever occupies a slot requests their own removal from a customer —
+  // does not touch the slot itself; only inserts a PENDING request an
+  // ADMIN/MANAGER must approve (see resolveClientRemoval). Blocks a
+  // second request while one is already pending for the same slot.
+  function requestClientRemoval(customerId: string, slot: 1 | 2 | 3, reasonId: string): { ok: boolean; error?: string } {
+    if (!currentUser) return { ok: false, error: "Not signed in." };
+    const alreadyPending = removalRequests.some(
+      (r) => r.customerId === customerId && r.slot === slot && r.status === "PENDING"
+    );
+    if (alreadyPending) return { ok: false, error: "A removal request for this slot is already pending." };
+    const supabase = createClient();
+    supabase
+      .from("removal_requests")
+      .insert({ customer_id: customerId, slot, requested_by: currentUser.id, reason_id: reasonId, status: "PENDING" })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setRemovalRequests((prev) => [mapRemovalRequest(data), ...prev]);
+      });
+    return { ok: true };
+  }
+
+  // ADMIN/MANAGER approves or rejects a pending removal request. Approval
+  // reuses the existing reassignCustomer(customerId, slot, null) to clear
+  // the slot (assignee, pool, stage) — the customer record itself is
+  // never touched or deleted. Rejection only updates the request's status.
+  function resolveClientRemoval(requestId: string, approve: boolean) {
+    if (!currentUser) return;
+    const request = removalRequests.find((r) => r.id === requestId);
+    if (!request) return;
+    const status: RemovalRequestStatus = approve ? "APPROVED" : "REJECTED";
+    const now = new Date().toISOString();
+    setRemovalRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status, resolvedBy: currentUser.id, resolvedAt: now } : r))
+    );
+    const supabase = createClient();
+    supabase
+      .from("removal_requests")
+      .update({ status, resolved_by: currentUser.id, resolved_at: now })
+      .eq("id", requestId)
+      .then(() => {});
+    if (approve) reassignCustomer(request.customerId, request.slot, null);
+    createNotification(
+      request.requestedBy,
+      approve ? "Your client removal request was approved." : "Your client removal request was rejected."
+    );
+  }
+
   function addTask(customerId: string, title: string, due: string) {
     if (!currentUser) return;
     const supabase = createClient();
@@ -1896,6 +2020,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     activities,
     changeLog,
     dealClosures,
+    removalReasons,
+    removalRequests,
     tasks,
     notifications,
     currentUser,
@@ -1959,6 +2085,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addBudget,
     updateBudget,
     deleteBudget,
+    addRemovalReason,
+    updateRemovalReason,
+    deleteRemovalReason,
     updateFieldRequirement,
     previewBusinessTagCsv,
     confirmBusinessTagCsvImport,
@@ -1975,6 +2104,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateCustomerRemark,
     addActivity,
     logActivityAndStage,
+    requestClientRemoval,
+    resolveClientRemoval,
     addTask,
     toggleTaskDone,
     markNotificationsRead,

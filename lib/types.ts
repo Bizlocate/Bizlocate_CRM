@@ -323,3 +323,22 @@ export interface DealClosure {
   amount: number;
   createdAt: string;
 }
+
+export interface RemovalReason {
+  id: string;
+  name: string;
+}
+
+export type RemovalRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface RemovalRequest {
+  id: string;
+  customerId: string;
+  slot: 1 | 2 | 3;
+  requestedBy: string;
+  reasonId: string;
+  status: RemovalRequestStatus;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
