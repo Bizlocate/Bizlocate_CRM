@@ -10,28 +10,37 @@ export interface FunnelRow {
   count: number;
 }
 
-// Counts across all 3 assignee slots — a customer with two slots in the
-// same stage counts twice, matching how the pipeline actually works (each
-// slot is its own independent deal).
-export function stageFunnel(customers: Customer[], stages: Stage[]): FunnelRow[] {
+// Slots (stage + assignee) for a customer, optionally filtered to only those
+// whose assignee is in scope. Pass no scopedIds for unscoped (e.g. ADMIN).
+function slotsInScope(c: Customer, scopedIds?: Set<string>): { stageId: string | null; userId: string | null }[] {
+  const slots = [
+    { stageId: c.stage1Id, userId: c.assignedToUserId },
+    { stageId: c.stage2Id, userId: c.assignedToUserId2 },
+    { stageId: c.stage3Id, userId: c.assignedToUserId3 },
+  ];
+  if (!scopedIds) return slots;
+  return slots.filter((s) => s.userId !== null && scopedIds.has(s.userId));
+}
+
+// Counts each in-scope slot independently — a customer with two slots in the
+// same stage (or two different people's slots) counts twice, once per slot.
+export function stageFunnel(customers: Customer[], stages: Stage[], scopedIds?: Set<string>): FunnelRow[] {
   const sorted = [...stages].sort((a, b) => a.order - b.order);
   return sorted.map((s) => {
-    const count = customers.filter((c) => c.stage1Id === s.id || c.stage2Id === s.id || c.stage3Id === s.id).length;
+    const count = customers.reduce((sum, c) => sum + slotsInScope(c, scopedIds).filter((slot) => slot.stageId === s.id).length, 0);
     return { stageId: s.id, stageName: s.name, count };
   });
 }
 
 // "Lost" isn't a schema flag — it's a naming convention the rest of the
 // app already relies on (see STAGE_STYLES in lib/types.ts).
-export function lostCount(customers: Customer[], stages: Stage[]): number {
+export function lostCount(customers: Customer[], stages: Stage[], scopedIds?: Set<string>): number {
   const lostStageIds = new Set(stages.filter((s) => s.name.trim().toLowerCase() === "lost").map((s) => s.id));
   if (lostStageIds.size === 0) return 0;
-  return customers.filter(
-    (c) =>
-      (c.stage1Id !== null && lostStageIds.has(c.stage1Id)) ||
-      (c.stage2Id !== null && lostStageIds.has(c.stage2Id)) ||
-      (c.stage3Id !== null && lostStageIds.has(c.stage3Id))
-  ).length;
+  return customers.reduce(
+    (sum, c) => sum + slotsInScope(c, scopedIds).filter((slot) => slot.stageId !== null && lostStageIds.has(slot.stageId)).length,
+    0
+  );
 }
 
 export function wonAmountInMonth(dealClosures: DealClosure[], yearMonth: string): number {

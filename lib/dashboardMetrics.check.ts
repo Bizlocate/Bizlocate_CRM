@@ -70,6 +70,18 @@ const lostCustomers = [customer({ id: "c1", stage2Id: "lost" }), customer({ id: 
 assert.equal(lostCount(lostCustomers, [newStage, lostStage]), 1);
 assert.equal(lostCount(lostCustomers, [newStage]), 0, "no Lost stage configured -> 0, not a crash");
 
+// --- stageFunnel/lostCount: scopedIds filters slots by assignee, not just by customer ---
+// c4 has slot1 (user "in") and slot2 (user "out") both in the "won" stage.
+const scopedCustomers = [customer({ id: "c4", stage1Id: "won", assignedToUserId: "in", stage2Id: "won", assignedToUserId2: "out" })];
+const scopedFunnelIn = stageFunnel(scopedCustomers, [wonStage], new Set(["in"]));
+assert.equal(scopedFunnelIn.find((f) => f.stageId === "won")!.count, 1, "only the in-scope slot counts when scopedIds is passed");
+const scopedFunnelAll = stageFunnel(scopedCustomers, [wonStage]);
+assert.equal(scopedFunnelAll.find((f) => f.stageId === "won")!.count, 2, "both slots count when scopedIds is omitted");
+
+const scopedLostCustomers = [customer({ id: "c5", stage1Id: "lost", assignedToUserId: "in", stage2Id: "lost", assignedToUserId2: "out" })];
+assert.equal(lostCount(scopedLostCustomers, [lostStage], new Set(["in"])), 1, "only the in-scope slot counts as lost");
+assert.equal(lostCount(scopedLostCustomers, [lostStage]), 2, "both slots count as lost when scopedIds is omitted");
+
 // --- wonAmountInMonth ---
 const closures = [
   dealClosure({ id: "d1", customerId: "c1", userId: "u1", amount: 100, createdAt: "2026-08-05T00:00:00Z" }),
