@@ -419,6 +419,7 @@ interface Store {
   updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
+  logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
   addTask: (customerId: string, title: string, due: string) => void;
   toggleTaskDone: (taskId: string) => void;
 
@@ -684,19 +685,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!hit1 && !hit2 && !hit3) return c;
         return {
           ...c,
-          ...(hit1 ? { assignedToUserId: null, pool1: null, pool1Since: null } : {}),
-          ...(hit2 ? { assignedToUserId2: null, pool2: null, pool2Since: null } : {}),
-          ...(hit3 ? { assignedToUserId3: null, pool3: null, pool3Since: null } : {}),
+          ...(hit1 ? { assignedToUserId: null, pool1: null, pool1Since: null, stage1Id: null } : {}),
+          ...(hit2 ? { assignedToUserId2: null, pool2: null, pool2Since: null, stage2Id: null } : {}),
+          ...(hit3 ? { assignedToUserId3: null, pool3: null, pool3Since: null, stage3Id: null } : {}),
         };
       })
     );
     const supabase = createClient();
     for (const { customerId, slot } of stale) {
       const update = slot === 1
-        ? { assigned_to: null, pool_1: null, pool_1_since: null }
+        ? { assigned_to: null, pool_1: null, pool_1_since: null, stage_1: null }
         : slot === 2
-        ? { assigned_to_2: null, pool_2: null, pool_2_since: null }
-        : { assigned_to_3: null, pool_3: null, pool_3_since: null };
+        ? { assigned_to_2: null, pool_2: null, pool_2_since: null, stage_2: null }
+        : { assigned_to_3: null, pool_3: null, pool_3_since: null, stage_3: null };
       supabase.from("customers").update(update).eq("id", customerId).then(() => {});
     }
   }
@@ -716,8 +717,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ponytail: compute-on-load sweep, not real-time — same accepted
   // imprecision as the pool sweep. Upgrade to a cron/edge function sweep
   // if sub-day precision ever matters.
-  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], isAdmin: boolean) {
+  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], stagesList: Stage[], isAdmin: boolean) {
     if (!isAdmin) return;
+    const defaultStage = stagesList.find((s) => s.isDefault) ?? stagesList[0];
     const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const supabase = createClient();
@@ -767,9 +769,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pointerByTeam.set(team.id, winnerId);
       extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
       setCustomers((prev) =>
-        prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null } : row))
+        prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null, stage2Id: defaultStage?.id ?? null } : row))
       );
-      supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null }).eq("id", c.id).then(() => {});
+      supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null, stage_2: defaultStage?.id ?? null }).eq("id", c.id).then(() => {});
       setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, lastAutoAssignedUserId: winnerId } : t)));
       supabase.from("teams").update({ last_auto_assigned_user_id: winnerId }).eq("id", team.id).then(() => {});
       createNotification(winnerId, `${winnerName} was assigned ${c.name}.`);
@@ -820,7 +822,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, profile.role === "ADMIN");
+          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[17], profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -873,7 +875,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, profile.role === "ADMIN");
+    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[17], profile.role === "ADMIN");
     return { ok: true };
   }
 
@@ -1766,6 +1768,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  // Combined "Log" action for a Log-form submission by someone who occupies
+  // a slot on this customer: always writes that slot's stage (the Log form
+  // requires a stage pick before this can be called — see the detail
+  // page), optionally logs an activity if content was entered, and
+  // optionally records a deal_closures row if the picked stage needed an
+  // amount. Reuses addActivity for the activity-insert half instead of
+  // duplicating it.
+  function logActivityAndStage(
+    customerId: string,
+    slot: 1 | 2 | 3,
+    stageId: string,
+    type: ActivityType,
+    content: string,
+    followUp: string,
+    closedAmount?: number
+  ) {
+    if (!currentUser) return;
+    const stageKey = slot === 1 ? "stage1Id" : slot === 2 ? "stage2Id" : "stage3Id";
+    const stageColumn = slot === 1 ? "stage_1" : slot === 2 ? "stage_2" : "stage_3";
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [stageKey]: stageId } : c)));
+    const supabase = createClient();
+    supabase.from("customers").update({ [stageColumn]: stageId }).eq("id", customerId).then(() => {});
+    if (content.trim()) {
+      addActivity(customerId, type, content.trim(), followUp);
+    }
+    if (closedAmount !== undefined) {
+      supabase
+        .from("deal_closures")
+        .insert({ customer_id: customerId, user_id: currentUser.id, slot, stage_id: stageId, amount: closedAmount })
+        .select()
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) setDealClosures((prev) => [mapDealClosure(data), ...prev]);
+        });
+    }
+  }
+
   function addTask(customerId: string, title: string, due: string) {
     if (!currentUser) return;
     const supabase = createClient();
@@ -1931,6 +1970,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateCustomerIdentity,
     updateCustomerRemark,
     addActivity,
+    logActivityAndStage,
     addTask,
     toggleTaskDone,
     markNotificationsRead,
