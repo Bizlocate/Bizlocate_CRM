@@ -8,6 +8,7 @@ import {
   Activity,
   ActivityType,
   Area,
+  AssignmentEvent,
   Budget,
   BusinessTagCategory,
   BusinessTagIndustry,
@@ -296,6 +297,10 @@ function mapDealClosure(row: {
   };
 }
 
+function mapAssignmentEvent(row: { id: string; customer_id: string; user_id: string; slot: number; created_at: string }): AssignmentEvent {
+  return { id: row.id, customerId: row.customer_id, userId: row.user_id, slot: row.slot as 1 | 2 | 3, createdAt: row.created_at };
+}
+
 function mapSalesTarget(row: {
   id: string;
   user_id: string;
@@ -381,6 +386,7 @@ interface Store {
   changeLog: CustomerChangeLogEntry[];
   dealClosures: DealClosure[];
   salesTargets: SalesTarget[];
+  assignmentEvents: AssignmentEvent[];
   removalReasons: RemovalReason[];
   removalRequests: RemovalRequest[];
   tasks: Task[];
@@ -518,6 +524,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
   const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
+  const [assignmentEvents, setAssignmentEvents] = useState<AssignmentEvent[]>([]);
   const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
   const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -731,6 +738,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadAssignmentEvents(): Promise<AssignmentEvent[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("assignment_events").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapAssignmentEvent);
+    setAssignmentEvents(mapped);
+    return mapped;
+  }
+
   async function loadRemovalRequests(): Promise<RemovalRequest[]> {
     const supabase = createClient();
     const { data } = await supabase.from("removal_requests").select("*").order("created_at", { ascending: false });
@@ -865,6 +880,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, lastAutoAssignedUserId: winnerId } : t)));
       supabase.from("teams").update({ last_auto_assigned_user_id: winnerId }).eq("id", team.id).then(() => {});
       createNotification(winnerId, `${winnerName} was assigned ${c.name}.`);
+      logAssignmentEvent(c.id, winnerId, 2);
     }
   }
 
@@ -908,6 +924,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
         await loadSalesTargets();
+        await loadAssignmentEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
@@ -961,6 +978,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
     await loadSalesTargets();
+    await loadAssignmentEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
@@ -1734,7 +1752,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (assignee) {
       createNotification(userId!, `${assignee.name} was assigned ${customer.name}.`);
     }
+    if (userId && changing) {
+      logAssignmentEvent(customerId, userId, slot);
+    }
     return { ok: true };
+  }
+
+  // One row per successful assignment, for the "assigned N this month"
+  // dashboard report — never called for a clear (userId === null).
+  function logAssignmentEvent(customerId: string, userId: string, slot: 1 | 2 | 3) {
+    const supabase = createClient();
+    supabase
+      .from("assignment_events")
+      .insert({ customer_id: customerId, user_id: userId, slot })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setAssignmentEvents((prev) => [mapAssignmentEvent(data), ...prev]);
+      });
   }
 
   function togglePool(customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) {
@@ -2136,6 +2171,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     changeLog,
     dealClosures,
     salesTargets,
+    assignmentEvents,
     removalReasons,
     removalRequests,
     tasks,

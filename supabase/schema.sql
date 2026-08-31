@@ -241,6 +241,19 @@ create table sales_targets (
   unique (user_id, year_month)
 );
 
+-- One row per successful assignment (manual or the auto-second-assign
+-- sweep) — clearing a slot is not an assignment, so it's never logged
+-- here (customer_change_log already covers removals). Feeds the "assigned
+-- N customers this month" dashboard report; user_id is who received the
+-- customer, not who performed the assignment.
+create table assignment_events (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers(id) on delete cascade,
+  user_id uuid not null references profiles(id),
+  slot smallint not null check (slot in (1, 2, 3)),
+  created_at timestamptz not null default now()
+);
+
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
@@ -507,6 +520,7 @@ alter table deal_closures enable row level security;
 alter table removal_reasons enable row level security;
 alter table removal_requests enable row level security;
 alter table sales_targets enable row level security;
+alter table assignment_events enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -812,6 +826,22 @@ create policy "sales_targets_update" on sales_targets for update using (
     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
     and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
   )
+);
+
+-- assignment_events: append-only log of who got assigned what, when.
+-- Visible the same way sales_targets is (self, own team, or admin sees
+-- all); insertable by whoever can assign a customer in the first place
+-- (admin, or manager — same as customers_insert).
+create policy "assignment_events_select" on assignment_events for select using (
+  is_admin()
+  or user_id = auth.uid()
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and user_id in (select id from profiles where team_id = my_team_id())
+  )
+);
+create policy "assignment_events_insert" on assignment_events for insert with check (
+  is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 );
 
 -- notifications: recipient only; inserted by admin/manager on customer assignment
@@ -1774,4 +1804,33 @@ insert into mandatory_field_settings (field_key, required) values
 --     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 --     and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
 --   )
+-- );
+
+-- ============================================================
+-- Migration: assignment_events table (per-assignment log for the
+-- "assigned N customers this month" dashboard report) — run once against
+-- an already-provisioned database (everything below already exists in
+-- the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table assignment_events (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers(id) on delete cascade,
+--   user_id uuid not null references profiles(id),
+--   slot smallint not null check (slot in (1, 2, 3)),
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table assignment_events enable row level security;
+--
+-- create policy "assignment_events_select" on assignment_events for select using (
+--   is_admin()
+--   or user_id = auth.uid()
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and user_id in (select id from profiles where team_id = my_team_id())
+--   )
+-- );
+-- create policy "assignment_events_insert" on assignment_events for insert with check (
+--   is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 -- );

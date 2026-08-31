@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import {
+  assignmentCounts,
   conversionRatePct,
   leaderboard,
+  leadsBySource,
   lostCount,
   monthlyTrend,
   openTaskCount,
   pacePct,
+  removalCounts,
+  removalReasonBreakdown,
   scopedUserIds,
   stageFunnel,
   wonAmountInMonth,
@@ -147,7 +151,23 @@ function TargetCell({
 }
 
 export default function DashboardPage() {
-  const { currentUser, users, teams, areas, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
+  const {
+    currentUser,
+    users,
+    teams,
+    areas,
+    stages,
+    dealClosures,
+    activities,
+    salesTargets,
+    visibleCustomers,
+    upsertSalesTarget,
+    tasks,
+    leadSources,
+    removalReasons,
+    removalRequests,
+    assignmentEvents,
+  } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
   const [areaId, setAreaId] = useState("");
   // Member filter — ADMIN/MANAGER only, scoped to "Pipeline & 趋势" (funnel +
@@ -212,13 +232,18 @@ export default function DashboardPage() {
   // bars are directly comparable (won *amount* never was).
   const maxTrendCount = Math.max(1, ...trend.map((p) => Math.max(p.newLeads, p.wonCount)));
 
-  const leaderboardRows = leaderboard(
-    users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN"),
-    areaLeaderboardDealClosures,
-    salesTargets,
-    areaActivities,
-    yearMonth
-  );
+  // Reused by 团队表现 and the three ops reports below — active, in-scope,
+  // never ADMIN (admins don't carry deals or get assigned customers).
+  const teamMembers = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN");
+  const leaderboardRows = leaderboard(teamMembers, areaLeaderboardDealClosures, salesTargets, areaActivities, yearMonth);
+
+  const areaAssignmentEvents = assignmentEvents.filter((e) => inAreaScope(e.customerId));
+  const areaRemovalRequests = removalRequests.filter((r) => inAreaScope(r.customerId));
+  const sourceRows = leadsBySource(areaCustomers, leadSources, yearMonth);
+  const assignRows = assignmentCounts(teamMembers, areaAssignmentEvents, yearMonth);
+  const removedRows = removalCounts(teamMembers, areaRemovalRequests, yearMonth);
+  const reasonRows = removalReasonBreakdown(areaRemovalRequests, removalReasons, yearMonth);
+  const maxSourceCount = Math.max(1, ...sourceRows.map((r) => r.count));
 
   const leaderCols = "1.3fr .8fr .9fr .9fr 1.3fr .5fr";
 
@@ -484,6 +509,64 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {canManage && (
+        <>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>运营报表</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div className="card" style={{ padding: "14px 16px" }}>
+              <CardLabel>New leads by source</CardLabel>
+              {sourceRows.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No new leads this month.</div>}
+              {sourceRows.map((r) => (
+                <div key={r.id ?? "none"} style={{ marginBottom: 9 }} title={`${r.name}: ${r.count}`}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
+                    <span>{r.name}</span>
+                    <span style={{ color: "#6b7280" }}>{r.count}</span>
+                  </div>
+                  <div style={{ background: TRACK, borderRadius: 4, height: 8 }}>
+                    <div style={{ background: BRAND, borderRadius: 4, height: 8, width: `${(r.count / maxSourceCount) * 100}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="card" style={{ padding: "14px 16px" }}>
+              <CardLabel>Assigned this month</CardLabel>
+              {assignRows.every((r) => r.count === 0) && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No assignments logged this month.</div>}
+              {assignRows
+                .filter((r) => r.count > 0)
+                .map((r) => (
+                  <div key={r.userId} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #eef0f2" }}>
+                    <span>{r.name}</span>
+                    <span style={{ fontWeight: 600 }}>{r.count}</span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="card" style={{ padding: "14px 16px" }}>
+              <CardLabel>Removed this month</CardLabel>
+              {removedRows.every((r) => r.count === 0) && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No removals this month.</div>}
+              {removedRows
+                .filter((r) => r.count > 0)
+                .map((r) => (
+                  <div key={r.userId} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #eef0f2" }}>
+                    <span>{r.name}</span>
+                    <span style={{ fontWeight: 600, color: DANGER }}>{r.count}</span>
+                  </div>
+                ))}
+              {reasonRows.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e4e9", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {reasonRows.map((r) => (
+                    <span key={r.id} style={{ fontSize: 11.5, color: "#6b7280", background: TRACK, borderRadius: 4, padding: "3px 8px" }}>
+                      {r.name}: {r.count}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

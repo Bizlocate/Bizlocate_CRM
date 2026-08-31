@@ -2,17 +2,21 @@
 //   node --experimental-strip-types lib/dashboardMetrics.check.ts
 import assert from "node:assert";
 import {
+  assignmentCounts,
   conversionRatePct,
   leaderboard,
+  leadsBySource,
   lostCount,
   monthlyTrend,
   openTaskCount,
   pacePct,
+  removalCounts,
+  removalReasonBreakdown,
   scopedUserIds,
   stageFunnel,
   wonAmountInMonth,
 } from "./dashboardMetrics.ts";
-import type { Activity, Customer, DealClosure, SalesTarget, Stage, Task, User } from "./types.ts";
+import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, Task, User } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string }): Customer {
   return {
@@ -48,6 +52,24 @@ function activity(overrides: Partial<Activity> & { id: string; customerId: strin
 
 function task(overrides: Partial<Task> & { id: string; customerId: string; done: boolean }): Task {
   return { title: "T", due: "", ...overrides };
+}
+
+function leadSource(overrides: { id: string; name: string }): LeadSource {
+  return { ...overrides };
+}
+
+function removalReason(overrides: { id: string; name: string }): RemovalReason {
+  return { ...overrides };
+}
+
+function removalRequest(
+  overrides: Partial<RemovalRequest> & { id: string; customerId: string; requestedBy: string; reasonId: string }
+): RemovalRequest {
+  return { slot: 1, status: "PENDING", resolvedBy: null, resolvedAt: null, createdAt: "2026-01-01T00:00:00Z", ...overrides };
+}
+
+function assignmentEvent(overrides: Partial<AssignmentEvent> & { id: string; customerId: string; userId: string; createdAt: string }): AssignmentEvent {
+  return { slot: 1, ...overrides };
 }
 
 // --- stageFunnel: counts across all 3 slots, ordered by stage.order ---
@@ -146,5 +168,48 @@ assert.deepEqual([...scopedUserIds(allUsers, admin)].sort(), ["admin1", "mgr1", 
 assert.deepEqual([...scopedUserIds(allUsers, manager)].sort(), ["mgr1", "u3"].sort());
 const sales = user({ id: "u5", name: "Sales", role: "SALESPERSON" });
 assert.deepEqual([...scopedUserIds(allUsers, sales)], ["u5"]);
+
+// --- leadsBySource: grouped by sourceId, null -> "No source" ---
+const sources = [leadSource({ id: "s1", name: "Facebook" }), leadSource({ id: "s2", name: "Referral" })];
+const sourceCustomers = [
+  customer({ id: "c1", sourceId: "s1", createdAt: "2026-08-05T00:00:00Z" }),
+  customer({ id: "c2", sourceId: "s1", createdAt: "2026-08-06T00:00:00Z" }),
+  customer({ id: "c3", sourceId: "s2", createdAt: "2026-08-07T00:00:00Z" }),
+  customer({ id: "c4", sourceId: null, createdAt: "2026-08-08T00:00:00Z" }),
+  customer({ id: "c5", sourceId: "s1", createdAt: "2026-07-05T00:00:00Z" }), // outside month, excluded
+];
+const bySource = leadsBySource(sourceCustomers, sources, "2026-08");
+assert.deepEqual(bySource.map((r) => r.name), ["Facebook", "Referral", "No source"], "sorted desc by count");
+assert.equal(bySource.find((r) => r.name === "Facebook")!.count, 2);
+assert.equal(bySource.find((r) => r.name === "No source")!.count, 1);
+assert.equal(leadsBySource(sourceCustomers, sources, "2026-05").length, 0, "no leads that month -> empty, not a crash");
+
+// --- assignmentCounts: one row per event, not deduped per customer ---
+const assignEvents = [
+  assignmentEvent({ id: "e1", customerId: "c1", userId: "u1", createdAt: "2026-08-01T00:00:00Z" }),
+  assignmentEvent({ id: "e2", customerId: "c1", userId: "u1", createdAt: "2026-08-15T00:00:00Z" }), // same customer, same person, again -> still 2
+  assignmentEvent({ id: "e3", customerId: "c2", userId: "u2", createdAt: "2026-08-02T00:00:00Z" }),
+  assignmentEvent({ id: "e4", customerId: "c3", userId: "u1", createdAt: "2026-07-01T00:00:00Z" }), // outside month
+];
+const assignCounts = assignmentCounts(users, assignEvents, "2026-08");
+assert.equal(assignCounts.find((r) => r.userId === "u1")!.count, 2, "u1 assigned twice in August, counted both times");
+assert.equal(assignCounts.find((r) => r.userId === "u2")!.count, 1);
+
+// --- removalCounts / removalReasonBreakdown: only APPROVED, by resolvedAt month ---
+const reasons = [removalReason({ id: "r1", name: "No response" }), removalReason({ id: "r2", name: "Wrong number" })];
+const removals = [
+  removalRequest({ id: "rr1", customerId: "c1", requestedBy: "u1", reasonId: "r1", status: "APPROVED", resolvedAt: "2026-08-10T00:00:00Z" }),
+  removalRequest({ id: "rr2", customerId: "c2", requestedBy: "u1", reasonId: "r1", status: "APPROVED", resolvedAt: "2026-08-12T00:00:00Z" }),
+  removalRequest({ id: "rr3", customerId: "c3", requestedBy: "u2", reasonId: "r2", status: "APPROVED", resolvedAt: "2026-08-14T00:00:00Z" }),
+  removalRequest({ id: "rr4", customerId: "c4", requestedBy: "u1", reasonId: "r1", status: "PENDING" }), // not approved -> excluded
+  removalRequest({ id: "rr5", customerId: "c5", requestedBy: "u1", reasonId: "r1", status: "APPROVED", resolvedAt: "2026-07-01T00:00:00Z" }), // wrong month
+];
+const removedCounts = removalCounts(users, removals, "2026-08");
+assert.equal(removedCounts.find((r) => r.userId === "u1")!.count, 2, "rr1 + rr2, not rr4 (pending) or rr5 (wrong month)");
+assert.equal(removedCounts.find((r) => r.userId === "u2")!.count, 1);
+const reasonRows = removalReasonBreakdown(removals, reasons, "2026-08");
+assert.deepEqual(reasonRows.map((r) => r.name), ["No response", "Wrong number"], "sorted desc by count");
+assert.equal(reasonRows.find((r) => r.name === "No response")!.count, 2);
+assert.equal(reasonRows.find((r) => r.name === "Wrong number")!.count, 1);
 
 console.log("dashboardMetrics: all checks passed");

@@ -337,6 +337,14 @@ export interface SalesTarget {
   updatedAt: string;
 }
 
+export interface AssignmentEvent {
+  id: string;
+  customerId: string;
+  userId: string;
+  slot: 1 | 2 | 3;
+  createdAt: string;
+}
+
 export interface RemovalReason {
   id: string;
   name: string;

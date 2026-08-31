@@ -1,4 +1,4 @@
-import type { Activity, Customer, DealClosure, SalesTarget, Stage, Task, User } from "./types";
+import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, Task, User } from "./types";
 
 export function yearMonthOf(iso: string): string {
   return iso.slice(0, 7);
@@ -127,4 +127,79 @@ export function scopedUserIds(users: User[], currentUser: User): Set<string> {
   if (currentUser.role === "ADMIN") return new Set(users.map((u) => u.id));
   if (currentUser.role === "MANAGER") return new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id));
   return new Set([currentUser.id]);
+}
+
+export interface NamedCount {
+  id: string | null;
+  name: string;
+  count: number;
+}
+
+// Customers created in yearMonth, grouped by lead source. `customers` is
+// caller-scoped (area/team already filtered in) — no source recorded lands
+// in a "No source" bucket rather than being dropped.
+export function leadsBySource(customers: Customer[], leadSources: LeadSource[], yearMonth: string): NamedCount[] {
+  const counts = new Map<string | null, number>();
+  for (const c of customers) {
+    if (yearMonthOf(c.createdAt) !== yearMonth) continue;
+    counts.set(c.sourceId, (counts.get(c.sourceId) ?? 0) + 1);
+  }
+  const rows: NamedCount[] = [...counts.entries()].map(([id, count]) => ({
+    id,
+    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
+    count,
+  }));
+  return rows.sort((a, b) => b.count - a.count);
+}
+
+export interface CountRow {
+  userId: string;
+  name: string;
+  count: number;
+}
+
+// One row per assignment event this month, not deduped per customer — a
+// customer reassigned to the same person twice in one month counts twice.
+export function assignmentCounts(users: User[], assignmentEvents: AssignmentEvent[], yearMonth: string): CountRow[] {
+  return users
+    .map((u) => ({
+      userId: u.id,
+      name: u.name,
+      count: assignmentEvents.filter((e) => e.userId === u.id && yearMonthOf(e.createdAt) === yearMonth).length,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// Approved removal requests this month, by who was removed (requestedBy —
+// whoever occupied the slot requests their own removal). Counted by
+// resolution month, not request month, since that's when it actually took
+// effect. Only the self-request+approval flow has a structured reason, so
+// this deliberately excludes a direct admin/manager slot-clear (no reason
+// recorded for those).
+export function removalCounts(users: User[], removalRequests: RemovalRequest[], yearMonth: string): CountRow[] {
+  return users
+    .map((u) => ({
+      userId: u.id,
+      name: u.name,
+      count: removalRequests.filter(
+        (r) => r.requestedBy === u.id && r.status === "APPROVED" && r.resolvedAt !== null && yearMonthOf(r.resolvedAt) === yearMonth
+      ).length,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// `removalRequests` is caller-scoped (pre-filtered to the relevant users,
+// same convention as wonAmountInMonth/monthlyTrend's dealClosures param).
+export function removalReasonBreakdown(removalRequests: RemovalRequest[], removalReasons: RemovalReason[], yearMonth: string): NamedCount[] {
+  const counts = new Map<string, number>();
+  for (const r of removalRequests) {
+    if (r.status !== "APPROVED" || r.resolvedAt === null || yearMonthOf(r.resolvedAt) !== yearMonth) continue;
+    counts.set(r.reasonId, (counts.get(r.reasonId) ?? 0) + 1);
+  }
+  const rows: NamedCount[] = [...counts.entries()].map(([id, count]) => ({
+    id,
+    name: removalReasons.find((rr) => rr.id === id)?.name ?? "Unknown reason",
+    count,
+  }));
+  return rows.sort((a, b) => b.count - a.count);
 }
