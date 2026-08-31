@@ -111,8 +111,8 @@ matching the repo's existing `*.check.ts` convention, e.g.
   `won` desc.
 - `monthlyTrend(customers, dealClosures, monthsBack = 6)` → per-month
   `{ won, newLeads }` array for the trend charts.
-- `dueSoon(customers, days = 7)` → customers with a `followUp` in the
-  next N days whose stage isn't Won/Lost.
+- `openTaskCount(tasks, customerIds)` → count of not-done tasks whose
+  `customerId` is in scope.
 - Conversion rate = `wonCount / newLeadsCount` for the period — an
   approximation (not true cohort conversion), documented inline as such.
 
@@ -129,8 +129,14 @@ trend charts always show the trailing 6 months regardless of the picker.
    `upsertSalesTarget`), attainment %, activity count. ADMIN sees
    everyone grouped by team; MANAGER sees own team.
 3. **预测** — progress bar (won so far vs target, with a "days elapsed
-   %" pace marker) + "due soon" list (follow-ups in the next 7 days,
-   open stage).
+   %" pace marker) + open (not-done) task count in scope. **Revised
+   from the original design:** `Activity.followUp` is a freeform text
+   note (e.g. `"Follow-up: next week"`), not a structured date — there
+   is no parseable due-date field to build a "due in next 7 days" list
+   from. `Task.due` is also freeform text (plain `<input>`, not a date
+   picker). Swapped the "due soon" list for a plain open-task count —
+   honest given the data, no schema/input-type change forced onto the
+   unrelated Tasks feature.
 4. **Sales 个人** (everyone, scoped to self even for ADMIN/MANAGER) — my
    target vs actual, my overdue/today follow-ups, my recent activity
    count.
@@ -173,5 +179,5 @@ Manual (repo convention, no test framework for pages):
 - Set a target, confirm attainment % updates immediately and persists
   after reload.
 - `lib/dashboardMetrics.check.ts` — asserts on `stageFunnel`,
-  `wonAmountInMonth`, `leaderboard`, `monthlyTrend`, `dueSoon` against
-  hand-built fixture data.
+  `wonAmountInMonth`, `leaderboard`, `monthlyTrend`, `openTaskCount`
+  against hand-built fixture data.
