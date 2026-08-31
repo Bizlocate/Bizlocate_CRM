@@ -117,7 +117,7 @@ create policy "sales_targets_insert" on sales_targets for insert with check (
     is_admin()
     or (
       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-      and user_id in (select id from profiles where team_id = my_team_id())
+      and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
     )
   )
 );
@@ -125,7 +125,7 @@ create policy "sales_targets_update" on sales_targets for update using (
   is_admin()
   or (
     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-    and user_id in (select id from profiles where team_id = my_team_id())
+    and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
   )
 );
 
@@ -170,7 +170,7 @@ The file ends with the `activities_delete` migration comment block. Append after
 --     is_admin()
 --     or (
 --       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
---       and user_id in (select id from profiles where team_id = my_team_id())
+--       and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
 --     )
 --   )
 -- );
@@ -178,7 +178,7 @@ The file ends with the `activities_delete` migration comment block. Append after
 --   is_admin()
 --   or (
 --     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
---     and user_id in (select id from profiles where team_id = my_team_id())
+--     and (user_id = auth.uid() or user_id in (select id from profiles where team_id = my_team_id()))
 --   )
 -- );
 ```
