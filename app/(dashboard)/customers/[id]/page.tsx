@@ -56,6 +56,9 @@ export default function CustomerDetailPage() {
     changeLog,
     tasks,
     logActivityAndStage,
+    removalReasons,
+    removalRequests,
+    requestClientRemoval,
     updateCustomerProfile,
     updateCustomerIdentity,
     updateCustomerRemark,
@@ -103,6 +106,8 @@ export default function CustomerDetailPage() {
   const [logStageId, setLogStageId] = useState("");
   const [showClosedAmountModal, setShowClosedAmountModal] = useState(false);
   const [closedAmountDraft, setClosedAmountDraft] = useState("");
+  const [showRemoveReasonModal, setShowRemoveReasonModal] = useState(false);
+  const [removeReasonId, setRemoveReasonId] = useState("");
 
   useEffect(() => {
     setProfileDraft(draftFromCustomer(customer));
@@ -130,6 +135,10 @@ export default function CustomerDetailPage() {
 
   function stageOf(slot: 1 | 2 | 3) {
     return slot === 1 ? customer!.stage1Id : slot === 2 ? customer!.stage2Id : customer!.stage3Id;
+  }
+
+  function pendingRemovalForSlot(slot: 1 | 2 | 3) {
+    return removalRequests.some((r) => r.customerId === customer!.id && r.slot === slot && r.status === "PENDING");
   }
 
   function handleTogglePool(slot: 1 | 2 | 3, pool: "ACTIVE" | "INACTIVE") {
@@ -240,6 +249,10 @@ export default function CustomerDetailPage() {
     e.preventDefault();
     if (myAssignedSlot) {
       if (!logStageId) return;
+      if (logStageId === "__REMOVE_CLIENT__") {
+        setShowRemoveReasonModal(true);
+        return;
+      }
       if (selectedLogStage?.requiresAmount) {
         setShowClosedAmountModal(true);
         return;
@@ -265,6 +278,18 @@ export default function CustomerDetailPage() {
     setLogStageId("");
     setClosedAmountDraft("");
     setShowClosedAmountModal(false);
+  }
+
+  function handleConfirmRemoveReason() {
+    if (!removeReasonId || !myAssignedSlot) return;
+    const result = requestClientRemoval(customer!.id, myAssignedSlot, removeReasonId);
+    if (!result.ok) {
+      alert(result.error ?? "Could not submit the removal request.");
+      return;
+    }
+    setLogStageId("");
+    setRemoveReasonId("");
+    setShowRemoveReasonModal(false);
   }
 
   function handleAddTask(e: React.FormEvent) {
@@ -363,7 +388,11 @@ export default function CustomerDetailPage() {
                           <span style={badgeStyle}>{pool === "ACTIVE" ? "Active" : "Potential"}</span>
                         )
                       )}
-                      {(() => {
+                      {pendingRemovalForSlot(slot) ? (
+                        <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "#fff4e0", color: "#8a5a00" }}>
+                          Removal Pending
+                        </span>
+                      ) : (() => {
                         const stage = stages.find((s) => s.id === stageOf(slot));
                         if (!stage) return null;
                         const stageStyle = STAGE_STYLES[stage.name] ?? { bg: "#eef0f4", color: "#4b5566" };
@@ -525,6 +554,7 @@ export default function CustomerDetailPage() {
                     {[...stages].sort((a, b) => a.order - b.order).map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
+                    <option value="__REMOVE_CLIENT__">Remove Client</option>
                   </select>
                 </div>
               )}
@@ -576,6 +606,26 @@ export default function CustomerDetailPage() {
                 <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                   <button className="btn btn-primary" type="button" onClick={handleConfirmClosedAmount}>Confirm</button>
                   <button className="btn btn-outline" type="button" onClick={() => setShowClosedAmountModal(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {showRemoveReasonModal && (
+            <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowRemoveReasonModal(false); }}>
+              <div className="card modal-card" style={{ maxWidth: 360 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Remove client</div>
+                <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+                  This sends a removal request to admin/manager for approval — the customer isn't deleted, only your assignment.
+                </div>
+                <select className="field-input" value={removeReasonId} onChange={(e) => setRemoveReasonId(e.target.value)}>
+                  <option value="">— Select reason —</option>
+                  {removalReasons.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                  <button className="btn btn-primary" type="button" disabled={!removeReasonId} onClick={handleConfirmRemoveReason}>Confirm</button>
+                  <button className="btn btn-outline" type="button" onClick={() => setShowRemoveReasonModal(false)}>Cancel</button>
                 </div>
               </div>
             </div>
