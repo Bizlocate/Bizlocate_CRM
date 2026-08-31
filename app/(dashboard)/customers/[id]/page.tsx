@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { ACTIVITY_STYLES, Activity, ActivityType, PROFILE_FIELD_LABELS } from "@/lib/types";
+import { ACTIVITY_STYLES, Activity, ActivityType, PROFILE_FIELD_LABELS, STAGE_STYLES } from "@/lib/types";
 import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
 interface ProfileDraft {
@@ -55,7 +55,7 @@ export default function CustomerDetailPage() {
     activities,
     changeLog,
     tasks,
-    updateCustomerStage,
+    logActivityAndStage,
     updateCustomerProfile,
     updateCustomerIdentity,
     updateCustomerRemark,
@@ -100,12 +100,16 @@ export default function CustomerDetailPage() {
   const [remarkDraft, setRemarkDraft] = useState(customer?.remark ?? "");
   const [nameDraft, setNameDraft] = useState(customer?.name ?? "");
   const [phoneDraft, setPhoneDraft] = useState(customer?.phone ?? "");
+  const [logStageId, setLogStageId] = useState("");
+  const [showClosedAmountModal, setShowClosedAmountModal] = useState(false);
+  const [closedAmountDraft, setClosedAmountDraft] = useState("");
 
   useEffect(() => {
     setProfileDraft(draftFromCustomer(customer));
     setRemarkDraft(customer?.remark ?? "");
     setNameDraft(customer?.name ?? "");
     setPhoneDraft(customer?.phone ?? "");
+    setLogStageId("");
   }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!currentUser || !customer) return null;
@@ -118,9 +122,14 @@ export default function CustomerDetailPage() {
   const assignedUsers = assignedSlots
     .map(({ slot, userId }) => ({ slot, user: userId ? users.find((u) => u.id === userId) : undefined }))
     .filter((a): a is { slot: 1 | 2 | 3; user: NonNullable<typeof a.user> } => !!a.user);
+  const myAssignedSlot = assignedUsers.find(({ user }) => user.id === currentUser.id)?.slot ?? null;
 
   function poolOf(slot: 1 | 2 | 3) {
     return slot === 1 ? customer!.pool1 : slot === 2 ? customer!.pool2 : customer!.pool3;
+  }
+
+  function stageOf(slot: 1 | 2 | 3) {
+    return slot === 1 ? customer!.stage1Id : slot === 2 ? customer!.stage2Id : customer!.stage3Id;
   }
 
   function handleTogglePool(slot: 1 | 2 | 3, pool: "ACTIVE" | "INACTIVE") {
@@ -225,12 +234,37 @@ export default function CustomerDetailPage() {
   const openTasks = customerTasks.filter((t) => !t.done);
   const doneTasks = customerTasks.filter((t) => t.done);
 
+  const selectedLogStage = stages.find((s) => s.id === logStageId);
+
   function handleLogActivity(e: React.FormEvent) {
     e.preventDefault();
-    if (!activityContent.trim()) return;
-    addActivity(customer!.id, activityType, activityContent.trim(), followUp.trim() ? `Follow-up: ${followUp.trim()}` : "");
+    if (myAssignedSlot) {
+      if (!logStageId) return;
+      if (selectedLogStage?.requiresAmount) {
+        setShowClosedAmountModal(true);
+        return;
+      }
+      logActivityAndStage(customer!.id, myAssignedSlot, logStageId, activityType, activityContent, followUp.trim() ? `Follow-up: ${followUp.trim()}` : "");
+      setActivityContent("");
+      setFollowUp("");
+      setLogStageId("");
+    } else {
+      if (!activityContent.trim()) return;
+      addActivity(customer!.id, activityType, activityContent.trim(), followUp.trim() ? `Follow-up: ${followUp.trim()}` : "");
+      setActivityContent("");
+      setFollowUp("");
+    }
+  }
+
+  function handleConfirmClosedAmount() {
+    const amount = Number(closedAmountDraft);
+    if (!closedAmountDraft.trim() || Number.isNaN(amount) || amount <= 0) return;
+    logActivityAndStage(customer!.id, myAssignedSlot!, logStageId, activityType, activityContent, followUp.trim() ? `Follow-up: ${followUp.trim()}` : "", amount);
     setActivityContent("");
     setFollowUp("");
+    setLogStageId("");
+    setClosedAmountDraft("");
+    setShowClosedAmountModal(false);
   }
 
   function handleAddTask(e: React.FormEvent) {
@@ -329,6 +363,16 @@ export default function CustomerDetailPage() {
                           <span style={badgeStyle}>{pool === "ACTIVE" ? "Active" : "Potential"}</span>
                         )
                       )}
+                      {(() => {
+                        const stage = stages.find((s) => s.id === stageOf(slot));
+                        if (!stage) return null;
+                        const stageStyle = STAGE_STYLES[stage.name] ?? { bg: "#eef0f4", color: "#4b5566" };
+                        return (
+                          <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: stageStyle.bg, color: stageStyle.color }}>
+                            {stage.name}
+                          </span>
+                        );
+                      })()}
                     </span>
                   );
                 })
@@ -412,20 +456,6 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
-      <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>Stage:</span>
-        <select
-          className="field-input"
-          style={{ width: "auto" }}
-          value={customer.stageId}
-          onChange={(e) => updateCustomerStage(customer.id, e.target.value)}
-        >
-          {[...stages].sort((a, b) => a.order - b.order).map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-      </div>
-
       <div className="card" style={{ marginTop: 20, padding: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Business Profile</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
@@ -482,6 +512,22 @@ export default function CustomerDetailPage() {
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Activity Log</div>
           {canLogActivity && (
             <form onSubmit={handleLogActivity} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              {myAssignedSlot && (
+                <div>
+                  <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Stage</div>
+                  <select
+                    className="field-input"
+                    style={{ width: "auto" }}
+                    value={logStageId}
+                    onChange={(e) => setLogStageId(e.target.value)}
+                  >
+                    <option value="">— Select stage —</option>
+                    {[...stages].sort((a, b) => a.order - b.order).map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8 }}>
                 <select
                   className="field-input"
@@ -496,11 +542,11 @@ export default function CustomerDetailPage() {
                 <input
                   className="field-input"
                   style={{ flex: 1 }}
-                  placeholder="What happened?"
+                  placeholder="What happened? (optional)"
                   value={activityContent}
                   onChange={(e) => setActivityContent(e.target.value)}
                 />
-                <button className="btn btn-primary" type="submit">Log</button>
+                <button className="btn btn-primary" type="submit" disabled={!!myAssignedSlot && !logStageId}>Log</button>
               </div>
               <input
                 className="field-input"
@@ -509,6 +555,30 @@ export default function CustomerDetailPage() {
                 onChange={(e) => setFollowUp(e.target.value)}
               />
             </form>
+          )}
+          {showClosedAmountModal && (
+            <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowClosedAmountModal(false); }}>
+              <div className="card modal-card" style={{ maxWidth: 360 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Closed amount</div>
+                <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+                  {selectedLogStage?.name} requires a closed amount.
+                </div>
+                <input
+                  className="field-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Amount"
+                  value={closedAmountDraft}
+                  onChange={(e) => setClosedAmountDraft(e.target.value)}
+                  autoFocus
+                />
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                  <button className="btn btn-primary" type="button" onClick={handleConfirmClosedAmount}>Confirm</button>
+                  <button className="btn btn-outline" type="button" onClick={() => setShowClosedAmountModal(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
           )}
           {visibleLogGroups.length === 0 && (
             <div className="card" style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
