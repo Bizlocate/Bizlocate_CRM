@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { leaderboard, lostCount, scopedUserIds, stageFunnel, wonAmountInMonth } from "@/lib/dashboardMetrics";
+import { leaderboard, lostCount, openTaskCount, pacePct, scopedUserIds, stageFunnel, wonAmountInMonth } from "@/lib/dashboardMetrics";
 
 function currentYearMonth(): string {
   const d = new Date();
@@ -49,7 +49,7 @@ function TargetCell({
 }
 
 export default function DashboardPage() {
-  const { currentUser, users, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget } = useStore();
+  const { currentUser, users, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
@@ -72,6 +72,8 @@ export default function DashboardPage() {
   const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === yearMonth)?.amount ?? null;
   const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
   const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === yearMonth).length;
+  const pace = pacePct(new Date(), yearMonth);
+  const openTasks = openTaskCount(tasks, new Set(visibleCustomers.map((c) => c.id)));
   const leaderboardRows = leaderboard(
     users.filter((u) => scopedIds.has(u.id) && u.active),
     dealClosures,
@@ -162,6 +164,37 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>预测</div>
+      <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 32, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 260px" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 10 }}>
+            Pace vs target
+          </div>
+          {targetTotal > 0 ? (
+            <>
+              <div style={{ position: "relative", background: "#eef0f4", borderRadius: 4, height: 10 }}>
+                <div
+                  style={{
+                    background: attainmentPct !== null && attainmentPct >= pace ? "#1e7a41" : "#4046c9",
+                    borderRadius: 4,
+                    height: 10,
+                    width: `${Math.min(100, attainmentPct ?? 0)}%`,
+                  }}
+                />
+                <div style={{ position: "absolute", left: `${Math.min(100, pace)}%`, top: -3, width: 2, height: 16, background: "#a13a2b" }} title={`${pace}% of month elapsed`} />
+              </div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>{attainmentPct}% achieved · {pace}% of the month elapsed</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "#9aa0ab" }}>No target set for this scope.</div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Open tasks</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{openTasks}</div>
+        </div>
+      </div>
 
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>我的数字</div>
       <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 32, flexWrap: "wrap" }}>
