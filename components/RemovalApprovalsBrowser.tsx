@@ -44,7 +44,16 @@ export default function RemovalApprovalsBrowser() {
             </div>
           </Link>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" type="button" onClick={() => resolveClientRemoval(r.id, true)}>Approve</button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => {
+                if (!window.confirm(`Approve removing ${userName(r.requestedBy)} from ${customerName(r.customerId)}? Their activity log for this customer will drop off their own view — it stays here in Change History.`)) return;
+                resolveClientRemoval(r.id, true);
+              }}
+            >
+              Approve
+            </button>
             <button className="btn btn-outline" type="button" onClick={() => resolveClientRemoval(r.id, false)}>Reject</button>
           </div>
         </div>

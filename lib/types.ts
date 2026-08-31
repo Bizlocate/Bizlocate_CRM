@@ -312,6 +312,9 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
   target_type_id: "Target Type",
   budget_id: "Budget",
   remark: "Remark",
+  assigned_to: "Assigned 1",
+  assigned_to_2: "Assigned 2",
+  assigned_to_3: "Assigned 3",
 };
 
 export interface DealClosure {
