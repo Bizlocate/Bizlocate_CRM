@@ -228,6 +228,8 @@ create table removal_requests (
   created_at timestamptz not null default now()
 );
 
+create unique index removal_requests_one_pending on removal_requests (customer_id, slot) where status = 'PENDING';
+
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
@@ -1456,6 +1458,8 @@ insert into mandatory_field_settings (field_key, required) values
 --   resolved_at timestamptz,
 --   created_at timestamptz not null default now()
 -- );
+--
+-- create unique index removal_requests_one_pending on removal_requests (customer_id, slot) where status = 'PENDING';
 --
 -- alter table removal_reasons enable row level security;
 -- alter table removal_requests enable row level security;
