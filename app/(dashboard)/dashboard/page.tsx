@@ -82,6 +82,32 @@ function StatTile({
   );
 }
 
+// 3-tick y-axis (max / half / 0) for the two trend charts below.
+function AxisLabels({ max, format, height }: { max: number; format: (n: number) => string; height: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height, width: 44, flexShrink: 0, textAlign: "right", paddingRight: 8, fontSize: 10, color: "#9aa0ab" }}>
+      <span>{format(max)}</span>
+      <span>{format(max / 2)}</span>
+      <span>0</span>
+    </div>
+  );
+}
+
+function GridLines() {
+  return (
+    <>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, borderTop: "1px solid #eef0f4" }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: "50%", borderTop: "1px dashed #eef0f4" }} />
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, borderTop: "1px solid #d7d9de" }} />
+    </>
+  );
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1000) return (n % 1000 === 0 ? n / 1000 : Math.round((n / 1000) * 10) / 10) + "k";
+  return String(Math.round(n));
+}
+
 function CardLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ fontSize: 11.5, fontWeight: 600, color: "#9aa0ab", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 12 }}>
@@ -124,6 +150,10 @@ export default function DashboardPage() {
   const { currentUser, users, teams, areas, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
   const [areaId, setAreaId] = useState("");
+  // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
+  // value above the bar — click/tap toggles, independent per chart.
+  const [activeWonMonth, setActiveWonMonth] = useState<string | null>(null);
+  const [activeTrendMonth, setActiveTrendMonth] = useState<string | null>(null);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
   const scopedDealClosures = useMemo(() => dealClosures.filter((d) => scopedIds.has(d.userId)), [dealClosures, scopedIds]);
@@ -338,14 +368,44 @@ export default function DashboardPage() {
 
         <div className="card" style={{ padding: "14px 16px" }}>
           <CardLabel>Won $ by month</CardLabel>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
-            {trend.map((p) => (
-              <div key={p.yearMonth} style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "flex-end" }} title={`${monthLabel(p.yearMonth)}: ${formatMoney(p.won)}`}>
-                <div style={{ width: "100%", maxWidth: 34, background: BRAND, borderRadius: "4px 4px 0 0", height: `${(p.won / maxTrendWon) * 92 + (p.won > 0 ? 4 : 0)}px` }} />
-              </div>
-            ))}
+          <div style={{ display: "flex", gap: 4 }}>
+            <AxisLabels max={maxTrendWon} format={formatMoney} height={100} />
+            <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
+              <GridLines />
+              {trend.map((p) => {
+                const active = activeWonMonth === p.yearMonth;
+                return (
+                  <div
+                    key={p.yearMonth}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${monthLabel(p.yearMonth)}: ${formatMoney(p.won)}`}
+                    title={`${monthLabel(p.yearMonth)}: ${formatMoney(p.won)}`}
+                    onClick={() => setActiveWonMonth(active ? null : p.yearMonth)}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveWonMonth(active ? null : p.yearMonth)}
+                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", cursor: "pointer", outline: "none" }}
+                  >
+                    {active && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#20222b", marginBottom: 3, whiteSpace: "nowrap" }}>{formatMoney(p.won)}</div>
+                    )}
+                    <div
+                      style={{
+                        width: "100%",
+                        maxWidth: 34,
+                        background: BRAND,
+                        opacity: active ? 1 : 0.9,
+                        outline: active ? `2px solid ${BRAND}` : "none",
+                        outlineOffset: 1,
+                        borderRadius: "4px 4px 0 0",
+                        height: `${(p.won / maxTrendWon) * 92 + (p.won > 0 ? 4 : 0)}px`,
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 48 }}>
             {trend.map((p) => (
               <div key={p.yearMonth} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#9aa0ab" }}>{shortMonthLabel(p.yearMonth)}</div>
             ))}
@@ -362,19 +422,36 @@ export default function DashboardPage() {
               <span style={{ width: 9, height: 9, borderRadius: 2, background: GREEN, display: "inline-block" }} />Deals won
             </span>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
-            {trend.map((p) => (
-              <div
-                key={p.yearMonth}
-                style={{ flex: 1, display: "flex", gap: 2, justifyContent: "center", alignItems: "flex-end" }}
-                title={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
-              >
-                <div style={{ width: 12, background: BRAND, borderRadius: "4px 4px 0 0", height: `${(p.newLeads / maxTrendCount) * 92 + (p.newLeads > 0 ? 4 : 0)}px` }} />
-                <div style={{ width: 12, background: GREEN, borderRadius: "4px 4px 0 0", height: `${(p.wonCount / maxTrendCount) * 92 + (p.wonCount > 0 ? 4 : 0)}px` }} />
-              </div>
-            ))}
+          <div style={{ display: "flex", gap: 4 }}>
+            <AxisLabels max={maxTrendCount} format={formatCompact} height={100} />
+            <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
+              <GridLines />
+              {trend.map((p) => {
+                const active = activeTrendMonth === p.yearMonth;
+                return (
+                  <div
+                    key={p.yearMonth}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
+                    title={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
+                    onClick={() => setActiveTrendMonth(active ? null : p.yearMonth)}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTrendMonth(active ? null : p.yearMonth)}
+                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", cursor: "pointer", outline: "none" }}
+                  >
+                    {active && (
+                      <div style={{ fontSize: 10.5, fontWeight: 600, color: "#20222b", marginBottom: 3, whiteSpace: "nowrap" }}>{p.newLeads} / {p.wonCount}</div>
+                    )}
+                    <div style={{ display: "flex", gap: 2, alignItems: "flex-end" }}>
+                      <div style={{ width: 12, background: BRAND, opacity: active ? 1 : 0.9, borderRadius: "4px 4px 0 0", height: `${(p.newLeads / maxTrendCount) * 92 + (p.newLeads > 0 ? 4 : 0)}px` }} />
+                      <div style={{ width: 12, background: GREEN, opacity: active ? 1 : 0.9, borderRadius: "4px 4px 0 0", height: `${(p.wonCount / maxTrendCount) * 92 + (p.wonCount > 0 ? 4 : 0)}px` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 48 }}>
             {trend.map((p) => (
               <div key={p.yearMonth} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#9aa0ab" }}>{shortMonthLabel(p.yearMonth)}</div>
             ))}
