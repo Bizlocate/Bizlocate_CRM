@@ -448,6 +448,7 @@ interface Store {
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
+  logAssignmentRemoval: (customerId: string, slot: 1 | 2 | 3, removedUserName: string, note?: string) => void;
   togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
@@ -1780,6 +1781,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ]);
   }
 
+  // Records a slot being cleared out (direct admin/manager removal, or an
+  // approved removal request) as its own customer_change_log row, so it
+  // shows up in Change History same as any other profile edit.
+  function logAssignmentRemoval(customerId: string, slot: 1 | 2 | 3, removedUserName: string, note?: string) {
+    if (!currentUser) return;
+    const column = slot === 1 ? "assigned_to" : slot === 2 ? "assigned_to_2" : "assigned_to_3";
+    const row = {
+      customer_id: customerId,
+      changed_by: currentUser.id,
+      field_key: column,
+      old_value: removedUserName,
+      new_value: note ? `Removed — ${note}` : "Removed",
+    };
+    const supabase = createClient();
+    supabase.from("customer_change_log").insert(row).then(() => {});
+    const now = new Date().toISOString();
+    setChangeLog((prev) => [
+      {
+        id: crypto.randomUUID(),
+        customerId: row.customer_id,
+        fieldKey: row.field_key,
+        oldValue: row.old_value,
+        newValue: row.new_value,
+        changedByName: currentUser.name,
+        changedByUserId: row.changed_by,
+        time: formatTimestamp(now),
+        createdAt: now,
+      },
+      ...prev,
+    ]);
+  }
+
   function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
     const before = customers.find((c) => c.id === customerId);
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
@@ -1930,7 +1963,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const c = customers.find((x) => x.id === request.customerId);
       const occupant =
         request.slot === 1 ? c?.assignedToUserId : request.slot === 2 ? c?.assignedToUserId2 : c?.assignedToUserId3;
-      if (occupant === request.requestedBy) reassignCustomer(request.customerId, request.slot, null);
+      if (occupant === request.requestedBy) {
+        // log before clearing: the change-log insert's RLS check needs this
+        // slot (or another) to still tie the manager to the row
+        const removedUser = users.find((u) => u.id === request.requestedBy);
+        const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
+        logAssignmentRemoval(request.customerId, request.slot, removedUser?.name ?? "Unknown", reasonName);
+        reassignCustomer(request.customerId, request.slot, null);
+      }
     }
     createNotification(
       request.requestedBy,
@@ -2102,6 +2142,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteStage,
     updateStageRequiresAmount,
     reassignCustomer,
+    logAssignmentRemoval,
     togglePool,
     deleteCustomer,
     updateCustomerProfile,
