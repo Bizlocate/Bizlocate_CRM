@@ -449,6 +449,7 @@ interface Store {
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   logAssignmentRemoval: (customerId: string, slot: 1 | 2 | 3, removedUserName: string, note?: string) => void;
+  deleteAssigneeActivities: (customerId: string, userId: string) => void;
   togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
@@ -1813,6 +1814,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ]);
   }
 
+  // Permanently deletes a removed assignee's whole activity log for this
+  // customer (admin/manager only, per activities_delete policy). Call
+  // before clearing the slot — same RLS-race reason as logAssignmentRemoval.
+  function deleteAssigneeActivities(customerId: string, userId: string) {
+    const supabase = createClient();
+    supabase.from("activities").delete().eq("customer_id", customerId).eq("user_id", userId).then(() => {});
+    setActivities((prev) => prev.filter((a) => !(a.customerId === customerId && a.authorUserId === userId)));
+  }
+
   function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
     const before = customers.find((c) => c.id === customerId);
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, ...patch } : c)));
@@ -1964,11 +1974,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const occupant =
         request.slot === 1 ? c?.assignedToUserId : request.slot === 2 ? c?.assignedToUserId2 : c?.assignedToUserId3;
       if (occupant === request.requestedBy) {
-        // log before clearing: the change-log insert's RLS check needs this
-        // slot (or another) to still tie the manager to the row
+        // log + delete before clearing: both RLS checks need this slot (or
+        // another) to still tie the manager to the row
         const removedUser = users.find((u) => u.id === request.requestedBy);
         const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
         logAssignmentRemoval(request.customerId, request.slot, removedUser?.name ?? "Unknown", reasonName);
+        deleteAssigneeActivities(request.customerId, request.requestedBy);
         reassignCustomer(request.customerId, request.slot, null);
       }
     }
@@ -2143,6 +2154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateStageRequiresAmount,
     reassignCustomer,
     logAssignmentRemoval,
+    deleteAssigneeActivities,
     togglePool,
     deleteCustomer,
     updateCustomerProfile,

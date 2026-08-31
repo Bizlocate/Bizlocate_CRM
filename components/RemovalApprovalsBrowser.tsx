@@ -48,7 +48,7 @@ export default function RemovalApprovalsBrowser() {
               className="btn btn-primary"
               type="button"
               onClick={() => {
-                if (!window.confirm(`Approve removing ${userName(r.requestedBy)} from ${customerName(r.customerId)}? Their activity log for this customer will drop off their own view — it stays here in Change History.`)) return;
+                if (!window.confirm(`Approve removing ${userName(r.requestedBy)} from ${customerName(r.customerId)}? This permanently deletes their activity log for this customer — it can't be undone. (A "Removed" entry stays in Change History.)`)) return;
                 resolveClientRemoval(r.id, true);
               }}
             >
