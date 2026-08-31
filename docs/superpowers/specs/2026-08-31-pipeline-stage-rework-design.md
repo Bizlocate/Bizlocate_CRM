@@ -68,10 +68,18 @@ clears that slot's stage the same way it already clears pool state.
 
 - The standalone "Stage:" dropdown at the top of the page is removed.
 - If the current user occupies one of the customer's three slots, opening
-  the page clears **that slot's own** `stage_N` to `null` in the DB
-  (same "force a fresh check-in" behavior already decided earlier in this
-  project — per-slot, so it never affects what other assignees or
-  admin/manager see for their own slots).
+  the page resets the Log form's Stage picker to blank — **client-side
+  only, no DB write**. (Earlier in this project the "force a re-pick"
+  behavior was designed as an actual DB null-out of the shared stage
+  field; now that stage is per-slot *and* lives inside the Log form
+  instead of a standalone always-visible dropdown, a DB clear buys
+  nothing extra — the read-only badges below already solve the "let
+  others see the current value" need by reading the real stored value
+  directly, so nulling it would only create a pointless gap where every
+  other viewer's badge briefly shows "no stage" for no reason. The
+  mandatory-reselect requirement is fully satisfied by the blank
+  *picker* plus "Log" staying disabled until something's chosen — ship
+  this simpler version; say if the DB-level clear is still wanted.)
 - The Activity Log form gains a required **Stage** dropdown (only
   rendered for a user who occupies a slot on this customer). Log's
   existing `type`/`content`/`follow-up` fields are unchanged, but
