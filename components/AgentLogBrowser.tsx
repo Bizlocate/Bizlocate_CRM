@@ -13,6 +13,13 @@ function assigneeIds(c: Customer): string[] {
   return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
 }
 
+function agentStageId(c: Customer, agentId: string): string | null {
+  if (c.assignedToUserId === agentId) return c.stage1Id;
+  if (c.assignedToUserId2 === agentId) return c.stage2Id;
+  if (c.assignedToUserId3 === agentId) return c.stage3Id;
+  return null;
+}
+
 /**
  * Area + Stage filtered drill-down: pick an agent, see every customer
  * currently assigned to them, newest-updated first. Shared by the Admin
@@ -29,7 +36,7 @@ export default function AgentLogBrowser({ agents, customers }: { agents: User[];
   const agentCustomers = customers
     .filter((c) => assigneeIds(c).includes(effectiveAgentId))
     .filter((c) => !areaId || c.areaId === areaId)
-    .filter((c) => !stageId || c.stageId === stageId)
+    .filter((c) => !stageId || agentStageId(c, effectiveAgentId) === stageId)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   function stageName(id: string) {
@@ -66,7 +73,7 @@ export default function AgentLogBrowser({ agents, customers }: { agents: User[];
           <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
         )}
         {agentCustomers.map((c) => {
-          const style = STAGE_STYLES[stageName(c.stageId)] ?? { bg: "#eef0f4", color: "#4b5566" };
+          const style = STAGE_STYLES[stageName(agentStageId(c, effectiveAgentId) ?? "")] ?? { bg: "#eef0f4", color: "#4b5566" };
           return (
             <Link
               key={c.id}
@@ -88,7 +95,7 @@ export default function AgentLogBrowser({ agents, customers }: { agents: User[];
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: style.bg, color: style.color }}>
-                  {stageName(c.stageId)}
+                  {stageName(agentStageId(c, effectiveAgentId) ?? "")}
                 </span>
                 <span style={{ fontSize: 12, color: "#9aa0ab" }}>{formatDate(c.updatedAt)}</span>
               </div>

@@ -198,6 +198,7 @@ export interface Stage {
   name: string;
   order: number;
   isDefault: boolean;
+  requiresAmount: boolean;
 }
 
 export const STAGE_STYLES: Record<string, { bg: string; color: string }> = {
@@ -213,7 +214,9 @@ export interface Customer {
   name: string;
   email: string;
   phone: string;
-  stageId: string;
+  stage1Id: string | null;
+  stage2Id: string | null;
+  stage3Id: string | null;
   assignedToUserId: string | null;
   assignedToUserId2: string | null;
   assignedToUserId3: string | null;
@@ -310,3 +313,13 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
   budget_id: "Budget",
   remark: "Remark",
 };
+
+export interface DealClosure {
+  id: string;
+  customerId: string;
+  userId: string;
+  slot: 1 | 2 | 3;
+  stageId: string;
+  amount: number;
+  createdAt: string;
+}

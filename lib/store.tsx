@@ -16,6 +16,7 @@ import {
   CustomerChangeLogEntry,
   CsvBusinessTagPreview,
   CsvPreview,
+  DealClosure,
   FieldRequirement,
   FirsttimeBranchType,
   Language,
@@ -107,8 +108,8 @@ function assigneeSlots(c: Customer): string[] {
   return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
 }
 
-function mapStage(row: { id: string; name: string; order: number; is_default: boolean }): Stage {
-  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default };
+function mapStage(row: { id: string; name: string; order: number; is_default: boolean; requires_amount: boolean }): Stage {
+  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default, requiresAmount: row.requires_amount };
 }
 
 function mapCustomer(row: {
@@ -125,7 +126,9 @@ function mapCustomer(row: {
   pool_1_since: string | null;
   pool_2_since: string | null;
   pool_3_since: string | null;
-  stage_id: string;
+  stage_1: string | null;
+  stage_2: string | null;
+  stage_3: string | null;
   source_id: string | null;
   area_id: string | null;
   sub_area_id: string | null;
@@ -159,7 +162,9 @@ function mapCustomer(row: {
     pool1Since: row.pool_1_since,
     pool2Since: row.pool_2_since,
     pool3Since: row.pool_3_since,
-    stageId: row.stage_id,
+    stage1Id: row.stage_1,
+    stage2Id: row.stage_2,
+    stage3Id: row.stage_3,
     sourceId: row.source_id,
     areaId: row.area_id,
     subAreaId: row.sub_area_id,
@@ -263,6 +268,26 @@ function mapChangeLog(row: {
   };
 }
 
+function mapDealClosure(row: {
+  id: string;
+  customer_id: string;
+  user_id: string;
+  slot: number;
+  stage_id: string;
+  amount: number;
+  created_at: string;
+}): DealClosure {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    userId: row.user_id,
+    slot: row.slot as 1 | 2 | 3,
+    stageId: row.stage_id,
+    amount: row.amount,
+    createdAt: row.created_at,
+  };
+}
+
 function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
   return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
 }
@@ -302,6 +327,7 @@ interface Store {
   customers: Customer[];
   activities: Activity[];
   changeLog: CustomerChangeLogEntry[];
+  dealClosures: DealClosure[];
   tasks: Task[];
   notifications: Notification[];
   currentUser: User | null;
@@ -382,12 +408,12 @@ interface Store {
   renameStage: (id: string, name: string) => void;
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
+  updateStageRequiresAmount: (id: string, requiresAmount: boolean) => void;
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
-  updateCustomerStage: (customerId: string, stageId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
   updateCustomerIdentity: (customerId: string, patch: { name?: string; phone?: string }) => void;
   updateCustomerRemark: (customerId: string, remark: string) => void;
@@ -426,6 +452,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
+  const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -613,6 +640,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadDealClosures(): Promise<DealClosure[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("deal_closures").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapDealClosure);
+    setDealClosures(mapped);
+    return mapped;
+  }
+
   // Auto-removal for the inactive pool: any assignee slot (1, 2, or 3 — all
   // three are nullable now that a customer can go unassigned) sitting in
   // the inactive pool for 60+ days with no activity logged by that
@@ -779,6 +814,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedCustomers = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog(loadedUsers);
+        await loadDealClosures();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
@@ -828,6 +864,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedCustomers = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog(loadedUsers);
+    await loadDealClosures();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -1410,6 +1447,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("pipeline_stages").update({ name }).eq("id", id).then(() => {});
   }
 
+  function updateStageRequiresAmount(id: string, requiresAmount: boolean) {
+    setStages((prev) => prev.map((s) => (s.id === id ? { ...s, requiresAmount } : s)));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ requires_amount: requiresAmount }).eq("id", id).then(() => {});
+  }
+
   function moveStage(id: string, direction: -1 | 1) {
     const sorted = [...stages].sort((a, b) => a.order - b.order);
     const idx = sorted.findIndex((s) => s.id === id);
@@ -1430,7 +1473,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function deleteStage(id: string) {
-    const count = customers.filter((c) => c.stageId === id).length;
+    const count = customers.filter((c) => c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
     if (count > 0) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
@@ -1482,7 +1525,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pool_1: input.assignedToUserId ? "ACTIVE" : null,
         pool_2: input.assignedToUserId2 ? "ACTIVE" : null,
         pool_3: input.assignedToUserId3 ? "ACTIVE" : null,
-        stage_id: defaultStage.id,
+        stage_1: input.assignedToUserId ? defaultStage.id : null,
+        stage_2: input.assignedToUserId2 ? defaultStage.id : null,
+        stage_3: input.assignedToUserId3 ? defaultStage.id : null,
         created_by: currentUserId,
         source_id: profile.sourceId,
         area_id: profile.areaId,
@@ -1517,6 +1562,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const poolColumn = slot === 1 ? "pool_1" : slot === 2 ? "pool_2" : "pool_3";
     const sinceKey = slot === 1 ? "pool1Since" : slot === 2 ? "pool2Since" : "pool3Since";
     const sinceColumn = slot === 1 ? "pool_1_since" : slot === 2 ? "pool_2_since" : "pool_3_since";
+    const stageKey = slot === 1 ? "stage1Id" : slot === 2 ? "stage2Id" : "stage3Id";
+    const stageColumn = slot === 1 ? "stage_1" : slot === 2 ? "stage_2" : "stage_3";
     const otherSlotKeys = (["assignedToUserId", "assignedToUserId2", "assignedToUserId3"] as const).filter((k) => k !== slotKey);
     const otherSlots = otherSlotKeys.map((k) => customer[k]).filter((id): id is string => !!id);
     if (userId && otherSlots.includes(userId)) return { ok: false, error: "The same person can't be assigned twice." };
@@ -1525,12 +1572,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const error = assignmentError(userId, "ACTIVE", customerId);
       if (error) return { ok: false, error };
     }
-    // a newly (re)assigned slot always starts in the active pool; clearing a slot clears its pool state too
+    // a newly (re)assigned slot always starts in the active pool at the default stage; clearing a slot clears both
     const newPool: PoolStatus | null = userId ? "ACTIVE" : null;
+    const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
+    const newStageId: string | null = userId ? (defaultStage?.id ?? null) : null;
     setCustomers((prev) =>
       prev.map((c) =>
         c.id === customerId
-          ? { ...c, [slotKey]: userId, ...(changing ? { [poolKey]: newPool, [sinceKey]: null } : {}) }
+          ? { ...c, [slotKey]: userId, ...(changing ? { [poolKey]: newPool, [sinceKey]: null, [stageKey]: newStageId } : {}) }
           : c
       )
     );
@@ -1539,6 +1588,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (changing) {
       update[poolColumn] = newPool;
       update[sinceColumn] = null;
+      update[stageColumn] = newStageId;
     }
     supabase.from("customers").update(update).eq("id", customerId).then(() => {});
     const assignee = userId ? users.find((u) => u.id === userId) : undefined;
@@ -1650,12 +1700,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })),
       ...prev,
     ]);
-  }
-
-  function updateCustomerStage(customerId: string, stageId: string) {
-    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, stageId } : c)));
-    const supabase = createClient();
-    supabase.from("customers").update({ stage_id: stageId }).eq("id", customerId).then(() => {});
   }
 
   function updateCustomerProfile(customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) {
@@ -1808,6 +1852,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     customers,
     activities,
     changeLog,
+    dealClosures,
     tasks,
     notifications,
     currentUser,
@@ -1878,10 +1923,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     renameStage,
     moveStage,
     deleteStage,
+    updateStageRequiresAmount,
     reassignCustomer,
     togglePool,
     deleteCustomer,
-    updateCustomerStage,
     updateCustomerProfile,
     updateCustomerIdentity,
     updateCustomerRemark,
