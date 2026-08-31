@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminStagesPage() {
-  const { stages, addStage, renameStage, moveStage, deleteStage } = useStore();
+  const { stages, addStage, renameStage, moveStage, deleteStage, updateStageRequiresAmount } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [isDefault, setIsDefault] = useState(false);
@@ -98,6 +98,14 @@ export default function AdminStagesPage() {
               {s.isDefault && (
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#1e7a41", background: "#e7f6ec", padding: "3px 8px", borderRadius: 20 }}>DEFAULT</span>
               )}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280", marginLeft: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={s.requiresAmount}
+                  onChange={(e) => updateStageRequiresAmount(s.id, e.target.checked)}
+                />
+                Requires closed amount
+              </label>
               <div
                 onClick={() => { setEditingId(s.id); setEditName(s.name); }}
                 style={{ color: "#4046c9", fontWeight: 500, fontSize: 13, marginLeft: 16, cursor: "pointer" }}
