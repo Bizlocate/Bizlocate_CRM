@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { STAGE_STYLES, type Customer, type User } from "@/lib/types";
+import { STAGE_STYLES, type Area, type Customer, type User } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso: string): string {
@@ -24,10 +24,14 @@ function agentStageId(c: Customer, agentId: string): string | null {
  * Area + Stage filtered drill-down: pick an agent, see every customer
  * currently assigned to them, newest-updated first. Shared by the Admin
  * (`/admin/agent-logs`, company-wide) and Manager (`/team/agent-logs`,
- * own team) pages — only which `agents`/`customers` are passed in differs.
+ * own team) pages — only which `agents`/`customers`/`areas` are passed in
+ * differs; `areas` defaults to every area (admin) when not given.
  */
-export default function AgentLogBrowser({ agents, customers }: { agents: User[]; customers: Customer[] }) {
-  const { areas, stages } = useStore();
+export default function AgentLogBrowser({ agents, customers, areas: areasProp }: { agents: User[]; customers: Customer[]; areas?: Area[] }) {
+  const { areas: allAreas, stages } = useStore();
+  // dropdown offers only the scoped set (manager: own team); name lookup
+  // still resolves against every area so an out-of-scope area still renders
+  const filterAreas = areasProp ?? allAreas;
   const [areaId, setAreaId] = useState("");
   const [stageId, setStageId] = useState("");
   const [agentId, setAgentId] = useState("");
@@ -43,7 +47,7 @@ export default function AgentLogBrowser({ agents, customers }: { agents: User[];
     return stages.find((s) => s.id === id)?.name ?? "";
   }
   function areaName(id: string | null) {
-    return areas.find((a) => a.id === id)?.name ?? "—";
+    return allAreas.find((a) => a.id === id)?.name ?? "—";
   }
 
   return (
@@ -51,7 +55,7 @@ export default function AgentLogBrowser({ agents, customers }: { agents: User[];
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
           <option value="">All Areas</option>
-          {areas.map((a) => (
+          {filterAreas.map((a) => (
             <option key={a.id} value={a.id}>{a.name}</option>
           ))}
         </select>
