@@ -353,10 +353,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="card" style={{ padding: "14px 16px" }}>
-          <CardLabel>New leads vs deals won</CardLabel>
+          <CardLabel>New profiles created vs deals won</CardLabel>
           <div style={{ display: "flex", gap: 14, marginTop: -6, marginBottom: 12, fontSize: 11.5, color: "#6b7280" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 2, background: BRAND, display: "inline-block" }} />New leads
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: BRAND, display: "inline-block" }} />New profiles created
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 9, height: 9, borderRadius: 2, background: GREEN, display: "inline-block" }} />Deals won
@@ -367,7 +367,7 @@ export default function DashboardPage() {
               <div
                 key={p.yearMonth}
                 style={{ flex: 1, display: "flex", gap: 2, justifyContent: "center", alignItems: "flex-end" }}
-                title={`${monthLabel(p.yearMonth)}: ${p.newLeads} new leads, ${p.wonCount} won`}
+                title={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
               >
                 <div style={{ width: 12, background: BRAND, borderRadius: "4px 4px 0 0", height: `${(p.newLeads / maxTrendCount) * 92 + (p.newLeads > 0 ? 4 : 0)}px` }} />
                 <div style={{ width: 12, background: GREEN, borderRadius: "4px 4px 0 0", height: `${(p.wonCount / maxTrendCount) * 92 + (p.wonCount > 0 ? 4 : 0)}px` }} />
