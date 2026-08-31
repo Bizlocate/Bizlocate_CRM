@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { leaderboard, lostCount, openTaskCount, pacePct, scopedUserIds, stageFunnel, wonAmountInMonth } from "@/lib/dashboardMetrics";
+import { leaderboard, lostCount, monthlyTrend, openTaskCount, pacePct, scopedUserIds, stageFunnel, wonAmountInMonth } from "@/lib/dashboardMetrics";
 
 function currentYearMonth(): string {
   const d = new Date();
@@ -72,6 +72,9 @@ export default function DashboardPage() {
   const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === yearMonth)?.amount ?? null;
   const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
   const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === yearMonth).length;
+  const trend = monthlyTrend(visibleCustomers, scopedDealClosures, 6, new Date());
+  const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
+  const maxTrendLeads = Math.max(1, ...trend.map((p) => p.newLeads));
   const pace = pacePct(new Date(), yearMonth);
   const openTasks = openTaskCount(tasks, new Set(visibleCustomers.map((c) => c.id)));
   const leaderboardRows = leaderboard(
@@ -206,6 +209,37 @@ export default function DashboardPage() {
         <div>
           <div style={{ fontSize: 12, color: "#6b7280" }}>My activities logged</div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{myActivityCount}</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>趋势（近6个月）</div>
+      <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 40, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 260px" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 10 }}>
+            Won $ by month
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
+            {trend.map((p) => (
+              <div key={p.yearMonth} style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ background: "#4046c9", borderRadius: "3px 3px 0 0", height: `${(p.won / maxTrendWon) * 90 + (p.won > 0 ? 4 : 0)}px` }} title={formatMoney(p.won)} />
+                <div style={{ fontSize: 10.5, color: "#9aa0ab", marginTop: 4 }}>{monthLabel(p.yearMonth)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ flex: "1 1 260px" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 10 }}>
+            New leads vs won
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
+            {trend.map((p) => (
+              <div key={p.yearMonth} style={{ flex: 1, display: "flex", gap: 3, justifyContent: "center", alignItems: "flex-end" }}>
+                <div style={{ width: 8, background: "#9aa0ab", borderRadius: "3px 3px 0 0", height: `${(p.newLeads / maxTrendLeads) * 90 + (p.newLeads > 0 ? 4 : 0)}px` }} title={`${p.newLeads} new`} />
+                <div style={{ width: 8, background: "#1e7a41", borderRadius: "3px 3px 0 0", height: `${(p.won / maxTrendWon) * 90 + (p.won > 0 ? 4 : 0)}px` }} title={formatMoney(p.won)} />
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10.5, color: "#9aa0ab", marginTop: 6 }}>grey = new leads · green = won $</div>
         </div>
       </div>
     </div>
