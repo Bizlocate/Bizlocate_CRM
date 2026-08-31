@@ -30,6 +30,7 @@ import {
   RemovalRequest,
   RemovalRequestStatus,
   Role,
+  SalesTarget,
   Stage,
   SubArea,
   TargetRace,
@@ -295,6 +296,26 @@ function mapDealClosure(row: {
   };
 }
 
+function mapSalesTarget(row: {
+  id: string;
+  user_id: string;
+  year_month: string;
+  amount: number;
+  set_by: string;
+  created_at: string;
+  updated_at: string;
+}): SalesTarget {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    yearMonth: row.year_month,
+    amount: row.amount,
+    setBy: row.set_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapRemovalRequest(row: {
   id: string;
   customer_id: string;
@@ -359,6 +380,7 @@ interface Store {
   activities: Activity[];
   changeLog: CustomerChangeLogEntry[];
   dealClosures: DealClosure[];
+  salesTargets: SalesTarget[];
   removalReasons: RemovalReason[];
   removalRequests: RemovalRequest[];
   tasks: Task[];
@@ -445,6 +467,7 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
   updateStageRequiresAmount: (id: string, requiresAmount: boolean) => void;
+  upsertSalesTarget: (userId: string, yearMonth: string, amount: number) => void;
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
@@ -494,6 +517,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
+  const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
   const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
   const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -699,6 +723,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadSalesTargets(): Promise<SalesTarget[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("sales_targets").select("*").order("year_month", { ascending: false });
+    const mapped = (data ?? []).map(mapSalesTarget);
+    setSalesTargets(mapped);
+    return mapped;
+  }
+
   async function loadRemovalRequests(): Promise<RemovalRequest[]> {
     const supabase = createClient();
     const { data } = await supabase.from("removal_requests").select("*").order("created_at", { ascending: false });
@@ -875,6 +907,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
+        await loadSalesTargets();
         await loadRemovalReasons();
         await loadRemovalRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
@@ -927,6 +960,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
+    await loadSalesTargets();
     await loadRemovalReasons();
     await loadRemovalRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
@@ -1533,6 +1567,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("pipeline_stages").update({ requires_amount: requiresAmount }).eq("id", id).then(() => {});
   }
 
+  // Optimistic upsert on (user_id, year_month): updates the local row if one
+  // exists for this user+month, otherwise appends a temp-id row until the
+  // server response replaces it.
+  function upsertSalesTarget(userId: string, yearMonth: string, amount: number) {
+    if (!currentUser) return;
+    const now = new Date().toISOString();
+    setSalesTargets((prev) => {
+      const existing = prev.find((t) => t.userId === userId && t.yearMonth === yearMonth);
+      if (existing) return prev.map((t) => (t === existing ? { ...t, amount, updatedAt: now } : t));
+      return [...prev, { id: `temp-${userId}-${yearMonth}`, userId, yearMonth, amount, setBy: currentUser.id, createdAt: now, updatedAt: now }];
+    });
+    const supabase = createClient();
+    supabase
+      .from("sales_targets")
+      .upsert({ user_id: userId, year_month: yearMonth, amount, set_by: currentUser.id }, { onConflict: "user_id,year_month" })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          const mapped = mapSalesTarget(data);
+          setSalesTargets((prev) => prev.map((t) => (t.userId === userId && t.yearMonth === yearMonth ? mapped : t)));
+        }
+      });
+  }
+
   function moveStage(id: string, direction: -1 | 1) {
     const sorted = [...stages].sort((a, b) => a.order - b.order);
     const idx = sorted.findIndex((s) => s.id === id);
@@ -2076,6 +2135,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     activities,
     changeLog,
     dealClosures,
+    salesTargets,
     removalReasons,
     removalRequests,
     tasks,
@@ -2152,6 +2212,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     moveStage,
     deleteStage,
     updateStageRequiresAmount,
+    upsertSalesTarget,
     reassignCustomer,
     logAssignmentRemoval,
     deleteAssigneeActivities,
