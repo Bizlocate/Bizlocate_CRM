@@ -1800,7 +1800,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .select()
         .single()
         .then(({ data, error }) => {
-          if (!error && data) setDealClosures((prev) => [mapDealClosure(data), ...prev]);
+          if (!error && data) {
+            setDealClosures((prev) => [mapDealClosure(data), ...prev]);
+          } else if (error) {
+            alert("The closed amount could not be saved. Please re-enter it.");
+          }
         });
     }
   }

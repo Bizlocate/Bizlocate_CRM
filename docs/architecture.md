@@ -16,7 +16,7 @@ Created via a Postgres trigger on `auth.users` insert (`handle_new_user()`), so 
 | `profiles` | App user data | `id` (=auth uid), `name`, `role`, `team_id`, `status` |
 | `teams` | Sales teams | `id`, `name`, `manager_id` (→ profiles) |
 | `pipeline_stages` | Configurable deal stages | `id`, `name`, `order`, `is_default` |
-| `customers` | Customer/deal records | `id`, `name`, `email`, `phone`, `assigned_to` (→ profiles), `stage_id` (→ pipeline_stages), `created_by` |
+| `customers` | Customer/deal records | `id`, `name`, `email`, `phone`, `assigned_to`/`assigned_to_2`/`assigned_to_3` (→ profiles), `stage_1`/`stage_2`/`stage_3` (→ pipeline_stages, one per assignee slot), `created_by` |
 | `activities` | Call/visit/note log | `id`, `customer_id`, `user_id`, `type` (`CALL`/`VISIT`/`NOTE`), `content`, `follow_up_date` |
 | `tasks` | Follow-up tasks | `id`, `customer_id`, `user_id`, `title`, `due_date`, `done` |
 | `notifications` | In-app notifications | `id`, `user_id`, `type`, `message`, `read` |

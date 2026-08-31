@@ -6,9 +6,9 @@ This is the core of the CRM: the customer record and where it sits in the sales 
 
 ## Key concepts / data model
 
-- **`customers`**: `name`, `email`, `phone`, `assigned_to` (the salesperson who owns the relationship), `stage_id` (current pipeline position), `created_by`, `created_at`.
+- **`customers`**: `name`, `email`, `phone`, `assigned_to`/`assigned_to_2`/`assigned_to_3` (up to 3 assignees), `stage_1`/`stage_2`/`stage_3` (each assignee's own pipeline position, set via the Activity Log form on the customer detail page — not a standalone field), `created_by`, `created_at`.
 - **`pipeline_stages`**: ordered list (e.g. New → Contacted → Qualified → Won/Lost), configurable by Admin (see [`admin-console.md`](admin-console.md)), not hardcoded in application logic — a customer's stage is just a foreign key.
-- A customer always has exactly one `assigned_to` and one `stage_id` — no unassigned or stage-less customers.
+- A customer can have 0-3 assignees; each assignee slot has its own independent stage (`stage_N`), null when that slot is empty. A customer can be unassigned and stage-less on every slot.
 
 ## Permissions
 
