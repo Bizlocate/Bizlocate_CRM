@@ -150,6 +150,9 @@ export default function DashboardPage() {
   const { currentUser, users, teams, areas, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
   const [areaId, setAreaId] = useState("");
+  // Member filter — ADMIN/MANAGER only, scoped to "Pipeline & 趋势" (funnel +
+  // both trend charts) only, not the top stat row or 团队表现.
+  const [memberId, setMemberId] = useState("");
   // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
   // value above the bar — click/tap toggles, independent per chart.
   const [activeWonMonth, setActiveWonMonth] = useState<string | null>(null);
@@ -175,7 +178,16 @@ export default function DashboardPage() {
   const areaLeaderboardDealClosures = dealClosures.filter((d) => inAreaScope(d.customerId));
   const areaActivities = activities.filter((a) => inAreaScope(a.customerId));
 
-  const funnel = stageFunnel(areaCustomers, stages, scopedIds);
+  // Pipeline & 趋势 filters down further to one member on top of the area
+  // filter — "" (All members) leaves the area-level scope untouched.
+  const memberOptions = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN").sort((a, b) => a.name.localeCompare(b.name));
+  const pipelineScopedIds = memberId ? new Set([memberId]) : scopedIds;
+  const pipelineCustomers = memberId
+    ? areaCustomers.filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].includes(memberId))
+    : areaCustomers;
+  const pipelineDealClosures = memberId ? areaDealClosures.filter((d) => d.userId === memberId) : areaDealClosures;
+
+  const funnel = stageFunnel(pipelineCustomers, stages, pipelineScopedIds);
   const won = wonAmountInMonth(areaDealClosures, yearMonth);
   const lost = lostCount(areaCustomers, stages, scopedIds);
   const targetTotal = scopedTargets.reduce((sum, t) => sum + t.amount, 0);
@@ -190,7 +202,7 @@ export default function DashboardPage() {
   const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
   const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === yearMonth).length;
 
-  const trend = monthlyTrend(areaCustomers, areaDealClosures, 6, new Date());
+  const trend = monthlyTrend(pipelineCustomers, pipelineDealClosures, 6, new Date());
   const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
   // One shared scale — newLeads and wonCount are both deal counts, so their
   // bars are directly comparable (won *amount* never was).
@@ -337,7 +349,17 @@ export default function DashboardPage() {
         </>
       )}
 
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Pipeline & 趋势</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Pipeline & 趋势</div>
+        {canManage && (
+          <select className="field-input" style={{ width: 200 }} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            <option value="">All members</option>
+            {memberOptions.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: "14px 16px" }}>
           <CardLabel>Stage funnel</CardLabel>
