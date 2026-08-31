@@ -57,7 +57,8 @@ create table pipeline_stages (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   "order" int not null,
-  is_default boolean not null default false
+  is_default boolean not null default false,
+  requires_amount boolean not null default false
 );
 
 create table areas (
@@ -156,7 +157,9 @@ create table customers (
   pool_1_since timestamptz,
   pool_2_since timestamptz,
   pool_3_since timestamptz,
-  stage_id uuid not null references pipeline_stages (id),
+  stage_1 uuid references pipeline_stages (id),
+  stage_2 uuid references pipeline_stages (id),
+  stage_3 uuid references pipeline_stages (id),
   source_id uuid references lead_sources (id) on delete set null,
   area_id uuid references areas (id) on delete set null,
   sub_area_id uuid references sub_areas (id) on delete set null,
@@ -195,6 +198,16 @@ create table customer_change_log (
   field_key text not null,
   old_value text,
   new_value text,
+  created_at timestamptz not null default now()
+);
+
+create table deal_closures (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  slot smallint not null check (slot in (1, 2, 3)),
+  stage_id uuid not null references pipeline_stages (id),
+  amount numeric not null,
   created_at timestamptz not null default now()
 );
 
@@ -414,6 +427,7 @@ alter table customers enable row level security;
 alter table activities enable row level security;
 alter table tasks enable row level security;
 alter table customer_change_log enable row level security;
+alter table deal_closures enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -608,6 +622,28 @@ create policy "customer_change_log_insert" on customer_change_log for insert wit
     or exists (
       select 1 from customers c
       where c.id = customer_change_log.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
+  )
+);
+
+-- deal_closures: append-only, inherits customer visibility (same shape as
+-- activities) — visible to the closing assignee, their team, and admin.
+create policy "deal_closures_select" on deal_closures for select using (
+  is_admin()
+  or exists (
+    select 1 from customers c
+    where c.id = deal_closures.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+create policy "deal_closures_insert" on deal_closures for insert with check (
+  user_id = auth.uid()
+  and (
+    is_admin()
+    or exists (
+      select 1 from customers c
+      where c.id = deal_closures.customer_id
         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
     )
   )
@@ -1239,3 +1275,52 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table areas add column if not exists team_id uuid references teams (id) on delete set null;
 -- alter table teams add column if not exists last_auto_assigned_user_id uuid references profiles (id) on delete set null;
+
+-- ============================================================
+-- Migration: Pipeline stage rework (per-slot stage, requires_amount,
+-- deal_closures) — run once against an already-provisioned database
+-- (everything below already exists in the main schema above for fresh
+-- installs).
+-- ============================================================
+--
+-- alter table customers add column if not exists stage_1 uuid references pipeline_stages (id);
+-- alter table customers add column if not exists stage_2 uuid references pipeline_stages (id);
+-- alter table customers add column if not exists stage_3 uuid references pipeline_stages (id);
+-- update customers set stage_1 = stage_id where assigned_to is not null and stage_1 is null;
+-- update customers set stage_2 = stage_id where assigned_to_2 is not null and stage_2 is null;
+-- update customers set stage_3 = stage_id where assigned_to_3 is not null and stage_3 is null;
+-- alter table customers drop column if exists stage_id;
+--
+-- alter table pipeline_stages add column if not exists requires_amount boolean not null default false;
+--
+-- create table deal_closures (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers (id) on delete cascade,
+--   user_id uuid not null references profiles (id),
+--   slot smallint not null check (slot in (1, 2, 3)),
+--   stage_id uuid not null references pipeline_stages (id),
+--   amount numeric not null,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table deal_closures enable row level security;
+--
+-- create policy "deal_closures_select" on deal_closures for select using (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = deal_closures.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- create policy "deal_closures_insert" on deal_closures for insert with check (
+--   user_id = auth.uid()
+--   and (
+--     is_admin()
+--     or exists (
+--       select 1 from customers c
+--       where c.id = deal_closures.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
