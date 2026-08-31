@@ -230,6 +230,17 @@ create table removal_requests (
 
 create unique index removal_requests_one_pending on removal_requests (customer_id, slot) where status = 'PENDING';
 
+create table sales_targets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  year_month text not null,
+  amount numeric not null check (amount >= 0),
+  set_by uuid not null references profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, year_month)
+);
+
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
@@ -495,6 +506,7 @@ alter table customer_change_log enable row level security;
 alter table deal_closures enable row level security;
 alter table removal_reasons enable row level security;
 alter table removal_requests enable row level security;
+alter table sales_targets enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -772,6 +784,27 @@ create policy "removal_requests_update" on removal_requests for update using (
         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
     )
   )
+);
+
+-- sales_targets: admin sets anyone's; manager sets own team's + own; everyone
+-- in scope can read (self, own team, or admin sees all)
+create policy "sales_targets_select" on sales_targets for select using (
+  is_admin()
+  or user_id = auth.uid()
+  or user_id in (select id from profiles where team_id = my_team_id())
+);
+create policy "sales_targets_insert" on sales_targets for insert with check (
+  set_by = auth.uid()
+  and (
+    is_admin()
+    or user_id = auth.uid()
+    or user_id in (select id from profiles where team_id = my_team_id())
+  )
+);
+create policy "sales_targets_update" on sales_targets for update using (
+  is_admin()
+  or user_id = auth.uid()
+  or user_id in (select id from profiles where team_id = my_team_id())
 );
 
 -- notifications: recipient only; inserted by admin/manager on customer assignment
@@ -1689,4 +1722,42 @@ insert into mandatory_field_settings (field_key, required) values
 --         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
 --     )
 --   )
+-- );
+
+-- ============================================================
+-- Migration: sales_targets table (monthly $ target per user) — run once
+-- against an already-provisioned database (everything below already
+-- exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table sales_targets (
+--   id uuid primary key default gen_random_uuid(),
+--   user_id uuid not null references profiles(id) on delete cascade,
+--   year_month text not null,
+--   amount numeric not null check (amount >= 0),
+--   set_by uuid not null references profiles(id),
+--   created_at timestamptz not null default now(),
+--   updated_at timestamptz not null default now(),
+--   unique (user_id, year_month)
+-- );
+--
+-- alter table sales_targets enable row level security;
+--
+-- create policy "sales_targets_select" on sales_targets for select using (
+--   is_admin()
+--   or user_id = auth.uid()
+--   or user_id in (select id from profiles where team_id = my_team_id())
+-- );
+-- create policy "sales_targets_insert" on sales_targets for insert with check (
+--   set_by = auth.uid()
+--   and (
+--     is_admin()
+--     or user_id = auth.uid()
+--     or user_id in (select id from profiles where team_id = my_team_id())
+--   )
+-- );
+-- create policy "sales_targets_update" on sales_targets for update using (
+--   is_admin()
+--   or user_id = auth.uid()
+--   or user_id in (select id from profiles where team_id = my_team_id())
 -- );

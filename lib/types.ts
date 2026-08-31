@@ -327,6 +327,16 @@ export interface DealClosure {
   createdAt: string;
 }
 
+export interface SalesTarget {
+  id: string;
+  userId: string;
+  yearMonth: string; // 'YYYY-MM'
+  amount: number;
+  setBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RemovalReason {
   id: string;
   name: string;
