@@ -143,6 +143,11 @@ create table budgets (
   name text not null unique
 );
 
+create table removal_reasons (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
 create table customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -208,6 +213,18 @@ create table deal_closures (
   slot smallint not null check (slot in (1, 2, 3)),
   stage_id uuid not null references pipeline_stages (id),
   amount numeric not null,
+  created_at timestamptz not null default now()
+);
+
+create table removal_requests (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers (id) on delete cascade,
+  slot smallint not null check (slot in (1, 2, 3)),
+  requested_by uuid not null references profiles (id),
+  reason_id uuid not null references removal_reasons (id),
+  status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+  resolved_by uuid references profiles (id),
+  resolved_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -428,6 +445,8 @@ alter table activities enable row level security;
 alter table tasks enable row level security;
 alter table customer_change_log enable row level security;
 alter table deal_closures enable row level security;
+alter table removal_reasons enable row level security;
+alter table removal_requests enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -545,6 +564,11 @@ create policy "budgets_insert_admin" on budgets for insert with check (is_admin(
 create policy "budgets_update_admin" on budgets for update using (is_admin());
 create policy "budgets_delete_admin" on budgets for delete using (is_admin());
 
+create policy "removal_reasons_select" on removal_reasons for select using (auth.uid() is not null);
+create policy "removal_reasons_insert_admin" on removal_reasons for insert with check (is_admin());
+create policy "removal_reasons_update_admin" on removal_reasons for update using (is_admin());
+create policy "removal_reasons_delete_admin" on removal_reasons for delete using (is_admin());
+
 -- customers: admin all, manager own team, salesperson own assigned (any of up to 3 slots)
 create policy "customers_select" on customers for select using (
   is_admin() or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
@@ -644,6 +668,38 @@ create policy "deal_closures_insert" on deal_closures for insert with check (
     or exists (
       select 1 from customers c
       where c.id = deal_closures.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
+  )
+);
+
+-- removal_requests: select/insert mirror deal_closures (visible to the
+-- requester, their team, and admin); update (approve/reject) is
+-- ADMIN, or MANAGER scoped to their own team's customers only — a
+-- salesperson can never resolve their own request.
+create policy "removal_requests_select" on removal_requests for select using (
+  is_admin()
+  or exists (
+    select 1 from customers c
+    where c.id = removal_requests.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+create policy "removal_requests_insert" on removal_requests for insert with check (
+  requested_by = auth.uid()
+  and exists (
+    select 1 from customers c
+    where c.id = removal_requests.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+create policy "removal_requests_update" on removal_requests for update using (
+  is_admin()
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and exists (
+      select 1 from customers c
+      where c.id = removal_requests.customer_id
         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
     )
   )
@@ -1320,6 +1376,65 @@ insert into mandatory_field_settings (field_key, required) values
 --     or exists (
 --       select 1 from customers c
 --       where c.id = deal_closures.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
+
+-- ============================================================
+-- Migration: Remove client approval workflow — run once against an
+-- already-provisioned database (everything below already exists in
+-- the main schema above for fresh installs).
+-- ============================================================
+--
+-- create table removal_reasons (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null unique
+-- );
+--
+-- create table removal_requests (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers (id) on delete cascade,
+--   slot smallint not null check (slot in (1, 2, 3)),
+--   requested_by uuid not null references profiles (id),
+--   reason_id uuid not null references removal_reasons (id),
+--   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+--   resolved_by uuid references profiles (id),
+--   resolved_at timestamptz,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table removal_reasons enable row level security;
+-- alter table removal_requests enable row level security;
+--
+-- create policy "removal_reasons_select" on removal_reasons for select using (auth.uid() is not null);
+-- create policy "removal_reasons_insert_admin" on removal_reasons for insert with check (is_admin());
+-- create policy "removal_reasons_update_admin" on removal_reasons for update using (is_admin());
+-- create policy "removal_reasons_delete_admin" on removal_reasons for delete using (is_admin());
+--
+-- create policy "removal_requests_select" on removal_requests for select using (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = removal_requests.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- create policy "removal_requests_insert" on removal_requests for insert with check (
+--   requested_by = auth.uid()
+--   and exists (
+--     select 1 from customers c
+--     where c.id = removal_requests.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- create policy "removal_requests_update" on removal_requests for update using (
+--   is_admin()
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and exists (
+--       select 1 from customers c
+--       where c.id = removal_requests.customer_id
 --         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
 --     )
 --   )
