@@ -1926,7 +1926,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .update({ status, resolved_by: currentUser.id, resolved_at: now })
       .eq("id", requestId)
       .then(() => {});
-    if (approve) reassignCustomer(request.customerId, request.slot, null);
+    if (approve) {
+      const c = customers.find((x) => x.id === request.customerId);
+      const occupant =
+        request.slot === 1 ? c?.assignedToUserId : request.slot === 2 ? c?.assignedToUserId2 : c?.assignedToUserId3;
+      if (occupant === request.requestedBy) reassignCustomer(request.customerId, request.slot, null);
+    }
     createNotification(
       request.requestedBy,
       approve ? "Your client removal request was approved." : "Your client removal request was rejected."

@@ -137,8 +137,10 @@ export default function CustomerDetailPage() {
     return slot === 1 ? customer!.stage1Id : slot === 2 ? customer!.stage2Id : customer!.stage3Id;
   }
 
-  function pendingRemovalForSlot(slot: 1 | 2 | 3) {
-    return removalRequests.some((r) => r.customerId === customer!.id && r.slot === slot && r.status === "PENDING");
+  function pendingRemovalForSlot(slot: 1 | 2 | 3, occupantUserId: string) {
+    return removalRequests.some(
+      (r) => r.customerId === customer!.id && r.slot === slot && r.requestedBy === occupantUserId && r.status === "PENDING"
+    );
   }
 
   function handleTogglePool(slot: 1 | 2 | 3, pool: "ACTIVE" | "INACTIVE") {
@@ -388,7 +390,7 @@ export default function CustomerDetailPage() {
                           <span style={badgeStyle}>{pool === "ACTIVE" ? "Active" : "Potential"}</span>
                         )
                       )}
-                      {pendingRemovalForSlot(slot) ? (
+                      {pendingRemovalForSlot(slot, user.id) ? (
                         <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "#fff4e0", color: "#8a5a00" }}>
                           Removal Pending
                         </span>

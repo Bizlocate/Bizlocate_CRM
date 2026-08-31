@@ -323,20 +323,47 @@ create trigger profiles_protect_columns
 -- slot (used by the 60-day inactive-pool sweep, and generally reasonable
 -- as a "drop myself from this customer" action) — otherwise only an admin
 -- can change who's assigned
-create function protect_customer_assignment() returns trigger as $$
+create or replace function protect_customer_assignment() returns trigger as $$
 begin
   if not is_admin() and (
     (
       new.assigned_to is distinct from old.assigned_to
-      and not (new.assigned_to is null and old.assigned_to = auth.uid())
+      and not (
+        new.assigned_to is null
+        and (
+          old.assigned_to = auth.uid()
+          or (
+            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+            and old.assigned_to in (select id from profiles where team_id = my_team_id())
+          )
+        )
+      )
     )
     or (
       new.assigned_to_2 is distinct from old.assigned_to_2
-      and not (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+      and not (
+        new.assigned_to_2 is null
+        and (
+          old.assigned_to_2 = auth.uid()
+          or (
+            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+            and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+          )
+        )
+      )
     )
     or (
       new.assigned_to_3 is distinct from old.assigned_to_3
-      and not (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+      and not (
+        new.assigned_to_3 is null
+        and (
+          old.assigned_to_3 = auth.uid()
+          or (
+            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+            and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+          )
+        )
+      )
     )
   ) then
     raise exception 'only an admin can reassign a customer';
@@ -351,15 +378,36 @@ create trigger customers_protect_assignment
 
 -- a slot's pool status can only be changed by that slot's own assignee, or
 -- an admin
-create function protect_pool_columns() returns trigger as $$
+create or replace function protect_pool_columns() returns trigger as $$
 begin
-  if not is_admin() and new.pool_1 is distinct from old.pool_1 and auth.uid() is distinct from old.assigned_to then
+  if not is_admin()
+    and new.pool_1 is distinct from old.pool_1
+    and auth.uid() is distinct from old.assigned_to
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to in (select id from profiles where team_id = my_team_id())
+    )
+  then
     raise exception 'only the assignee or an admin can change this pool status';
   end if;
-  if not is_admin() and new.pool_2 is distinct from old.pool_2 and auth.uid() is distinct from old.assigned_to_2 then
+  if not is_admin()
+    and new.pool_2 is distinct from old.pool_2
+    and auth.uid() is distinct from old.assigned_to_2
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+    )
+  then
     raise exception 'only the assignee or an admin can change this pool status';
   end if;
-  if not is_admin() and new.pool_3 is distinct from old.pool_3 and auth.uid() is distinct from old.assigned_to_3 then
+  if not is_admin()
+    and new.pool_3 is distinct from old.pool_3
+    and auth.uid() is distinct from old.assigned_to_3
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+    )
+  then
     raise exception 'only the assignee or an admin can change this pool status';
   end if;
   return new;
@@ -685,12 +733,17 @@ create policy "removal_requests_select" on removal_requests for select using (
       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
 );
+drop policy if exists "removal_requests_insert" on removal_requests;
 create policy "removal_requests_insert" on removal_requests for insert with check (
   requested_by = auth.uid()
   and exists (
     select 1 from customers c
     where c.id = removal_requests.customer_id
-      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+      and (
+        (removal_requests.slot = 1 and c.assigned_to = auth.uid())
+        or (removal_requests.slot = 2 and c.assigned_to_2 = auth.uid())
+        or (removal_requests.slot = 3 and c.assigned_to_3 = auth.uid())
+      )
   )
 );
 create policy "removal_requests_update" on removal_requests for update using (
@@ -1437,5 +1490,114 @@ insert into mandatory_field_settings (field_key, required) values
 --       where c.id = removal_requests.customer_id
 --         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
 --     )
+--   )
+-- );
+
+-- ============================================================
+-- Migration: Remove client approval workflow — manager team-clearing
+-- fix. Run once against an already-provisioned database that already
+-- ran the "Remove client approval workflow" migration above (this
+-- block corrects a gap found after that one shipped: the pre-existing
+-- protect_customer_assignment/protect_pool_columns triggers didn't
+-- allow a MANAGER to clear a team member's slot, and
+-- removal_requests_insert didn't check the specific slot).
+-- ============================================================
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- begin
+--   if not is_admin() and (
+--     (
+--       new.assigned_to is distinct from old.assigned_to
+--       and not (
+--         new.assigned_to is null
+--         and (
+--           old.assigned_to = auth.uid()
+--           or (
+--             exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--             and old.assigned_to in (select id from profiles where team_id = my_team_id())
+--           )
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (
+--         new.assigned_to_2 is null
+--         and (
+--           old.assigned_to_2 = auth.uid()
+--           or (
+--             exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--             and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+--           )
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (
+--         new.assigned_to_3 is null
+--         and (
+--           old.assigned_to_3 = auth.uid()
+--           or (
+--             exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--             and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+--           )
+--         )
+--       )
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_pool_columns() returns trigger as $$
+-- begin
+--   if not is_admin()
+--     and new.pool_1 is distinct from old.pool_1
+--     and auth.uid() is distinct from old.assigned_to
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if not is_admin()
+--     and new.pool_2 is distinct from old.pool_2
+--     and auth.uid() is distinct from old.assigned_to_2
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if not is_admin()
+--     and new.pool_3 is distinct from old.pool_3
+--     and auth.uid() is distinct from old.assigned_to_3
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop policy if exists "removal_requests_insert" on removal_requests;
+-- create policy "removal_requests_insert" on removal_requests for insert with check (
+--   requested_by = auth.uid()
+--   and exists (
+--     select 1 from customers c
+--     where c.id = removal_requests.customer_id
+--       and (
+--         (removal_requests.slot = 1 and c.assigned_to = auth.uid())
+--         or (removal_requests.slot = 2 and c.assigned_to_2 = auth.uid())
+--         or (removal_requests.slot = 3 and c.assigned_to_3 = auth.uid())
+--       )
 --   )
 -- );
