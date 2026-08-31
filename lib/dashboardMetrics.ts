@@ -100,8 +100,8 @@ export function pacePct(now: Date, yearMonth: string): number {
   return Math.round((now.getDate() / daysInMonth) * 100);
 }
 
-// Rough approximation, not true cohort conversion: (# distinct customers
-// with a won deal-closure this month) / (# customers created this month).
+// Cohort conversion rate: (# of leads created this month who also won this month) /
+// (# leads created this month). Measures what % of new leads in a month converted to deals.
 export function conversionRatePct(dealClosures: DealClosure[], customers: Customer[], yearMonth: string): number | null {
   const newLeadIds = new Set(customers.filter((c) => yearMonthOf(c.createdAt) === yearMonth).map((c) => c.id));
   if (newLeadIds.size === 0) return null;
