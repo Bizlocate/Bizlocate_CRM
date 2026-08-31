@@ -10,9 +10,11 @@ export default function MainNav() {
   if (!currentUser || currentUser.role === "SALESPERSON") return null;
 
   const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
+  const removeApprovalsHref = currentUser.role === "ADMIN" ? "/admin/remove-approvals" : "/team/remove-approvals";
   const tabs = [
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
     { href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) },
+    { href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref) },
   ];
 
   return (
