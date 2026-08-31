@@ -59,8 +59,9 @@ function TargetCell({
 }
 
 export default function DashboardPage() {
-  const { currentUser, users, teams, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
+  const { currentUser, users, teams, areas, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
+  const [areaId, setAreaId] = useState("");
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
   const scopedDealClosures = useMemo(() => dealClosures.filter((d) => scopedIds.has(d.userId)), [dealClosures, scopedIds]);
@@ -71,28 +72,37 @@ export default function DashboardPage() {
 
   if (!currentUser) return null;
 
-  const funnel = stageFunnel(visibleCustomers, stages, scopedIds);
-  const won = wonAmountInMonth(scopedDealClosures, yearMonth);
-  const lost = lostCount(visibleCustomers, stages, scopedIds);
+  // Area filter (ADMIN/MANAGER only) narrows every section below to one
+  // area's customers — "" means all areas, no filtering.
+  const areaCustomers = areaId ? visibleCustomers.filter((c) => c.areaId === areaId) : visibleCustomers;
+  const customerAreaMap = new Map(visibleCustomers.map((c) => [c.id, c.areaId]));
+  const inAreaScope = (customerId: string) => !areaId || customerAreaMap.get(customerId) === areaId;
+  const areaDealClosures = scopedDealClosures.filter((d) => inAreaScope(d.customerId));
+  const areaLeaderboardDealClosures = dealClosures.filter((d) => inAreaScope(d.customerId));
+  const areaActivities = activities.filter((a) => inAreaScope(a.customerId));
+
+  const funnel = stageFunnel(areaCustomers, stages, scopedIds);
+  const won = wonAmountInMonth(areaDealClosures, yearMonth);
+  const lost = lostCount(areaCustomers, stages, scopedIds);
   const targetTotal = scopedTargets.reduce((sum, t) => sum + t.amount, 0);
   const attainmentPct = targetTotal > 0 ? Math.round((won / targetTotal) * 100) : null;
   const maxFunnelCount = Math.max(1, ...funnel.map((f) => f.count));
-  const conversionRate = conversionRatePct(scopedDealClosures, visibleCustomers, yearMonth);
+  const conversionRate = conversionRatePct(areaDealClosures, areaCustomers, yearMonth);
 
   const myWon = wonAmountInMonth(dealClosures.filter((d) => d.userId === currentUser.id), yearMonth);
   const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === yearMonth)?.amount ?? null;
   const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
   const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === yearMonth).length;
-  const trend = monthlyTrend(visibleCustomers, scopedDealClosures, 6, new Date());
+  const trend = monthlyTrend(areaCustomers, areaDealClosures, 6, new Date());
   const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
   const maxTrendLeads = Math.max(1, ...trend.map((p) => p.newLeads));
   const pace = pacePct(new Date(), yearMonth);
-  const openTasks = openTaskCount(tasks, new Set(visibleCustomers.map((c) => c.id)));
+  const openTasks = openTaskCount(tasks, new Set(areaCustomers.map((c) => c.id)));
   const leaderboardRows = leaderboard(
-    users.filter((u) => scopedIds.has(u.id) && u.active),
-    dealClosures,
+    users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN"),
+    areaLeaderboardDealClosures,
     salesTargets,
-    activities,
+    areaActivities,
     yearMonth
   );
 
@@ -100,7 +110,17 @@ export default function DashboardPage() {
     <div style={{ padding: "28px 32px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Dashboard</div>
-        <input type="month" className="field-input" style={{ width: 160 }} value={yearMonth} onChange={(e) => setYearMonth(e.target.value)} />
+        <div style={{ display: "flex", gap: 8 }}>
+          {currentUser.role !== "SALESPERSON" && (
+            <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+              <option value="">All areas</option>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
+          <input type="month" className="field-input" style={{ width: 160 }} value={yearMonth} onChange={(e) => setYearMonth(e.target.value)} />
+        </div>
       </div>
 
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Pipeline & 业绩 — {monthLabel(yearMonth)}</div>
@@ -219,18 +239,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>我的数字</div>
-      <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 32, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>My won this month</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{formatMoney(myWon)}</div>
-          <div style={{ fontSize: 12.5, color: "#9aa0ab" }}>{myTarget ? `${myAttainmentPct}% of ${formatMoney(myTarget)} target` : "No target set"}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>My activities logged</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{myActivityCount}</div>
-        </div>
-      </div>
+      {currentUser.role !== "ADMIN" && (
+        <>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>我的数字</div>
+          <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 32, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>My won this month</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{formatMoney(myWon)}</div>
+              <div style={{ fontSize: 12.5, color: "#9aa0ab" }}>{myTarget ? `${myAttainmentPct}% of ${formatMoney(myTarget)} target` : "No target set"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>My activities logged</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{myActivityCount}</div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>趋势（近6个月）</div>
       <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 40, flexWrap: "wrap" }}>
