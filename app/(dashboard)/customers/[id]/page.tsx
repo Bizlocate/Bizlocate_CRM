@@ -118,6 +118,7 @@ export default function CustomerDetailPage() {
   }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!currentUser || !customer) return null;
+  const currentRole = currentUser.role;
 
   const assignedSlots: { slot: 1 | 2 | 3; userId: string | null }[] = [
     { slot: 1, userId: customer.assignedToUserId },
@@ -128,6 +129,10 @@ export default function CustomerDetailPage() {
     .map(({ slot, userId }) => ({ slot, user: userId ? users.find((u) => u.id === userId) : undefined }))
     .filter((a): a is { slot: 1 | 2 | 3; user: NonNullable<typeof a.user> } => !!a.user);
   const myAssignedSlot = assignedUsers.find(({ user }) => user.id === currentUser.id)?.slot ?? null;
+  // salesperson only sees their own slot up top — teammates' names/stage stay hidden
+  const visibleAssignedUsers = currentUser.role === "SALESPERSON"
+    ? assignedUsers.filter(({ user }) => user.id === currentUser.id)
+    : assignedUsers;
 
   function poolOf(slot: 1 | 2 | 3) {
     return slot === 1 ? customer!.pool1 : slot === 2 ? customer!.pool2 : customer!.pool3;
@@ -203,20 +208,23 @@ export default function CustomerDetailPage() {
   }
   const customerActivities = activities.filter((a) => a.customerId === customer.id);
 
-  const canLogActivity = currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
+  // admin doesn't do followups, so no log-entry form for them (history still visible below)
+  const canLogActivity = currentUser.role !== "ADMIN"
+    && (currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id));
 
   function roleLabel(role: string) {
     return role === "SALESPERSON" ? "Sales Person" : role === "MANAGER" ? "Manager" : "Admin";
   }
 
-  const logGroups: { key: string; label: string; roleLabel: string; entries: Activity[] }[] = [];
+  const logGroups: { key: string; name: string; slot?: 1 | 2 | 3; roleLabel: string; entries: Activity[] }[] = [];
   const groupedAuthorIds = new Set<string>();
 
   assignedUsers.forEach(({ slot, user }) => {
     groupedAuthorIds.add(user.id);
     logGroups.push({
       key: user.id,
-      label: assignedUsers.length > 1 ? `${user.name} (Assigned ${slot})` : user.name,
+      name: user.name,
+      slot,
       roleLabel: roleLabel(user.role),
       entries: customerActivities.filter((a) => a.authorUserId === user.id),
     });
@@ -231,7 +239,7 @@ export default function CustomerDetailPage() {
       const author = users.find((u) => u.id === authorId);
       logGroups.push({
         key: authorId,
-        label: author?.name ?? entries[0]?.author ?? "Unknown",
+        name: author?.name ?? entries[0]?.author ?? "Unknown",
         roleLabel: author ? roleLabel(author.role) : "",
         entries,
       });
@@ -240,6 +248,19 @@ export default function CustomerDetailPage() {
   const visibleLogGroups = currentUser.role === "SALESPERSON"
     ? logGroups.filter((g) => g.key === currentUser.id)
     : logGroups;
+
+  // admin/manager card header carries the slot + current stage; salesperson's
+  // own card (the only one they see) keeps the plain name label
+  function logGroupLabel(group: (typeof logGroups)[number]): string {
+    if (group.slot && currentRole !== "SALESPERSON") {
+      const stageName = pendingRemovalForSlot(group.slot, group.key)
+        ? "Removal Pending"
+        : stages.find((s) => s.id === stageOf(group.slot!))?.name;
+      return [`Assigned ${group.slot}`, group.name, group.roleLabel, stageName].filter(Boolean).join(" · ");
+    }
+    const base = group.slot && assignedUsers.length > 1 ? `${group.name} (Assigned ${group.slot})` : group.name;
+    return group.roleLabel ? `${base} · ${group.roleLabel}` : base;
+  }
 
   const customerTasks = tasks.filter((t) => t.customerId === customer.id);
   const openTasks = customerTasks.filter((t) => !t.done);
@@ -363,15 +384,15 @@ export default function CustomerDetailPage() {
                 customer.phone
               )}
               {" "}· Assigned:{" "}
-              {assignedUsers.length > 0 ? (
-                assignedUsers.map(({ slot, user }, i) => {
+              {visibleAssignedUsers.length > 0 ? (
+                visibleAssignedUsers.map(({ slot, user }, i) => {
                   const pool = poolOf(slot);
                   const canToggle = currentUser.role === "ADMIN" || currentUser.id === user.id;
                   const badgeStyle: React.CSSProperties = {
-                    marginLeft: 4,
-                    fontSize: 11,
+                    marginLeft: 6,
+                    fontSize: 13,
                     fontWeight: 600,
-                    padding: "2px 8px",
+                    padding: "4px 12px",
                     borderRadius: 20,
                     border: "none",
                     background: pool === "ACTIVE" ? "#e7f6ec" : "#eceef1",
@@ -394,7 +415,8 @@ export default function CustomerDetailPage() {
                         <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "#fff4e0", color: "#8a5a00" }}>
                           Removal Pending
                         </span>
-                      ) : (() => {
+                      ) : currentUser.role === "SALESPERSON" ? (() => {
+                        // stage badge for admin/manager moved down into each log card's header instead
                         const stage = stages.find((s) => s.id === stageOf(slot));
                         if (!stage) return null;
                         const stageStyle = STAGE_STYLES[stage.name] ?? { bg: "#eef0f4", color: "#4b5566" };
@@ -403,7 +425,7 @@ export default function CustomerDetailPage() {
                             {stage.name}
                           </span>
                         );
-                      })()}
+                      })() : null}
                     </span>
                   );
                 })
@@ -440,7 +462,7 @@ export default function CustomerDetailPage() {
         )}
       </div>
 
-      {currentUser.role === "ADMIN" && (
+      {(currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && (
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {(() => {
             const rows = [
@@ -450,7 +472,17 @@ export default function CustomerDetailPage() {
             ];
             return rows.map(({ slot, value, setValue, current, clearable }) => {
               const otherCurrent = rows.filter((r) => r.slot !== slot).map((r) => r.current);
-              const options = users.filter((u) => u.active && !otherCurrent.includes(u.id));
+              // a manager can only hand this off to a salesperson on their own team
+              const scopedOptions = users.filter((u) =>
+                u.active
+                && !otherCurrent.includes(u.id)
+                && (currentUser.role === "ADMIN" || (u.role === "SALESPERSON" && u.teamId === currentUser.teamId))
+              );
+              // keep the current occupant selectable/visible even if out of a manager's scope
+              const currentUserObj = current ? users.find((u) => u.id === current) : undefined;
+              const options = currentUserObj && !scopedOptions.some((u) => u.id === currentUserObj.id)
+                ? [currentUserObj, ...scopedOptions]
+                : scopedOptions;
               return (
                 <div key={slot} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "#9aa0ab", fontWeight: 500 }}>Assigned {slot}:</span>
@@ -639,7 +671,7 @@ export default function CustomerDetailPage() {
             <div key={group.key} className="card" style={{ marginBottom: 16 }}>
               <div style={{ padding: "10px 16px", borderBottom: "1px solid #eef0f2", background: "#f7f7f8", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>
-                  {group.label}{group.roleLabel ? ` · ${group.roleLabel}` : ""}
+                  {logGroupLabel(group)}
                 </span>
                 <span style={{ fontSize: 11.5, color: "#9aa0ab" }}>
                   {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}

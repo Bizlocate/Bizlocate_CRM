@@ -77,6 +77,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
   const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [updatedSort, setUpdatedSort] = useState<"asc" | "desc" | null>(null);
 
   const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const canExport = currentUser?.role === "ADMIN";
@@ -131,6 +132,12 @@ export default function CustomersPage() {
   ]);
 
   const sortedCustomers = useMemo(() => {
+    if (updatedSort) {
+      return [...filteredCustomers].sort((a, b) => {
+        const diff = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        return updatedSort === "asc" ? diff : -diff;
+      });
+    }
     if (!isSalesperson) return filteredCustomers;
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return filteredCustomers;
@@ -139,7 +146,11 @@ export default function CustomersPage() {
       const bNew = myStageId(b) === defaultStage.id ? 0 : 1;
       return aNew - bNew;
     });
-  }, [filteredCustomers, isSalesperson, stages, currentUser]);
+  }, [filteredCustomers, isSalesperson, stages, currentUser, updatedSort]);
+
+  function toggleUpdatedSort() {
+    setUpdatedSort((prev) => (prev === "desc" ? "asc" : prev === "asc" ? null : "desc"));
+  }
 
   if (!currentUser) return null;
 
@@ -465,7 +476,9 @@ export default function CustomersPage() {
               <div>Stage</div>
               {showAssignedTo && <div>Assigned Agent(s)</div>}
               <div>Purpose</div>
-              <div>Last Updated</div>
+              <div onClick={toggleUpdatedSort} style={{ cursor: "pointer", userSelect: "none" }}>
+                Last Updated{updatedSort === "desc" ? " ↓" : updatedSort === "asc" ? " ↑" : ""}
+              </div>
               <div></div>
             </div>
             {sortedCustomers.length === 0 && (

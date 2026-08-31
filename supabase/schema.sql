@@ -323,47 +323,45 @@ create trigger profiles_protect_columns
 
 -- any of the 3 slots can be self-cleared by the assignee currently in that
 -- slot (used by the 60-day inactive-pool sweep, and generally reasonable
--- as a "drop myself from this customer" action) — otherwise only an admin
--- can change who's assigned
+-- as a "drop myself from this customer" action). A manager can also fill or
+-- clear a slot as long as both the old and new occupant (when not null) are
+-- on their own team — i.e. assigning a customer to one of their salespeople.
+-- Otherwise only an admin can change who's assigned.
 create or replace function protect_customer_assignment() returns trigger as $$
+declare
+  is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
 begin
   if not is_admin() and (
     (
       new.assigned_to is distinct from old.assigned_to
       and not (
-        new.assigned_to is null
-        and (
-          old.assigned_to = auth.uid()
-          or (
-            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-            and old.assigned_to in (select id from profiles where team_id = my_team_id())
-          )
+        (new.assigned_to is null and old.assigned_to = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
         )
       )
     )
     or (
       new.assigned_to_2 is distinct from old.assigned_to_2
       and not (
-        new.assigned_to_2 is null
-        and (
-          old.assigned_to_2 = auth.uid()
-          or (
-            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-            and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
-          )
+        (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
         )
       )
     )
     or (
       new.assigned_to_3 is distinct from old.assigned_to_3
       and not (
-        new.assigned_to_3 is null
-        and (
-          old.assigned_to_3 = auth.uid()
-          or (
-            exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-            and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
-          )
+        (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
         )
       )
     )
@@ -1605,3 +1603,55 @@ insert into mandatory_field_settings (field_key, required) values
 --       )
 --   )
 -- );
+
+-- ============================================================
+-- Migration: Manager can assign customers (not just clear their own
+-- team's slots) — run once against an already-provisioned database
+-- (everything below already exists in the main schema above for fresh
+-- installs).
+-- ============================================================
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- declare
+--   is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+-- begin
+--   if not is_admin() and (
+--     (
+--       new.assigned_to is distinct from old.assigned_to
+--       and not (
+--         (new.assigned_to is null and old.assigned_to = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (
+--         (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (
+--         (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
