@@ -117,6 +117,9 @@ assert.equal(trend[0].won, 0);
 assert.equal(trend[1].won, 50);
 assert.equal(trend[2].won, 100);
 assert.equal(trend[2].newLeads, 1);
+// wonCount is the number of closures, not their summed amount — it shares a
+// scale with newLeads, which `won` (money) never could.
+assert.deepEqual(trend.map((p) => p.wonCount), [0, 1, 1], "Jun none, Jul d2, Aug d1");
 
 // --- openTaskCount ---
 const tasks = [task({ id: "t1", customerId: "c1", done: false }), task({ id: "t2", customerId: "c1", done: true }), task({ id: "t3", customerId: "c2", done: false })];

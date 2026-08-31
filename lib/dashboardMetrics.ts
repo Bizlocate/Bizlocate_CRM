@@ -78,6 +78,10 @@ export function leaderboard(
 export interface MonthPoint {
   yearMonth: string;
   won: number;
+  // Deal count, not amount — `won` (money) and `newLeads` (count) are
+  // different units and can't share a chart scale, so the leads-vs-won
+  // chart plots this against newLeads instead.
+  wonCount: number;
   newLeads: number;
 }
 
@@ -87,9 +91,10 @@ export function monthlyTrend(customers: Customer[], dealClosures: DealClosure[],
   for (let i = monthsBack - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const won = wonAmountInMonth(dealClosures, yearMonth);
+    const monthClosures = dealClosures.filter((c) => yearMonthOf(c.createdAt) === yearMonth);
+    const won = monthClosures.reduce((sum, c) => sum + c.amount, 0);
     const newLeads = customers.filter((c) => yearMonthOf(c.createdAt) === yearMonth).length;
-    points.push({ yearMonth, won, newLeads });
+    points.push({ yearMonth, won, wonCount: monthClosures.length, newLeads });
   }
   return points;
 }
