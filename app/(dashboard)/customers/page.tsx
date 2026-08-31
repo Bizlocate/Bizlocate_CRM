@@ -90,7 +90,13 @@ export default function CustomersPage() {
     return visibleCustomers.filter((c) => {
       if (name && !c.name.toLowerCase().includes(name)) return false;
       if (phone && !c.phone.toLowerCase().includes(phone)) return false;
-      if (searchStageId && c.stageId !== searchStageId) return false;
+      if (searchStageId) {
+        if (isSalesperson) {
+          if (myStageId(c) !== searchStageId) return false;
+        } else if (c.stage1Id !== searchStageId && c.stage2Id !== searchStageId && c.stage3Id !== searchStageId) {
+          return false;
+        }
+      }
       if (showAssignedTo && searchAssignedTo && !assigneeIds(c).includes(searchAssignedTo)) return false;
       if (filterSourceId && c.sourceId !== filterSourceId) return false;
       if (filterAreaId && c.areaId !== filterAreaId) return false;
@@ -124,10 +130,39 @@ export default function CustomersPage() {
     filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isSalesperson, currentUser, poolTab,
   ]);
 
+  const sortedCustomers = useMemo(() => {
+    if (!isSalesperson) return filteredCustomers;
+    const defaultStage = stages.find((s) => s.isDefault);
+    if (!defaultStage) return filteredCustomers;
+    return [...filteredCustomers].sort((a, b) => {
+      const aNew = myStageId(a) === defaultStage.id ? 0 : 1;
+      const bNew = myStageId(b) === defaultStage.id ? 0 : 1;
+      return aNew - bNew;
+    });
+  }, [filteredCustomers, isSalesperson, stages, currentUser]);
+
   if (!currentUser) return null;
 
-  function stageName(stageId: string) {
-    return stages.find((s) => s.id === stageId)?.name ?? "";
+  function stageNameOf(stageId: string | null) {
+    return stages.find((s) => s.id === stageId)?.name ?? "—";
+  }
+
+  function myStageId(c: Customer): string | null {
+    if (!currentUser) return null;
+    if (c.assignedToUserId === currentUser.id) return c.stage1Id;
+    if (c.assignedToUserId2 === currentUser.id) return c.stage2Id;
+    if (c.assignedToUserId3 === currentUser.id) return c.stage3Id;
+    return null;
+  }
+
+  function stageBadgeNames(c: Customer): string[] {
+    return [
+      { userId: c.assignedToUserId, stageId: c.stage1Id },
+      { userId: c.assignedToUserId2, stageId: c.stage2Id },
+      { userId: c.assignedToUserId3, stageId: c.stage3Id },
+    ]
+      .filter((s) => s.userId)
+      .map((s) => stageNameOf(s.stageId));
   }
 
   function formatDate(iso: string): string {
@@ -156,7 +191,7 @@ export default function CustomersPage() {
   const fieldResolvers: Record<string, (c: Customer) => string> = {
     name: (c) => c.name,
     phone: (c) => c.phone,
-    stage: (c) => stageName(c.stageId),
+    stage: (c) => stageBadgeNames(c).join(", "),
     assignedTo: (c) => assigneeNames(c),
     source: (c) => nameOf(leadSources, c.sourceId),
     area: (c) => nameOf(areas, c.areaId),
@@ -433,11 +468,10 @@ export default function CustomersPage() {
               <div>Last Updated</div>
               <div></div>
             </div>
-            {filteredCustomers.length === 0 && (
+            {sortedCustomers.length === 0 && (
               <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
             )}
-            {filteredCustomers.map((c) => {
-              const style = STAGE_STYLES[stageName(c.stageId)] ?? { bg: "#eef0f4", color: "#4b5566" };
+            {sortedCustomers.map((c) => {
               return (
                 <div
                   key={c.id}
@@ -464,19 +498,25 @@ export default function CustomersPage() {
                   <div style={{ fontWeight: 500 }}>{c.name}</div>
                   <div style={{ color: "#6b7280" }}>{nameOf(subAreas, c.subAreaId) || "—"}</div>
                   <div style={{ color: "#6b7280" }}>{nameOf(leadSources, c.sourceId) || "—"}</div>
-                  <div>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        padding: "4px 10px",
-                        borderRadius: 20,
-                        background: style.bg,
-                        color: style.color,
-                      }}
-                    >
-                      {stageName(c.stageId)}
-                    </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {showAssignedTo ? (
+                      stageBadgeNames(c).map((name, i) => {
+                        const style = STAGE_STYLES[name] ?? { bg: "#eef0f4", color: "#4b5566" };
+                        return (
+                          <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: style.bg, color: style.color }}>
+                            {name}
+                          </span>
+                        );
+                      })
+                    ) : (() => {
+                      const name = stageNameOf(myStageId(c));
+                      const style = STAGE_STYLES[name] ?? { bg: "#eef0f4", color: "#4b5566" };
+                      return (
+                        <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: style.bg, color: style.color }}>
+                          {name}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {showAssignedTo && <div style={{ color: "#6b7280" }}>{assigneeNames(c)}</div>}
                   <div style={{ color: "#6b7280" }}>{nameOf(purposes, c.purposeId) || "—"}</div>
