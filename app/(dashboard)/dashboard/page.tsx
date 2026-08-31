@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { leaderboard, lostCount, monthlyTrend, openTaskCount, pacePct, scopedUserIds, stageFunnel, wonAmountInMonth } from "@/lib/dashboardMetrics";
+import {
+  conversionRatePct,
+  leaderboard,
+  lostCount,
+  monthlyTrend,
+  openTaskCount,
+  pacePct,
+  scopedUserIds,
+  stageFunnel,
+  wonAmountInMonth,
+} from "@/lib/dashboardMetrics";
 
 function currentYearMonth(): string {
   const d = new Date();
@@ -49,7 +59,7 @@ function TargetCell({
 }
 
 export default function DashboardPage() {
-  const { currentUser, users, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
+  const { currentUser, users, teams, stages, dealClosures, activities, salesTargets, visibleCustomers, upsertSalesTarget, tasks } = useStore();
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
@@ -61,12 +71,13 @@ export default function DashboardPage() {
 
   if (!currentUser) return null;
 
-  const funnel = stageFunnel(visibleCustomers, stages);
+  const funnel = stageFunnel(visibleCustomers, stages, scopedIds);
   const won = wonAmountInMonth(scopedDealClosures, yearMonth);
-  const lost = lostCount(visibleCustomers, stages);
+  const lost = lostCount(visibleCustomers, stages, scopedIds);
   const targetTotal = scopedTargets.reduce((sum, t) => sum + t.amount, 0);
   const attainmentPct = targetTotal > 0 ? Math.round((won / targetTotal) * 100) : null;
   const maxFunnelCount = Math.max(1, ...funnel.map((f) => f.count));
+  const conversionRate = conversionRatePct(scopedDealClosures, visibleCustomers, yearMonth);
 
   const myWon = wonAmountInMonth(dealClosures.filter((d) => d.userId === currentUser.id), yearMonth);
   const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === yearMonth)?.amount ?? null;
@@ -122,6 +133,9 @@ export default function DashboardPage() {
           ) : (
             <div style={{ fontSize: 13, color: "#9aa0ab", marginTop: 4 }}>No target set</div>
           )}
+          <div style={{ fontSize: 12.5, color: "#9aa0ab", marginTop: 4 }}>
+            {conversionRate !== null ? `${conversionRate}% of new leads converted` : "No new leads this month"}
+          </div>
         </div>
       </div>
 
@@ -132,7 +146,7 @@ export default function DashboardPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1fr 1fr",
                 padding: "12px 20px",
                 background: "#f7f7f8",
                 borderBottom: "1px solid #e2e4e9",
@@ -144,26 +158,32 @@ export default function DashboardPage() {
               }}
             >
               <div>Name</div>
+              <div>Team</div>
               <div>Won</div>
               <div>Target</div>
               <div>Attainment</div>
               <div>Activities</div>
             </div>
             {leaderboardRows.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No team members.</div>}
-            {leaderboardRows.map((row) => (
-              <div
-                key={row.userId}
-                style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "12px 20px", alignItems: "center", fontSize: 13, borderBottom: "1px solid #eef0f2" }}
-              >
-                <div>{row.name}</div>
-                <div>{formatMoney(row.won)}</div>
-                <div>
-                  <TargetCell userId={row.userId} yearMonth={yearMonth} target={row.target} onSave={upsertSalesTarget} />
+            {leaderboardRows.map((row) => {
+              const rowTeamId = users.find((u) => u.id === row.userId)?.teamId ?? null;
+              const rowTeamName = rowTeamId ? teams.find((t) => t.id === rowTeamId)?.name ?? "—" : "—";
+              return (
+                <div
+                  key={row.userId}
+                  style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1fr 1fr", padding: "12px 20px", alignItems: "center", fontSize: 13, borderBottom: "1px solid #eef0f2" }}
+                >
+                  <div>{row.name}</div>
+                  <div>{rowTeamName}</div>
+                  <div>{formatMoney(row.won)}</div>
+                  <div>
+                    <TargetCell userId={row.userId} yearMonth={yearMonth} target={row.target} onSave={upsertSalesTarget} />
+                  </div>
+                  <div>{row.attainmentPct !== null ? `${row.attainmentPct}%` : "—"}</div>
+                  <div>{row.activityCount}</div>
                 </div>
-                <div>{row.attainmentPct !== null ? `${row.attainmentPct}%` : "—"}</div>
-                <div>{row.activityCount}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
