@@ -64,6 +64,7 @@ export default function CustomerDetailPage() {
     updateCustomerRemark,
     reassignCustomer,
     logAssignmentRemoval,
+    deleteAssigneeActivities,
     togglePool,
     deleteCustomer,
     addActivity,
@@ -504,10 +505,13 @@ export default function CustomerDetailPage() {
                       onClick={() => {
                         const isRemoval = value === "" && !!current;
                         const removedName = currentUserObj?.name ?? "this assignee";
-                        if (isRemoval && !window.confirm(`Remove ${removedName} from Assigned ${slot}? Their activity log for this customer will drop off their own view — it stays here in Change History.`)) return;
-                        // log before clearing: the insert's RLS check needs this slot (or
-                        // another) to still tie the caller to the row
-                        if (isRemoval) logAssignmentRemoval(customer.id, slot, removedName);
+                        if (isRemoval && !window.confirm(`Remove ${removedName} from Assigned ${slot}? This permanently deletes their activity log for this customer — it can't be undone. (A "Removed" entry stays in Change History.)`)) return;
+                        // log + delete before clearing: both RLS checks need this slot
+                        // (or another) to still tie the caller to the row
+                        if (isRemoval) {
+                          logAssignmentRemoval(customer.id, slot, removedName);
+                          deleteAssigneeActivities(customer.id, current!);
+                        }
                         const result = reassignCustomer(customer.id, slot, value || null);
                         if (!result.ok) {
                           alert(result.error ?? "Could not reassign customer.");

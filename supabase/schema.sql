@@ -629,7 +629,9 @@ create policy "customers_update" on customers for update using (
 );
 create policy "customers_delete_admin" on customers for delete using (is_admin());
 
--- activities: inherit customer visibility, append-only (no update/delete policy = nobody can)
+-- activities: inherit customer visibility, append-only for everyone except
+-- admin/manager clearing out a removed assignee's log entirely (see
+-- activities_delete below) — a salesperson still can't update/delete
 create policy "activities_select" on activities for select using (
   is_admin()
   or exists (
@@ -644,6 +646,20 @@ create policy "activities_insert" on activities for insert with check (
     select 1 from customers c
     where c.id = activities.customer_id
       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+-- admin (anywhere) or manager (own team) permanently deletes a removed
+-- assignee's whole log for that customer — fired from the app right
+-- before the slot itself is cleared
+create policy "activities_delete" on activities for delete using (
+  is_admin()
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and exists (
+      select 1 from customers c
+      where c.id = activities.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
   )
 );
 
@@ -1655,3 +1671,22 @@ insert into mandatory_field_settings (field_key, required) values
 --   return new;
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: activities_delete policy — admin/manager can permanently
+-- delete a removed assignee's activity log for a customer. Run once
+-- against an already-provisioned database (everything below already
+-- exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- create policy "activities_delete" on activities for delete using (
+--   is_admin()
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and exists (
+--       select 1 from customers c
+--       where c.id = activities.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
