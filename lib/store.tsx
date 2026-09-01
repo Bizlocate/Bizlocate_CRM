@@ -815,10 +815,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ponytail: compute-on-load sweep, not real-time — same accepted
   // imprecision as the pool sweep. Upgrade to a cron/edge function sweep
   // if sub-day precision ever matters.
-  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], stagesList: Stage[], isAdmin: boolean) {
+  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], stagesList: Stage[], activitiesList: Activity[], isAdmin: boolean) {
     if (!isAdmin) return;
     const defaultStage = stagesList.find((s) => s.isDefault) ?? stagesList[0];
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const supabase = createClient();
     // The `teamsList`/`customersList` params are a frozen snapshot, but a
@@ -833,11 +834,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const extraAssignedCount = new Map<string, number>();
     for (const c of customersList) {
       if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
-      if (now - new Date(c.createdAt).getTime() < THREE_DAYS_MS) continue;
       const area = areasList.find((a) => a.id === c.areaId);
-      if (!area?.teamId) continue;
+      if (!area?.teamId || !area.autoAssignEnabled) continue;
       const team = teamsList.find((t) => t.id === area.teamId);
       if (!team) continue;
+      const slot1Stage = c.stage1Id ? stagesList.find((s) => s.id === c.stage1Id) : undefined;
+      if (slot1Stage?.excludeFromAutoAssign) {
+        const lastOwnActivity = activitiesList
+          .filter((act) => act.customerId === c.id && act.authorUserId === c.assignedToUserId)
+          .reduce((max, act) => Math.max(max, new Date(act.createdAt).getTime()), 0);
+        const lastTouched = Math.max(new Date(c.pool1Since ?? c.createdAt).getTime(), lastOwnActivity);
+        if (now - lastTouched < FOURTEEN_DAYS_MS) continue;
+      } else {
+        if (now - new Date(c.createdAt).getTime() < SEVEN_DAYS_MS) continue;
+      }
       const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
       const candidates = usersList
         .filter((u) => u.active && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
@@ -924,7 +934,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], profile.role === "ADMIN");
+          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -980,7 +990,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], profile.role === "ADMIN");
+    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     return { ok: true };
   }
 
