@@ -26,6 +26,7 @@ export interface Area {
   id: string;
   name: string;
   teamId: string | null;
+  autoAssignEnabled: boolean;
 }
 
 export interface SubArea {
@@ -194,6 +195,7 @@ export interface Stage {
   order: number;
   isDefault: boolean;
   requiresAmount: boolean;
+  excludeFromAutoAssign: boolean;
 }
 
 export const STAGE_STYLES: Record<string, { bg: string; color: string }> = {

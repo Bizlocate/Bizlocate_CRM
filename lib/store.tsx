@@ -48,8 +48,8 @@ function mapTeam(row: { id: string; name: string; manager_id: string | null; las
   return { id: row.id, name: row.name, managerId: row.manager_id, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
 }
 
-function mapArea(row: { id: string; name: string; team_id: string | null }): Area {
-  return { id: row.id, name: row.name, teamId: row.team_id };
+function mapArea(row: { id: string; name: string; team_id: string | null; auto_assign_enabled: boolean }): Area {
+  return { id: row.id, name: row.name, teamId: row.team_id, autoAssignEnabled: row.auto_assign_enabled };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
@@ -112,8 +112,8 @@ function assigneeSlots(c: Customer): string[] {
   return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
 }
 
-function mapStage(row: { id: string; name: string; order: number; is_default: boolean; requires_amount: boolean }): Stage {
-  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default, requiresAmount: row.requires_amount };
+function mapStage(row: { id: string; name: string; order: number; is_default: boolean; requires_amount: boolean; exclude_from_auto_assign: boolean }): Stage {
+  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default, requiresAmount: row.requires_amount, excludeFromAutoAssign: row.exclude_from_auto_assign };
 }
 
 function mapCustomer(row: {
@@ -416,6 +416,7 @@ interface Store {
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
   updateAreaTeam: (id: string, teamId: string | null) => void;
+  updateAreaAutoAssign: (id: string, enabled: boolean) => void;
   deleteArea: (id: string) => void;
   addSubArea: (areaId: string, name: string) => void;
   updateSubArea: (id: string, name: string) => void;
@@ -472,6 +473,7 @@ interface Store {
   moveStage: (id: string, direction: -1 | 1) => void;
   deleteStage: (id: string) => { ok: boolean; error?: string };
   updateStageRequiresAmount: (id: string, requiresAmount: boolean) => void;
+  updateStageExcludeFromAutoAssign: (id: string, excluded: boolean) => void;
   upsertSalesTarget: (userId: string, yearMonth: string, amount: number) => void;
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
@@ -1160,6 +1162,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  function updateAreaAutoAssign(id: string, enabled: boolean) {
+    const target = areas.find((a) => a.id === id);
+    if (!target) return;
+    const prevEnabled = target.autoAssignEnabled;
+    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: enabled } : a)));
+    const supabase = createClient();
+    supabase
+      .from("areas")
+      .update({ auto_assign_enabled: enabled })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled } : a)));
+      });
+  }
+
   function deleteArea(id: string) {
     setAreas((prev) => prev.filter((a) => a.id !== id));
     setSubAreas((prev) => prev.filter((s) => s.areaId !== id));
@@ -1556,6 +1573,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, requiresAmount } : s)));
     const supabase = createClient();
     supabase.from("pipeline_stages").update({ requires_amount: requiresAmount }).eq("id", id).then(() => {});
+  }
+
+  function updateStageExcludeFromAutoAssign(id: string, excluded: boolean) {
+    setStages((prev) => prev.map((s) => (s.id === id ? { ...s, excludeFromAutoAssign: excluded } : s)));
+    const supabase = createClient();
+    supabase.from("pipeline_stages").update({ exclude_from_auto_assign: excluded }).eq("id", id).then(() => {});
   }
 
   // Optimistic upsert on (user_id, year_month): updates the local row if one
@@ -2187,6 +2210,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addArea,
     updateArea,
     updateAreaTeam,
+    updateAreaAutoAssign,
     deleteArea,
     addSubArea,
     updateSubArea,
@@ -2237,6 +2261,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     moveStage,
     deleteStage,
     updateStageRequiresAmount,
+    updateStageExcludeFromAutoAssign,
     upsertSalesTarget,
     reassignCustomer,
     logAssignmentRemoval,

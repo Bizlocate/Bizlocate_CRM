@@ -36,7 +36,7 @@ function customer(overrides: Partial<Customer> & { id: string }): Customer {
 }
 
 function stage(overrides: Partial<Stage> & { id: string; name: string; order: number }): Stage {
-  return { isDefault: false, requiresAmount: false, ...overrides };
+  return { isDefault: false, requiresAmount: false, excludeFromAutoAssign: false, ...overrides };
 }
 
 function dealClosure(overrides: Partial<DealClosure> & { id: string; customerId: string; userId: string; amount: number; createdAt: string }): DealClosure {
