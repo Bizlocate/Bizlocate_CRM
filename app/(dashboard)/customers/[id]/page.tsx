@@ -21,10 +21,11 @@ interface ProfileDraft {
   firsttimeBranchId: string | null;
   targetRaceId: string | null;
   targetTypeId: string | null;
-  budgetId: string | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
 }
 
-function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetId: string | null } | undefined): ProfileDraft {
+function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetMin: number | null; budgetMax: number | null } | undefined): ProfileDraft {
   return {
     sourceId: c?.sourceId ?? null,
     areaId: c?.areaId ?? null,
@@ -40,7 +41,8 @@ function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; 
     firsttimeBranchId: c?.firsttimeBranchId ?? null,
     targetRaceId: c?.targetRaceId ?? null,
     targetTypeId: c?.targetTypeId ?? null,
-    budgetId: c?.budgetId ?? null,
+    budgetMin: c?.budgetMin ?? null,
+    budgetMax: c?.budgetMax ?? null,
   };
 }
 
@@ -83,7 +85,6 @@ export default function CustomerDetailPage() {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
-    budgets,
   } = useStore();
 
   const customer = visibleCustomers.find((c) => c.id === id);
@@ -165,7 +166,7 @@ export default function CustomerDetailPage() {
     businessTypeName: businessTagTypes.find((t) => t.id === customer.businessTypeId)?.name ?? "—",
     raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
     languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
-    budgetName: budgets.find((b) => b.id === customer.budgetId)?.name ?? "—",
+    budgetMin: customer.budgetMin,
   });
   const whatsAppTargets = canSendWhatsApp
     ? assignedUsers
@@ -558,7 +559,32 @@ export default function CustomerDetailPage() {
           {profileSelect("Firsttime / Branch", profileDraft.firsttimeBranchId, firsttimeBranchTypes, (v) => setProfileDraft((d) => ({ ...d, firsttimeBranchId: v || null })))}
           {profileSelect("Target Race", profileDraft.targetRaceId, targetRaces, (v) => setProfileDraft((d) => ({ ...d, targetRaceId: v || null })))}
           {profileSelect("Target Type", profileDraft.targetTypeId, targetTypes, (v) => setProfileDraft((d) => ({ ...d, targetTypeId: v || null })))}
-          {profileSelect("Budget", profileDraft.budgetId, budgets, (v) => setProfileDraft((d) => ({ ...d, budgetId: v || null })))}
+          <div>
+            <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Budget Min</div>
+            {canEditProfile ? (
+              <input
+                type="number"
+                className="field-input"
+                value={profileDraft.budgetMin ?? ""}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, budgetMin: e.target.value === "" ? null : Number(e.target.value) }))}
+              />
+            ) : (
+              <div style={{ fontSize: 13.5 }}>{customer.budgetMin ?? "—"}</div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Budget Max</div>
+            {canEditProfile ? (
+              <input
+                type="number"
+                className="field-input"
+                value={profileDraft.budgetMax ?? ""}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, budgetMax: e.target.value === "" ? null : Number(e.target.value) }))}
+              />
+            ) : (
+              <div style={{ fontSize: 13.5 }}>{customer.budgetMax ?? "—"}</div>
+            )}
+          </div>
         </div>
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Remark</div>

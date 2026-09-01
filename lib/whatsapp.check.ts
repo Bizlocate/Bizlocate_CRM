@@ -23,7 +23,7 @@ const message = buildAssignmentMessage({
   businessTypeName: "Restaurant- Fast Food",
   raceName: "Malay",
   languageName: "Malay",
-  budgetName: "RM50k-100k",
+  budgetMin: 50000,
 });
 assert.equal(
   message,
@@ -37,7 +37,7 @@ assert.equal(
     "Business Type: Restaurant- Fast Food",
     "Race: Malay",
     "Language: Malay",
-    "Budget: RM50k-100k",
+    "Budget: RM50000",
   ].join("\n")
 );
 

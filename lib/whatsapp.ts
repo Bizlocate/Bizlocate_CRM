@@ -14,7 +14,7 @@ export function buildAssignmentMessage(input: {
   businessTypeName: string;
   raceName: string;
   languageName: string;
-  budgetName: string;
+  budgetMin: number | null;
 }): string {
   return [
     "New customer assigned to you:",
@@ -26,7 +26,7 @@ export function buildAssignmentMessage(input: {
     `Business Type: ${input.businessTypeName}`,
     `Race: ${input.raceName}`,
     `Language: ${input.languageName}`,
-    `Budget: ${input.budgetName}`,
+    `Budget: ${input.budgetMin !== null ? `RM${input.budgetMin}` : "—"}`,
   ].join("\n");
 }
 

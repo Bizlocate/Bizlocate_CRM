@@ -56,7 +56,6 @@ export default function CustomersPage() {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
-    budgets,
   } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [searchName, setSearchName] = useState("");
@@ -218,7 +217,7 @@ export default function CustomersPage() {
     firsttimeBranch: (c) => nameOf(firsttimeBranchTypes, c.firsttimeBranchId),
     targetRace: (c) => nameOf(targetRaces, c.targetRaceId),
     targetType: (c) => nameOf(targetTypes, c.targetTypeId),
-    budget: (c) => nameOf(budgets, c.budgetId),
+    budget: (c) => (c.budgetMin !== null || c.budgetMax !== null ? `${c.budgetMin ?? "—"} - ${c.budgetMax ?? "—"}` : "—"),
     remark: (c) => c.remark,
   };
 
@@ -640,7 +639,6 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     firsttimeBranchTypes,
     targetRaces,
     targetTypes,
-    budgets,
     fieldRequirements,
   } = useStore();
   const [name, setName] = useState("");
@@ -663,7 +661,8 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [firsttimeBranchId, setFirsttimeBranchId] = useState("");
   const [targetRaceId, setTargetRaceId] = useState("");
   const [targetTypeId, setTargetTypeId] = useState("");
-  const [budgetId, setBudgetId] = useState("");
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
   const [remark, setRemark] = useState("");
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState("");
@@ -734,7 +733,8 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
       firsttimeBranchId: firsttimeBranchId || null,
       targetRaceId: targetRaceId || null,
       targetTypeId: targetTypeId || null,
-      budgetId: budgetId || null,
+      budgetMin: budgetMin === "" ? null : Number(budgetMin),
+      budgetMax: budgetMax === "" ? null : Number(budgetMax),
       remark,
     });
     setSubmitting(false);
@@ -885,11 +885,12 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
             </select>
           </FormField>
           <FormField>
-            <label className="field-label">Budget</label>
-            <select className="field-input" value={budgetId} onChange={(e) => setBudgetId(e.target.value)}>
-              <option value="">—</option>
-              {budgets.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+            <label className="field-label">Budget Min</label>
+            <input type="number" className="field-input" value={budgetMin} onChange={(e) => setBudgetMin(e.target.value)} />
+          </FormField>
+          <FormField>
+            <label className="field-label">Budget Max</label>
+            <input type="number" className="field-input" value={budgetMax} onChange={(e) => setBudgetMax(e.target.value)} />
           </FormField>
         </FormRow>
 

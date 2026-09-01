@@ -74,11 +74,6 @@ export interface TargetType {
   name: string;
 }
 
-export interface Budget {
-  id: string;
-  name: string;
-}
-
 export interface FieldRequirement {
   fieldKey: string;
   required: boolean;
@@ -240,7 +235,8 @@ export interface Customer {
   firsttimeBranchId: string | null;
   targetRaceId: string | null;
   targetTypeId: string | null;
-  budgetId: string | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
   remark: string;
   createdAt: string;
   updatedAt: string;
@@ -310,7 +306,8 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
   firsttime_branch_id: "Firsttime / Branch",
   target_race_id: "Target Race",
   target_type_id: "Target Type",
-  budget_id: "Budget",
+  budget_min: "Budget Min",
+  budget_max: "Budget Max",
   remark: "Remark",
   assigned_to: "Assigned 1",
   assigned_to_2: "Assigned 2",

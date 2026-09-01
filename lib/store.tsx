@@ -9,7 +9,6 @@ import {
   ActivityType,
   Area,
   AssignmentEvent,
-  Budget,
   BusinessTagCategory,
   BusinessTagIndustry,
   BusinessTagType,
@@ -105,10 +104,6 @@ function mapTargetType(row: { id: string; name: string }): TargetType {
   return { id: row.id, name: row.name };
 }
 
-function mapBudget(row: { id: string; name: string }): Budget {
-  return { id: row.id, name: row.name };
-}
-
 function mapRemovalReason(row: { id: string; name: string }): RemovalReason {
   return { id: row.id, name: row.name };
 }
@@ -152,7 +147,8 @@ function mapCustomer(row: {
   firsttime_branch_id: string | null;
   target_race_id: string | null;
   target_type_id: string | null;
-  budget_id: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
   remark: string | null;
   created_at: string;
   updated_at: string;
@@ -188,7 +184,8 @@ function mapCustomer(row: {
     firsttimeBranchId: row.firsttime_branch_id,
     targetRaceId: row.target_race_id,
     targetTypeId: row.target_type_id,
-    budgetId: row.budget_id,
+    budgetMin: row.budget_min,
+    budgetMax: row.budget_max,
     remark: row.remark ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -210,7 +207,8 @@ export interface CustomerProfileInput {
   firsttimeBranchId: string | null;
   targetRaceId: string | null;
   targetTypeId: string | null;
-  budgetId: string | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
   remark: string;
 }
 
@@ -229,7 +227,8 @@ const emptyCustomerProfile: CustomerProfileInput = {
   firsttimeBranchId: null,
   targetRaceId: null,
   targetTypeId: null,
-  budgetId: null,
+  budgetMin: null,
+  budgetMax: null,
   remark: "",
 };
 
@@ -378,7 +377,6 @@ interface Store {
   races: Race[];
   targetRaces: TargetRace[];
   targetTypes: TargetType[];
-  budgets: Budget[];
   fieldRequirements: FieldRequirement[];
   stages: Stage[];
   customers: Customer[];
@@ -455,9 +453,6 @@ interface Store {
   addTargetType: (name: string) => void;
   updateTargetType: (id: string, name: string) => void;
   deleteTargetType: (id: string) => void;
-  addBudget: (name: string) => void;
-  updateBudget: (id: string, name: string) => void;
-  deleteBudget: (id: string) => void;
   addRemovalReason: (name: string) => void;
   updateRemovalReason: (id: string, name: string) => void;
   deleteRemovalReason: (id: string) => void;
@@ -516,7 +511,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [races, setRaces] = useState<Race[]>([]);
   const [targetRaces, setTargetRaces] = useState<TargetRace[]>([]);
   const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [fieldRequirements, setFieldRequirements] = useState<FieldRequirement[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -649,14 +643,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase.from("target_types").select("*").order("name");
     const mapped = (data ?? []).map(mapTargetType);
     setTargetTypes(mapped);
-    return mapped;
-  }
-
-  async function loadBudgets(): Promise<Budget[]> {
-    const supabase = createClient();
-    const { data } = await supabase.from("budgets").select("*").order("name");
-    const mapped = (data ?? []).map(mapBudget);
-    setBudgets(mapped);
     return mapped;
   }
 
@@ -912,14 +898,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadRaces(),
           loadTargetRaces(),
           loadTargetTypes(),
-          loadBudgets(),
           loadFieldRequirements(),
           loadStages(),
           loadCustomers(),
           loadTasks(),
         ]);
         const loadedUsers = loadResults[1];
-        const loadedCustomers = loadResults[18];
+        const loadedCustomers = loadResults[17];
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
@@ -932,7 +917,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[17], profile.role === "ADMIN");
+          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -966,14 +951,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadRaces(),
       loadTargetRaces(),
       loadTargetTypes(),
-      loadBudgets(),
       loadFieldRequirements(),
       loadStages(),
       loadCustomers(),
       loadTasks(),
     ]);
     const loadedUsers = loadResults[1];
-    const loadedCustomers = loadResults[18];
+    const loadedCustomers = loadResults[17];
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
@@ -989,7 +973,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
-    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[17], profile.role === "ADMIN");
+    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], profile.role === "ADMIN");
     return { ok: true };
   }
 
@@ -1453,22 +1437,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("target_types").delete().eq("id", id).then(() => {});
   }
 
-  function addBudget(name: string) {
-    const supabase = createClient();
-    supabase.from("budgets").insert({ name }).select().single().then(({ data, error }) => {
-      if (!error && data) setBudgets((prev) => [...prev, mapBudget(data)]);
-    });
-  }
-  function updateBudget(id: string, name: string) {
-    setBudgets((prev) => prev.map((i) => (i.id === id ? { ...i, name } : i)));
-    const supabase = createClient();
-    supabase.from("budgets").update({ name }).eq("id", id).then(() => {});
-  }
-  function deleteBudget(id: string) {
-    setBudgets((prev) => prev.filter((i) => i.id !== id));
-    const supabase = createClient();
-    supabase.from("budgets").delete().eq("id", id).then(() => {});
-  }
   function addRemovalReason(name: string) {
     const supabase = createClient();
     supabase.from("removal_reasons").insert({ name }).select().single().then(({ data, error }) => {
@@ -1700,7 +1668,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         firsttime_branch_id: profile.firsttimeBranchId,
         target_race_id: profile.targetRaceId,
         target_type_id: profile.targetTypeId,
-        budget_id: profile.budgetId,
+        budget_min: profile.budgetMin,
+        budget_max: profile.budgetMax,
         remark: profile.remark || null,
       })
       .select()
@@ -1822,7 +1791,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       firsttimeBranchId: firsttimeBranchTypes,
       targetRaceId: targetRaces,
       targetTypeId: targetTypes,
-      budgetId: budgets,
     };
     const list = lookupByCamelKey[key];
     if (list) return list.find((x) => x.id === str)?.name ?? str;
@@ -1935,7 +1903,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       firsttimeBranchId: "firsttime_branch_id",
       targetRaceId: "target_race_id",
       targetTypeId: "target_type_id",
-      budgetId: "budget_id",
+      budgetMin: "budget_min",
+      budgetMax: "budget_max",
     };
     const dbPatch: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch)) {
@@ -2163,7 +2132,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     races,
     targetRaces,
     targetTypes,
-    budgets,
     fieldRequirements,
     stages,
     customers,
@@ -2234,9 +2202,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addTargetType,
     updateTargetType,
     deleteTargetType,
-    addBudget,
-    updateBudget,
-    deleteBudget,
     addRemovalReason,
     updateRemovalReason,
     deleteRemovalReason,
