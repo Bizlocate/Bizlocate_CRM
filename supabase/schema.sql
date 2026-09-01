@@ -58,13 +58,15 @@ create table pipeline_stages (
   name text not null,
   "order" int not null,
   is_default boolean not null default false,
-  requires_amount boolean not null default false
+  requires_amount boolean not null default false,
+  exclude_from_auto_assign boolean not null default false
 );
 
 create table areas (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  team_id uuid references teams (id) on delete set null
+  team_id uuid references teams (id) on delete set null,
+  auto_assign_enabled boolean not null default true
 );
 
 create table sub_areas (
@@ -1898,3 +1900,13 @@ insert into mandatory_field_settings (field_key, required) values
 -- ============================================================
 --
 -- alter table customers add column if not exists optional_phone text;
+
+-- ============================================================
+-- Migration: Auto second-assignment refinements — area on/off switch,
+-- stage-gated timing. Run once against an already-provisioned database
+-- (everything below already exists in the main schema above for fresh
+-- installs).
+-- ============================================================
+--
+-- alter table areas add column if not exists auto_assign_enabled boolean not null default true;
+-- alter table pipeline_stages add column if not exists exclude_from_auto_assign boolean not null default false;
