@@ -686,7 +686,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [phone, setPhone] = useState("");
   const [optionalPhone, setOptionalPhone] = useState("");
   const activeUsers = users.filter((u) => u.active);
-  const [assignedToUserId, setAssignedToUserId] = useState(activeUsers[0]?.id ?? "");
+  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [assignedToUserId2, setAssignedToUserId2] = useState("");
   const [assignedToUserId3, setAssignedToUserId3] = useState("");
   const [sourceId, setSourceId] = useState("");
@@ -722,9 +722,13 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     return isFieldRequired(fieldKey) ? <span style={{ color: "#a13a2b" }}> *</span> : null;
   }
 
-  // each assignee dropdown excludes whoever is already picked in the other two slots
+  // each assignee dropdown excludes whoever is already picked in the other two slots,
+  // and is scoped to the team that owns the selected area (ADMIN excluded — doesn't do sales).
+  // No team on the area yet? No candidates — set it on /admin/area first.
   function assigneeOptions(excluding: string[]) {
-    return activeUsers.filter((u) => !excluding.includes(u.id));
+    const teamId = areas.find((a) => a.id === areaId)?.teamId;
+    if (!teamId) return [];
+    return activeUsers.filter((u) => u.role !== "ADMIN" && u.teamId === teamId && !excluding.includes(u.id));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -846,7 +850,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           </FormField>
           <FormField>
             <label className="field-label">Area<Asterisk fieldKey="area" /></label>
-            <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); }}>
+            <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); setAssignedToUserId(""); setAssignedToUserId2(""); setAssignedToUserId3(""); }}>
               <option value="">—</option>
               {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
