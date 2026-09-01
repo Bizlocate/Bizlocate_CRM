@@ -801,6 +801,7 @@ export default function CustomerDetailPage() {
             />
             <input
               type="date"
+              min={new Date().toISOString().slice(0, 10)}
               className="field-input"
               style={{ width: 150 }}
               value={taskDue}
