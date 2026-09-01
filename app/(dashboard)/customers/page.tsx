@@ -59,6 +59,7 @@ export default function CustomersPage() {
   } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [searchName, setSearchName] = useState("");
+  const [searchBrandName, setSearchBrandName] = useState("");
   const [searchPhone, setSearchPhone] = useState("");
   const [searchStageId, setSearchStageId] = useState("");
   const [searchAssignedTo, setSearchAssignedTo] = useState("");
@@ -86,10 +87,12 @@ export default function CustomersPage() {
 
   const filteredCustomers = useMemo(() => {
     const name = searchName.trim().toLowerCase();
+    const brandName = searchBrandName.trim().toLowerCase();
     const phone = searchPhone.trim().toLowerCase();
     const keyword = searchKeyword.trim().toLowerCase();
     return visibleCustomers.filter((c) => {
       if (name && !c.name.toLowerCase().includes(name)) return false;
+      if (brandName && !c.businessName.toLowerCase().includes(brandName)) return false;
       if (phone && !c.phone.toLowerCase().includes(phone) && !c.optionalPhone.toLowerCase().includes(phone)) return false;
       if (searchStageId) {
         if (isSalesperson) {
@@ -126,7 +129,7 @@ export default function CustomersPage() {
       return true;
     });
   }, [
-    visibleCustomers, activities, searchName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
+    visibleCustomers, activities, searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
     filterSourceId, filterAreaId, filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId,
     filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isSalesperson, currentUser, poolTab,
   ]);
@@ -349,6 +352,10 @@ export default function CustomersPage() {
           <label className="field-label">Name</label>
           <input className="field-input" value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Search name" />
         </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Brand Name</label>
+          <input className="field-input" value={searchBrandName} onChange={(e) => setSearchBrandName(e.target.value)} placeholder="Search brand name" />
+        </div>
         <div style={{ flex: "1 1 140px" }}>
           <label className="field-label">Phone</label>
           <input className="field-input" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} placeholder="Search phone" />
@@ -448,6 +455,7 @@ export default function CustomersPage() {
           type="button"
           onClick={() => {
             setSearchName("");
+            setSearchBrandName("");
             setSearchPhone("");
             setSearchStageId("");
             setSearchAssignedTo("");
