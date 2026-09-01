@@ -25,6 +25,13 @@ interface ProfileDraft {
   budgetMax: number | null;
 }
 
+function formatDueDate(due: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due);
+  if (!m) return due;
+  const [, yyyy, mm, dd] = m;
+  return `${dd}-${mm}-${yyyy.slice(2)}`;
+}
+
 function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetMin: number | null; budgetMax: number | null } | undefined): ProfileDraft {
   return {
     sourceId: c?.sourceId ?? null,
@@ -793,9 +800,9 @@ export default function CustomerDetailPage() {
               onChange={(e) => setTaskTitle(e.target.value)}
             />
             <input
+              type="date"
               className="field-input"
-              style={{ width: 130 }}
-              placeholder="Due date"
+              style={{ width: 150 }}
               value={taskDue}
               onChange={(e) => setTaskDue(e.target.value)}
             />
@@ -810,7 +817,7 @@ export default function CustomerDetailPage() {
                 <input type="checkbox" checked={false} onChange={() => toggleTaskDone(t.id)} style={{ width: 16, height: 16 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 500 }}>{t.title}</div>
-                  <div style={{ fontSize: 11.5, color: "#9aa0ab", marginTop: 2 }}>Due {t.due}</div>
+                  <div style={{ fontSize: 11.5, color: "#9aa0ab", marginTop: 2 }}>Due {formatDueDate(t.due)}</div>
                 </div>
               </div>
             ))}
@@ -824,7 +831,7 @@ export default function CustomerDetailPage() {
                 <input type="checkbox" checked={true} onChange={() => toggleTaskDone(t.id)} style={{ width: 16, height: 16 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, textDecoration: "line-through" }}>{t.title}</div>
-                  <div style={{ fontSize: 11.5, color: "#9aa0ab", marginTop: 2 }}>{t.due}</div>
+                  <div style={{ fontSize: 11.5, color: "#9aa0ab", marginTop: 2 }}>{formatDueDate(t.due)}</div>
                 </div>
               </div>
             ))}
