@@ -626,6 +626,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const {
+    customers,
     users,
     addCustomer,
     leadSources,
@@ -711,6 +712,16 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     if (failing.size > 0) {
       setInvalidFields(failing);
       return;
+    }
+
+    const enteredPhones = [phone.trim(), optionalPhone.trim()].filter(Boolean);
+    const dupes = customers.filter((c) => enteredPhones.some((p) => c.phone === p || c.optionalPhone === p));
+    if (dupes.length > 0) {
+      const details = dupes
+        .map((c) => `${c.name} — ${c.businessName || "—"} — ${nameOf(businessTagTypes, c.businessTypeId) || "—"}`)
+        .join("\n");
+      const proceed = window.confirm(`This phone number is already used by:\n\n${details}\n\nCreate anyway?`);
+      if (!proceed) return;
     }
 
     setFormError("");
