@@ -137,7 +137,9 @@ export default function CustomersPage() {
         return updatedSort === "asc" ? diff : -diff;
       });
     }
-    if (!isSalesperson) return filteredCustomers;
+    if (!isSalesperson) {
+      return [...filteredCustomers].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return filteredCustomers;
     return [...filteredCustomers].sort((a, b) => {
