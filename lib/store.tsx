@@ -121,6 +121,7 @@ function mapCustomer(row: {
   name: string;
   email: string | null;
   phone: string | null;
+  optional_phone: string | null;
   assigned_to: string | null;
   assigned_to_2: string | null;
   assigned_to_3: string | null;
@@ -186,6 +187,7 @@ function mapCustomer(row: {
     targetTypeId: row.target_type_id,
     budgetMin: row.budget_min,
     budgetMax: row.budget_max,
+    optionalPhone: row.optional_phone ?? "",
     remark: row.remark ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -209,6 +211,7 @@ export interface CustomerProfileInput {
   targetTypeId: string | null;
   budgetMin: number | null;
   budgetMax: number | null;
+  optionalPhone: string;
   remark: string;
 }
 
@@ -229,6 +232,7 @@ const emptyCustomerProfile: CustomerProfileInput = {
   targetTypeId: null,
   budgetMin: null,
   budgetMax: null,
+  optionalPhone: "",
   remark: "",
 };
 
@@ -1671,6 +1675,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         target_type_id: profile.targetTypeId,
         budget_min: profile.budgetMin,
         budget_max: profile.budgetMax,
+        optional_phone: profile.optionalPhone || null,
         remark: profile.remark || null,
       })
       .select()
@@ -1906,6 +1911,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       targetTypeId: "target_type_id",
       budgetMin: "budget_min",
       budgetMax: "budget_max",
+      optionalPhone: "optional_phone",
     };
     const dbPatch: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch)) {

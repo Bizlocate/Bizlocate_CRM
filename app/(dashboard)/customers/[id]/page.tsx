@@ -23,6 +23,7 @@ interface ProfileDraft {
   targetTypeId: string | null;
   budgetMin: number | null;
   budgetMax: number | null;
+  optionalPhone: string;
 }
 
 function formatDueDate(due: string): string {
@@ -32,7 +33,7 @@ function formatDueDate(due: string): string {
   return `${dd}-${mm}-${yyyy.slice(2)}`;
 }
 
-function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetMin: number | null; budgetMax: number | null } | undefined): ProfileDraft {
+function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; subAreaId: string | null; propertyTypeId: string | null; purposeId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; raceId: string | null; languageId: string | null; businessName: string; firsttimeBranchId: string | null; targetRaceId: string | null; targetTypeId: string | null; budgetMin: number | null; budgetMax: number | null; optionalPhone: string } | undefined): ProfileDraft {
   return {
     sourceId: c?.sourceId ?? null,
     areaId: c?.areaId ?? null,
@@ -50,6 +51,7 @@ function draftFromCustomer(c: { sourceId: string | null; areaId: string | null; 
     targetTypeId: c?.targetTypeId ?? null,
     budgetMin: c?.budgetMin ?? null,
     budgetMax: c?.budgetMax ?? null,
+    optionalPhone: c?.optionalPhone ?? "",
   };
 }
 
@@ -609,6 +611,19 @@ export default function CustomerDetailPage() {
               />
             ) : (
               <div style={{ fontSize: 13.5 }}>{customer.budgetMax ?? "—"}</div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "#9aa0ab", marginBottom: 4 }}>Optional Phone</div>
+            {canEditProfile ? (
+              <input
+                type="tel"
+                className="field-input"
+                value={profileDraft.optionalPhone}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, optionalPhone: e.target.value }))}
+              />
+            ) : (
+              <div style={{ fontSize: 13.5 }}>{customer.optionalPhone || "—"}</div>
             )}
           </div>
         </div>

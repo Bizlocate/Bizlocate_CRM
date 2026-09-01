@@ -237,6 +237,7 @@ export interface Customer {
   targetTypeId: string | null;
   budgetMin: number | null;
   budgetMax: number | null;
+  optionalPhone: string;
   remark: string;
   createdAt: string;
   updatedAt: string;
@@ -308,6 +309,7 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
   target_type_id: "Target Type",
   budget_min: "Budget Min",
   budget_max: "Budget Max",
+  optional_phone: "Optional Phone",
   remark: "Remark",
   assigned_to: "Assigned 1",
   assigned_to_2: "Assigned 2",

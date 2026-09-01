@@ -89,7 +89,7 @@ export default function CustomersPage() {
     const keyword = searchKeyword.trim().toLowerCase();
     return visibleCustomers.filter((c) => {
       if (name && !c.name.toLowerCase().includes(name)) return false;
-      if (phone && !c.phone.toLowerCase().includes(phone)) return false;
+      if (phone && !c.phone.toLowerCase().includes(phone) && !c.optionalPhone.toLowerCase().includes(phone)) return false;
       if (searchStageId) {
         if (isSalesperson) {
           if (myStageId(c) !== searchStageId) return false;
@@ -645,6 +645,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   } = useStore();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [optionalPhone, setOptionalPhone] = useState("");
   const activeUsers = users.filter((u) => u.active);
   const [assignedToUserId, setAssignedToUserId] = useState(activeUsers[0]?.id ?? "");
   const [assignedToUserId2, setAssignedToUserId2] = useState("");
@@ -737,6 +738,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
       targetTypeId: targetTypeId || null,
       budgetMin: budgetMin === "" ? null : Number(budgetMin),
       budgetMax: budgetMax === "" ? null : Number(budgetMax),
+      optionalPhone,
       remark,
     });
     setSubmitting(false);
@@ -776,6 +778,10 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           <FormField>
             <label className="field-label">Phone<Asterisk fieldKey="phone" /></label>
             <input className="field-input" style={fieldStyle("phone")} onFocus={() => clearInvalid("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </FormField>
+          <FormField>
+            <label className="field-label">Optional Phone</label>
+            <input type="tel" className="field-input" value={optionalPhone} onChange={(e) => setOptionalPhone(e.target.value)} />
           </FormField>
         </FormRow>
 

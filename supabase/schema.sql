@@ -148,6 +148,7 @@ create table customers (
   name text not null,
   email text,
   phone text,
+  optional_phone text,
   assigned_to uuid references profiles (id),
   assigned_to_2 uuid references profiles (id),
   assigned_to_3 uuid references profiles (id),
@@ -1888,3 +1889,12 @@ insert into mandatory_field_settings (field_key, required) values
 -- create policy "tasks_update" on tasks for update using (
 --   user_id = auth.uid()
 -- );
+
+-- ============================================================
+-- Migration: optional phone — a second, non-mandatory phone number on
+-- the business profile. Run once against an already-provisioned
+-- database (everything below already exists in the main schema above
+-- for fresh installs).
+-- ============================================================
+--
+-- alter table customers add column if not exists optional_phone text;
