@@ -43,6 +43,7 @@ export default function CustomersPage() {
     users,
     stages,
     activities,
+    removalRequests,
     leadSources,
     areas,
     subAreas,
@@ -91,6 +92,10 @@ export default function CustomersPage() {
     const phone = searchPhone.trim().toLowerCase();
     const keyword = searchKeyword.trim().toLowerCase();
     return visibleCustomers.filter((c) => {
+      // hide from my own list while my own removal request for this customer
+      // is pending -- reappears automatically on reject (status flips off
+      // "PENDING"); admin/manager still see it via the approvals queue.
+      if (removalRequests.some((r) => r.customerId === c.id && r.requestedBy === currentUser?.id && r.status === "PENDING")) return false;
       if (name && !c.name.toLowerCase().includes(name)) return false;
       if (brandName && !c.businessName.toLowerCase().includes(brandName)) return false;
       if (phone && !c.phone.toLowerCase().includes(phone) && !c.optionalPhone.toLowerCase().includes(phone)) return false;
@@ -129,7 +134,7 @@ export default function CustomersPage() {
       return true;
     });
   }, [
-    visibleCustomers, activities, searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
+    visibleCustomers, activities, removalRequests, currentUser, searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
     filterSourceId, filterAreaId, filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId,
     filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isSalesperson, currentUser, poolTab,
   ]);

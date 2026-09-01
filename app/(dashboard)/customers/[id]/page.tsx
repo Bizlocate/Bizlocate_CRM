@@ -185,8 +185,15 @@ export default function CustomerDetailPage() {
         .filter(({ user }) => !!user.phone)
         .map(({ user }) => ({ user, link: buildWhatsAppLink(user.phone!, assignmentMessage) }))
     : [];
+  // Locks out someone who has requested their own removal from this customer
+  // (any slot) until an admin/manager resolves it -- picking "Remove Client"
+  // is an exit action, not an ongoing position, so nothing else about the
+  // customer should be touched while it's pending.
+  const myPendingRemoval = removalRequests.some(
+    (r) => r.customerId === customer.id && r.requestedBy === currentUser.id && r.status === "PENDING"
+  );
   const canEditProfile =
-    currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id);
+    currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || (assignedUsers.some(({ user }) => user.id === currentUser.id) && !myPendingRemoval);
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const canEditIdentity = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const filteredSubAreas = subAreas.filter((s) => s.areaId === profileDraft.areaId);
@@ -241,7 +248,8 @@ export default function CustomerDetailPage() {
 
   // admin doesn't do followups, so no log-entry form for them (history still visible below)
   const canLogActivity = currentUser.role !== "ADMIN"
-    && (currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id));
+    && (currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id))
+    && !myPendingRemoval;
 
   function roleLabel(role: string) {
     return role === "SALESPERSON" ? "Sales Person" : role === "MANAGER" ? "Manager" : "Admin";
@@ -774,7 +782,7 @@ export default function CustomerDetailPage() {
                           {style.label}
                         </span>
                         <span style={{ fontSize: 12, color: "#9aa0ab" }}>{a.time}</span>
-                        {isMine && !isEditing && (
+                        {isMine && !isEditing && !myPendingRemoval && (
                           <button
                             type="button"
                             onClick={() => startEditActivity(a)}
