@@ -74,7 +74,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
   }
 
-  const { error } = await admin
+  // Use the caller's own session client (not the service-role `admin` client)
+  // for this update: protect_profile_columns() (a DB trigger) calls is_admin(),
+  // which reads auth.uid() — that's null under the service-role client (no
+  // user session attached), so it would reject this update with "only an
+  // admin can change role..." even though `caller` was already verified
+  // ADMIN above. The session client carries the real auth.uid(), which the
+  // trigger (and the profiles_update RLS policy) both check correctly.
+  const { error } = await supabase
     .from("profiles")
     .update({
       name: name.trim(),
