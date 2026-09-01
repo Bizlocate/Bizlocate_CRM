@@ -484,6 +484,22 @@ create trigger tasks_protect_columns
   before update on tasks
   for each row execute function protect_task_columns();
 
+create function protect_activity_columns() returns trigger as $$
+begin
+  if new.customer_id is distinct from old.customer_id
+    or new.user_id is distinct from old.user_id
+    or new.type is distinct from old.type
+    or new.follow_up is distinct from old.follow_up then
+    raise exception 'activities can only be updated via content (and created_at, to re-date it)';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger activities_protect_columns
+  before update on activities
+  for each row execute function protect_activity_columns();
+
 create function protect_notification_columns() returns trigger as $$
 begin
   if new.user_id is distinct from old.user_id
@@ -644,9 +660,11 @@ create policy "customers_update" on customers for update using (
 );
 create policy "customers_delete_admin" on customers for delete using (is_admin());
 
--- activities: inherit customer visibility, append-only for everyone except
--- admin/manager clearing out a removed assignee's log entirely (see
--- activities_delete below) — a salesperson still can't update/delete
+-- activities: inherit customer visibility. The author can edit their own
+-- entry's content (re-dating it to now, see updateActivity) but not
+-- reassign/retype it — protect_activity_columns above locks that down.
+-- Otherwise append-only; admin/manager can only clear a removed
+-- assignee's log entirely (see activities_delete below).
 create policy "activities_select" on activities for select using (
   is_admin()
   or exists (
@@ -662,6 +680,9 @@ create policy "activities_insert" on activities for insert with check (
     where c.id = activities.customer_id
       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
   )
+);
+create policy "activities_update" on activities for update using (
+  user_id = auth.uid()
 );
 -- admin (anywhere) or manager (own team) permanently deletes a removed
 -- assignee's whole log for that customer — fired from the app right
@@ -1814,4 +1835,31 @@ insert into mandatory_field_settings (field_key, required) values
 -- );
 -- create policy "assignment_events_insert" on assignment_events for insert with check (
 --   is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+-- );
+
+-- ============================================================
+-- Migration: editable activity log — the author can edit their own log
+-- entry's content, which re-dates it to now. Run once against an
+-- already-provisioned database (everything below already exists in the
+-- main schema above for fresh installs).
+-- ============================================================
+--
+-- create function protect_activity_columns() returns trigger as $$
+-- begin
+--   if new.customer_id is distinct from old.customer_id
+--     or new.user_id is distinct from old.user_id
+--     or new.type is distinct from old.type
+--     or new.follow_up is distinct from old.follow_up then
+--     raise exception 'activities can only be updated via content (and created_at, to re-date it)';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create trigger activities_protect_columns
+--   before update on activities
+--   for each row execute function protect_activity_columns();
+--
+-- create policy "activities_update" on activities for update using (
+--   user_id = auth.uid()
 -- );

@@ -70,6 +70,7 @@ export default function CustomerDetailPage() {
     togglePool,
     deleteCustomer,
     addActivity,
+    updateActivity,
     addTask,
     toggleTaskDone,
     leadSources,
@@ -111,6 +112,8 @@ export default function CustomerDetailPage() {
   const [closedAmountDraft, setClosedAmountDraft] = useState("");
   const [showRemoveReasonModal, setShowRemoveReasonModal] = useState(false);
   const [removeReasonId, setRemoveReasonId] = useState("");
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editActivityDraft, setEditActivityDraft] = useState("");
 
   useEffect(() => {
     setProfileDraft(draftFromCustomer(customer));
@@ -201,6 +204,22 @@ export default function CustomerDetailPage() {
     if (nameDirty && nameDraft.trim()) identityPatch.name = nameDraft.trim();
     if (phoneDirty) identityPatch.phone = phoneDraft.trim();
     if (Object.keys(identityPatch).length > 0) updateCustomerIdentity(customer!.id, identityPatch);
+  }
+
+  function startEditActivity(a: Activity) {
+    setEditingActivityId(a.id);
+    setEditActivityDraft(a.content);
+  }
+
+  function cancelEditActivity() {
+    setEditingActivityId(null);
+    setEditActivityDraft("");
+  }
+
+  function saveEditActivity() {
+    if (!editingActivityId || !editActivityDraft.trim()) return;
+    updateActivity(editingActivityId, editActivityDraft.trim());
+    cancelEditActivity();
   }
 
   function handleCancel() {
@@ -719,6 +738,8 @@ export default function CustomerDetailPage() {
               ) : (
                 group.entries.map((a) => {
                   const style = ACTIVITY_STYLES[a.type];
+                  const isMine = a.authorUserId === currentUser.id;
+                  const isEditing = editingActivityId === a.id;
                   return (
                     <div key={a.id} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -726,8 +747,32 @@ export default function CustomerDetailPage() {
                           {style.label}
                         </span>
                         <span style={{ fontSize: 12, color: "#9aa0ab" }}>{a.time}</span>
+                        {isMine && !isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => startEditActivity(a)}
+                            style={{ marginLeft: "auto", fontSize: 11.5, color: "#4046c9", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
-                      <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{a.content}</div>
+                      {isEditing ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <input
+                            className="field-input"
+                            value={editActivityDraft}
+                            onChange={(e) => setEditActivityDraft(e.target.value)}
+                            autoFocus
+                          />
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="btn btn-primary" type="button" onClick={saveEditActivity} disabled={!editActivityDraft.trim()}>Save</button>
+                            <button className="btn btn-outline" type="button" onClick={cancelEditActivity}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{a.content}</div>
+                      )}
                       {a.followUp && <div style={{ fontSize: 12, color: "#8a5a00", fontWeight: 500 }}>{a.followUp}</div>}
                     </div>
                   );

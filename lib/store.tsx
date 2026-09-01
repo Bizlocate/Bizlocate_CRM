@@ -481,6 +481,7 @@ interface Store {
   updateCustomerRemark: (customerId: string, remark: string) => void;
 
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
+  updateActivity: (activityId: string, content: string) => void;
   logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
   requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string) => { ok: boolean; error?: string };
   resolveClientRemoval: (requestId: string, approve: boolean) => void;
@@ -1950,6 +1951,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  // Editing a log entry re-dates it to now and bumps it to the top of the
+  // log, same as a fresh entry — matches how salespeople expect an edited
+  // note to read (the DB only allows the author to update their own row,
+  // and only content/created_at — see activities_update + the column-lock
+  // trigger in schema.sql).
+  function updateActivity(activityId: string, content: string) {
+    const now = new Date().toISOString();
+    setActivities((prev) => {
+      const entry = prev.find((a) => a.id === activityId);
+      if (!entry) return prev;
+      const updated: Activity = { ...entry, content, time: formatTimestamp(now), createdAt: now };
+      return [updated, ...prev.filter((a) => a.id !== activityId)];
+    });
+    const supabase = createClient();
+    supabase.from("activities").update({ content, created_at: now }).eq("id", activityId).then(() => {});
+  }
+
   // Combined "Log" action for a Log-form submission by someone who occupies
   // a slot on this customer: always writes that slot's stage (the Log form
   // requires a stage pick before this can be called — see the detail
@@ -2223,6 +2241,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateCustomerIdentity,
     updateCustomerRemark,
     addActivity,
+    updateActivity,
     logActivityAndStage,
     requestClientRemoval,
     resolveClientRemoval,
