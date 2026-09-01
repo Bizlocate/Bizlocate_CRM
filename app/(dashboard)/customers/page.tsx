@@ -270,7 +270,7 @@ export default function CustomersPage() {
   }
 
   // Created Date, Business Type, Business Name, Tel No, Customer Name, Sub Area, Source, Stage, [Assigned Agent(s)], Purpose, Last Updated
-  const LIST_COLS = [100, 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
+  const LIST_COLS = [...(isSalesperson ? [] : [100]), 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
   const gridCols = `${canExport ? "32px " : ""}${LIST_COLS.map((w) => `${w}px`).join(" ")} 30px`;
   const gridMinWidth = (canExport ? 32 : 0) + LIST_COLS.reduce((a, b) => a + b, 0) + 30;
   const allFilteredSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => selectedIds.has(c.id));
@@ -467,7 +467,7 @@ export default function CustomersPage() {
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
                 </div>
               )}
-              <div>Created Date</div>
+              {!isSalesperson && <div>Created Date</div>}
               <div>Business Type</div>
               <div>Business Name</div>
               <div>Tel No</div>
@@ -505,7 +505,7 @@ export default function CustomersPage() {
                       <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleOne(c.id)} />
                     </div>
                   )}
-                  <div style={{ color: "#6b7280" }}>{formatDate(c.createdAt)}</div>
+                  {!isSalesperson && <div style={{ color: "#6b7280" }}>{formatDate(c.createdAt)}</div>}
                   <div style={{ color: "#6b7280" }}>{nameOf(businessTagTypes, c.businessTypeId) || "—"}</div>
                   <div style={{ color: "#6b7280" }}>{c.businessName || "—"}</div>
                   <div style={{ color: "#6b7280" }}>{c.phone}</div>
