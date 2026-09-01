@@ -112,7 +112,7 @@ export default function AdminStagesPage() {
                   checked={s.excludeFromAutoAssign}
                   onChange={(e) => updateStageExcludeFromAutoAssign(s.id, e.target.checked)}
                 />
-                Skip auto-assign (e.g. Appointment/Nego)
+                Skip auto-assign
               </label>
               <div
                 onClick={() => { setEditingId(s.id); setEditName(s.name); }}

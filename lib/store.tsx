@@ -49,7 +49,7 @@ function mapTeam(row: { id: string; name: string; manager_id: string | null; las
 }
 
 function mapArea(row: { id: string; name: string; team_id: string | null; auto_assign_enabled: boolean }): Area {
-  return { id: row.id, name: row.name, teamId: row.team_id, autoAssignEnabled: row.auto_assign_enabled };
+  return { id: row.id, name: row.name, teamId: row.team_id, autoAssignEnabled: row.auto_assign_enabled ?? true };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
@@ -113,7 +113,7 @@ function assigneeSlots(c: Customer): string[] {
 }
 
 function mapStage(row: { id: string; name: string; order: number; is_default: boolean; requires_amount: boolean; exclude_from_auto_assign: boolean }): Stage {
-  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default, requiresAmount: row.requires_amount, excludeFromAutoAssign: row.exclude_from_auto_assign };
+  return { id: row.id, name: row.name, order: row.order, isDefault: row.is_default, requiresAmount: row.requires_amount, excludeFromAutoAssign: row.exclude_from_auto_assign ?? false };
 }
 
 function mapCustomer(row: {
@@ -800,10 +800,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Auto second-assignment: 3 days after a customer is created (slot 1
-  // already assigned), if slot 2 is still empty, round-robin the next
-  // active SALESPERSON from the team that owns the customer's area into
-  // slot 2. Deliberately does NOT call reassignCustomer/assignmentError —
+  // Auto second-assignment: once a customer's slot 1 has been assigned, if
+  // slot 2 is still empty, round-robin the next active SALESPERSON from the
+  // team that owns the customer's area into slot 2 — after 7 days normally,
+  // or after 14 idle days (no activity log) if the customer's slot-1 stage
+  // is flagged to skip auto-assign. Skipped entirely if the area's
+  // auto-assign switch is off. Deliberately does NOT call
+  // reassignCustomer/assignmentError —
   // both read `customers` from closure, which is still stale at the exact
   // point in the initial-load effect (and in login()) where this sweep
   // runs, before React has re-rendered with the freshly-loaded data.
