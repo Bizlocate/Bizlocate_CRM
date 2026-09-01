@@ -77,6 +77,7 @@ export default function CustomersPage() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
   const [updatedSort, setUpdatedSort] = useState<"asc" | "desc" | null>(null);
+  const [stageSort, setStageSort] = useState<"asc" | "desc" | null>(null);
 
   const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const canExport = currentUser?.role === "ADMIN";
@@ -131,6 +132,12 @@ export default function CustomersPage() {
   ]);
 
   const sortedCustomers = useMemo(() => {
+    if (stageSort) {
+      return [...filteredCustomers].sort((a, b) => {
+        const diff = stageOrderOf(a) - stageOrderOf(b);
+        return stageSort === "asc" ? diff : -diff;
+      });
+    }
     if (updatedSort) {
       return [...filteredCustomers].sort((a, b) => {
         const diff = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
@@ -147,10 +154,31 @@ export default function CustomersPage() {
       const bNew = myStageId(b) === defaultStage.id ? 0 : 1;
       return aNew - bNew;
     });
-  }, [filteredCustomers, isSalesperson, stages, currentUser, updatedSort]);
+  }, [filteredCustomers, isSalesperson, stages, currentUser, updatedSort, stageSort]);
 
   function toggleUpdatedSort() {
+    setStageSort(null);
     setUpdatedSort((prev) => (prev === "desc" ? "asc" : prev === "asc" ? null : "desc"));
+  }
+
+  function toggleStageSort() {
+    setUpdatedSort(null);
+    // starts at "asc" (pipeline order — New first), not "desc" like the
+    // updated-date toggle, since the point here is pipeline order, not
+    // most-recent-first
+    setStageSort((prev) => (prev === "asc" ? "desc" : prev === "desc" ? null : "asc"));
+  }
+
+  // pipeline-order rank for whichever stage badge is actually shown for
+  // this customer (own slot for a salesperson, first populated slot for
+  // admin/manager — matches stageBadgeNames/myStageId display logic).
+  // No stage (unassigned customer) sorts last regardless of direction.
+  function stageOrderOf(c: Customer): number {
+    const stageId = isSalesperson
+      ? myStageId(c)
+      : c.assignedToUserId ? c.stage1Id : c.assignedToUserId2 ? c.stage2Id : c.assignedToUserId3 ? c.stage3Id : null;
+    const order = stages.find((s) => s.id === stageId)?.order;
+    return order ?? Number.MAX_SAFE_INTEGER;
   }
 
   if (!currentUser) return null;
@@ -474,7 +502,9 @@ export default function CustomersPage() {
               <div>Customer Name</div>
               <div>Sub Area</div>
               <div>Source</div>
-              <div>Stage</div>
+              <div onClick={toggleStageSort} style={{ cursor: "pointer", userSelect: "none" }}>
+                Stage{stageSort === "desc" ? " ↓" : stageSort === "asc" ? " ↑" : ""}
+              </div>
               {showAssignedTo && <div>Assigned Agent(s)</div>}
               <div>Purpose</div>
               <div onClick={toggleUpdatedSort} style={{ cursor: "pointer", userSelect: "none" }}>
