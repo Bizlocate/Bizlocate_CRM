@@ -699,30 +699,25 @@ create policy "activities_delete" on activities for delete using (
   )
 );
 
--- tasks: inherit customer visibility, update limited to `done` via trigger above
+-- tasks: private per creator — everyone (including admin) only sees their
+-- own tasks on a customer, never a teammate's; update limited to `done`
+-- via trigger above
 create policy "tasks_select" on tasks for select using (
-  is_admin()
-  or exists (
-    select 1 from customers c
-    where c.id = tasks.customer_id
-      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
-  )
+  user_id = auth.uid()
 );
 create policy "tasks_insert" on tasks for insert with check (
-  is_admin()
-  or exists (
-    select 1 from customers c
-    where c.id = tasks.customer_id
-      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  user_id = auth.uid()
+  and (
+    is_admin()
+    or exists (
+      select 1 from customers c
+      where c.id = tasks.customer_id
+        and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+    )
   )
 );
 create policy "tasks_update" on tasks for update using (
-  is_admin()
-  or exists (
-    select 1 from customers c
-    where c.id = tasks.customer_id
-      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
-  )
+  user_id = auth.uid()
 );
 
 -- customer_change_log: append-only, inherits customer visibility for insert;
@@ -1861,5 +1856,35 @@ insert into mandatory_field_settings (field_key, required) values
 --   for each row execute function protect_activity_columns();
 --
 -- create policy "activities_update" on activities for update using (
+--   user_id = auth.uid()
+-- );
+
+-- ============================================================
+-- Migration: private tasks — each user only sees their own tasks on a
+-- customer (previously anyone who could see the customer saw everyone's
+-- tasks). Run once against an already-provisioned database (everything
+-- below already exists in the main schema above for fresh installs).
+-- ============================================================
+--
+-- drop policy if exists "tasks_select" on tasks;
+-- create policy "tasks_select" on tasks for select using (
+--   user_id = auth.uid()
+-- );
+--
+-- drop policy if exists "tasks_insert" on tasks;
+-- create policy "tasks_insert" on tasks for insert with check (
+--   user_id = auth.uid()
+--   and (
+--     is_admin()
+--     or exists (
+--       select 1 from customers c
+--       where c.id = tasks.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
+--
+-- drop policy if exists "tasks_update" on tasks;
+-- create policy "tasks_update" on tasks for update using (
 --   user_id = auth.uid()
 -- );
