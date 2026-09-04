@@ -63,7 +63,7 @@ The actual customers drawn once a request is approved.
 - `done_at` (nullable)
 - `created_at`
 
-Sampling order: `customer.createdAt` ascending (oldest customers first).
+Sampling order: `customer.createdAt` descending (newest customers first).
 No duplicate `customer_id` within the same `blast_request` across its
 batches. Duplicate customers across *different* requests (same or
 different salesperson) are allowed and not checked — accepted overlap, not
@@ -103,7 +103,8 @@ Per row, admin types `approved_total` (defaults to the live matching count,
 editable downward) and `locked_expiry_days`, then clicks Approve. On
 approve:
 
-1. Draw `approved_total` customers per the sampling rule above.
+1. Draw `approved_total` customers per the sampling rule above (newest
+   first).
 2. Split into batches of 50 (`batch_index` 1..k).
 3. Batch 1 unlocks immediately (`unlocked_at = now`); the rest stay locked.
 4. Set `resolved_by`, `resolved_at`, `status = 'APPROVED'`.
