@@ -758,8 +758,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Inactive Listings warning tab (same thresholds, 5 days earlier).
   // ponytail: compute-on-load sweep, not real-time. Upgrade to a cron/edge
   // function sweep if sub-day precision ever matters.
-  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], forUserId: string, isAdmin: boolean) {
-    const stale = computeSlotAges(customersList, activitiesList)
+  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], assignmentEvents: AssignmentEvent[], forUserId: string, isAdmin: boolean) {
+    const stale = computeSlotAges(customersList, activitiesList, assignmentEvents)
       .filter(isStalePastPull)
       .filter((age) => isAdmin || age.userId === forUserId)
       .map((age) => ({ customerId: age.customerId, slot: age.slot }));
@@ -918,14 +918,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
         await loadSalesTargets();
-        await loadAssignmentEvents();
+        const loadedAssignmentEvents = await loadAssignmentEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
-          sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+          sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
         }
       }
@@ -971,7 +971,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
     await loadSalesTargets();
-    await loadAssignmentEvents();
+    const loadedAssignmentEvents = await loadAssignmentEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
@@ -981,7 +981,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
-    sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+    sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     return { ok: true };
   }

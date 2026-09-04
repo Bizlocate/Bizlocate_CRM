@@ -3,14 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
-import {
-  ACTIVE_WARN_DAYS,
-  POTENTIAL_WARN_DAYS,
-  SlotAge,
-  computeSlotAges,
-  isWarnZone,
-  scopeSlotAgesToViewer,
-} from "@/lib/inactiveListings";
+import { ACTIVE_WARN_DAYS, POTENTIAL_WARN_DAYS, SlotAge, warnZoneSlotsFor } from "@/lib/inactiveListings";
 
 /**
  * Warns before the active-pool 30-day / potential-pool 60-day auto-pull
@@ -21,32 +14,41 @@ import {
  * pattern RemovalApprovalsBrowser uses for its Area filter.
  */
 export default function InactiveListingsBrowser() {
-  const { customers, activities, users, areas, currentUser } = useStore();
+  const { customers, activities, assignmentEvents, removalRequests, users, areas, currentUser } = useStore();
   const [filterAreaId, setFilterAreaId] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
 
-  const scoped = useMemo(() => {
-    if (!currentUser) return [];
-    const ages = computeSlotAges(customers, activities).filter(isWarnZone);
-    return scopeSlotAgesToViewer(ages, users, currentUser);
-  }, [customers, activities, users, currentUser]);
+  const scoped = useMemo(
+    () =>
+      currentUser
+        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests)
+        : [],
+    [customers, activities, assignmentEvents, users, currentUser, removalRequests]
+  );
 
   const showFilters = currentUser?.role !== "SALESPERSON";
 
+  // Id lookups: these run per row *and* per filter-dropdown option (see
+  // countForArea/countForMember), so a .find() each would compound badly.
+  const customerById = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
+
   function areaIdOf(customerId: string) {
-    return customers.find((c) => c.id === customerId)?.areaId ?? null;
+    return customerById.get(customerId)?.areaId ?? null;
   }
   function userName(userId: string) {
-    return users.find((u) => u.id === userId)?.name ?? "Unknown";
+    return userById.get(userId)?.name ?? "Unknown";
   }
   function areaName(customerId: string) {
-    return areas.find((a) => a.id === areaIdOf(customerId))?.name ?? "—";
+    const areaId = areaIdOf(customerId);
+    return (areaId ? areaById.get(areaId)?.name : null) ?? "—";
   }
   function customerName(customerId: string) {
-    return customers.find((c) => c.id === customerId)?.name ?? "Unknown customer";
+    return customerById.get(customerId)?.name ?? "Unknown customer";
   }
   function businessName(customerId: string) {
-    return customers.find((c) => c.id === customerId)?.businessName || "—";
+    return customerById.get(customerId)?.businessName || "—";
   }
 
   // Manager's dropdowns are scoped to their own team, same as

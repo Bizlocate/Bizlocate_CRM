@@ -1,25 +1,31 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { computeSlotAges, isWarnZone, scopeSlotAgesToViewer } from "@/lib/inactiveListings";
+import { warnZoneSlotsFor } from "@/lib/inactiveListings";
 
 export default function MainNav() {
-  const { currentUser, removalRequests, customers, activities, users } = useStore();
+  const { currentUser, removalRequests, customers, activities, assignmentEvents, users } = useStore();
   const pathname = usePathname();
+
+  // Same list InactiveListingsBrowser renders -- one shared composition so
+  // the badge and the tab can't disagree. See lib/inactiveListings.ts.
+  const inactiveListingsCount = useMemo(
+    () =>
+      currentUser
+        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests).length
+        : 0,
+    [customers, activities, assignmentEvents, users, currentUser, removalRequests]
+  );
+
   if (!currentUser) return null;
 
   // removalRequests is already RLS-scoped per session (admin sees every
   // pending request, a manager sees only their own team's) -- see
   // RemovalApprovalsBrowser's own note on the same array.
   const pendingRemovalCount = removalRequests.filter((r) => r.status === "PENDING").length;
-
-  // Same staleness calc InactiveListingsBrowser uses for its own rows --
-  // see lib/inactiveListings.ts.
-  const inactiveListingsCount = currentUser
-    ? scopeSlotAgesToViewer(computeSlotAges(customers, activities).filter(isWarnZone), users, currentUser).length
-    : 0;
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
