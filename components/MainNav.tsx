@@ -7,8 +7,13 @@ import { useStore } from "@/lib/store";
 import { warnZoneSlotsFor } from "@/lib/inactiveListings";
 
 export default function MainNav() {
-  const { currentUser, removalRequests, customers, activities, assignmentEvents, users } = useStore();
+  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks } = useStore();
   const pathname = usePathname();
+
+  // tasks is already RLS-scoped to "mine" (private per creator), so this is
+  // just the current user's own open-task count -- same list TodoTasksBrowser
+  // renders. See lib/store.tsx's loadTasks / tasks_select RLS policy.
+  const openTaskCount = useMemo(() => tasks.filter((t) => !t.done).length, [tasks]);
 
   // Same list InactiveListingsBrowser renders -- one shared composition so
   // the badge and the tab can't disagree. See lib/inactiveListings.ts.
@@ -31,6 +36,7 @@ export default function MainNav() {
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
     { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
+    { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
   ];
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
