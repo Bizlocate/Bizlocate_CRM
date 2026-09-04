@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, ReactNode } fr
 import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
+import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import {
   Activity,
   ActivityType,
@@ -747,33 +748,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
-  // Auto-removal for the inactive pool: any assignee slot (1, 2, or 3 — all
-  // three are nullable now that a customer can go unassigned) sitting in
-  // the inactive pool for 60+ days with no activity logged by that
-  // assignee gets cleared. No cron infra exists, so this runs as a
-  // compute-on-load sweep scoped to what the current session is allowed to
-  // touch: their own slots, or (for an admin) every slot.
+  // Auto-removal for both pools: any assignee slot (1, 2, or 3 -- all three
+  // are nullable now that a customer can go unassigned) sitting stale for
+  // 30+ days (active pool) or 60+ days (potential pool) with no activity
+  // logged by that assignee gets cleared. No cron infra exists, so this
+  // runs as a compute-on-load sweep scoped to what the current session is
+  // allowed to touch: their own slots, or (for an admin) every slot.
+  // Staleness calc lives in lib/inactiveListings.ts, shared with the
+  // Inactive Listings warning tab (same thresholds, 5 days earlier).
   // ponytail: compute-on-load sweep, not real-time. Upgrade to a cron/edge
   // function sweep if sub-day precision ever matters.
-  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], forUserId: string, isAdmin: boolean) {
-    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const stale: { customerId: string; slot: 1 | 2 | 3 }[] = [];
-    for (const c of customersList) {
-      ([
-        { slot: 1 as const, pool: c.pool1, since: c.pool1Since, userId: c.assignedToUserId },
-        { slot: 2 as const, pool: c.pool2, since: c.pool2Since, userId: c.assignedToUserId2 },
-        { slot: 3 as const, pool: c.pool3, since: c.pool3Since, userId: c.assignedToUserId3 },
-      ]).forEach(({ slot, pool, since, userId }) => {
-        if (pool !== "INACTIVE" || !userId || !since) return;
-        if (!isAdmin && userId !== forUserId) return;
-        const lastOwnActivity = activitiesList
-          .filter((a) => a.customerId === c.id && a.authorUserId === userId)
-          .reduce((max, a) => Math.max(max, new Date(a.createdAt).getTime()), 0);
-        const lastTouched = Math.max(new Date(since).getTime(), lastOwnActivity);
-        if (now - lastTouched > SIXTY_DAYS_MS) stale.push({ customerId: c.id, slot });
-      });
-    }
+  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], assignmentEvents: AssignmentEvent[], forUserId: string, isAdmin: boolean) {
+    const stale = computeSlotAges(customersList, activitiesList, assignmentEvents)
+      .filter(isStalePastPull)
+      .filter((age) => isAdmin || age.userId === forUserId)
+      .map((age) => ({ customerId: age.customerId, slot: age.slot }));
     if (stale.length === 0) return;
     setCustomers((prev) =>
       prev.map((c) => {
@@ -929,14 +918,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
         await loadSalesTargets();
-        await loadAssignmentEvents();
+        const loadedAssignmentEvents = await loadAssignmentEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
-          sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+          sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
         }
       }
@@ -982,7 +971,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
     await loadSalesTargets();
-    await loadAssignmentEvents();
+    const loadedAssignmentEvents = await loadAssignmentEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
@@ -992,7 +981,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setCurrentUserId(profile.id);
     await loadNotifications(profile.id);
-    sweepStalePool(loadedCustomers, loadedActivities, profile.id, profile.role === "ADMIN");
+    sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     return { ok: true };
   }
