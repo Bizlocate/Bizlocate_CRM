@@ -35,8 +35,8 @@ export default function MainNav() {
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
-    { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
     { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
+    { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
