@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { computeSlotAges, isWarnZone, scopeSlotAgesToViewer } from "@/lib/inactiveListings";
 
 export default function MainNav() {
-  const { currentUser, removalRequests } = useStore();
+  const { currentUser, removalRequests, customers, activities, users } = useStore();
   const pathname = usePathname();
   if (!currentUser) return null;
 
@@ -14,9 +15,16 @@ export default function MainNav() {
   // RemovalApprovalsBrowser's own note on the same array.
   const pendingRemovalCount = removalRequests.filter((r) => r.status === "PENDING").length;
 
+  // Same staleness calc InactiveListingsBrowser uses for its own rows --
+  // see lib/inactiveListings.ts.
+  const inactiveListingsCount = currentUser
+    ? scopeSlotAgesToViewer(computeSlotAges(customers, activities).filter(isWarnZone), users, currentUser).length
+    : 0;
+
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
+    { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
