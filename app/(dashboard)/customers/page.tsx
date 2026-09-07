@@ -313,7 +313,7 @@ export default function CustomersPage() {
 
   return (
     <div style={{ padding: "28px 32px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Customers</div>
         <div style={{ display: "flex", gap: 10 }}>
           {canExport && selectedIds.size > 0 && (
