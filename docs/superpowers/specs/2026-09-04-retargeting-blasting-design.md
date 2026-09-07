@@ -217,9 +217,16 @@ rather than deleting them.
   approve/reject their team's claim requests.
 - **Salesperson**: `Blasting` tab (`/blasting`) — view unlocked list, mark
   done, submit claim requests.
-- Nav badges: salesperson's badge = count of own `PENDING` blast items
-  currently visible (unlocked, unexpired). Manager's badge = count of
-  `PENDING` `blast_claim_requests` from their team.
+- **Manager** (additional): `Blasting` tab (`/blasting`) — a manager can
+  target themselves in their own submitted request (see "Manager submits"
+  above), so they get the same tab a salesperson does.
+- Nav badges: the `Blasting` tab's badge (salesperson or manager) = count
+  of distinct *batches* — not customers — currently visible (unlocked,
+  unexpired) with at least one not-done item, so it reads as "N batches
+  left to blast" rather than a raw customer count. `Blast Approvals`
+  badge (admin) = count of `PENDING` `blast_requests`. `Blast Claims`
+  badge (manager) = count of `PENDING` `blast_claim_requests` from their
+  team.
 
 ## Out of scope
 

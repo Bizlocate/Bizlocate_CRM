@@ -26,13 +26,16 @@ export default function MainNav() {
     [customers, activities, assignmentEvents, users, currentUser, removalRequests]
   );
 
-  // Own badge: still-pending items on the current viewer's own currently
-  // visible (unlocked, unexpired) blasting list -- a manager can be a
-  // blast target too (they can request a list for themselves), not just
+  // Own badge: how many batches on the current viewer's own currently
+  // visible (unlocked, unexpired) blasting list still have at least one
+  // not-done customer -- a batch count, not a customer count, so the
+  // badge reads as "N batches left to blast". A manager can be a blast
+  // target too (they can request a list for themselves), not just
   // salespeople.
-  const myOpenBlastItemCount = useMemo(() => {
+  const myOpenBlastBatchCount = useMemo(() => {
     if (!currentUser) return 0;
-    return visibleBlastItemsFor(blastItems, blastRequests, currentUser.id).filter((i) => i.status === "PENDING").length;
+    const openItems = visibleBlastItemsFor(blastItems, blastRequests, currentUser.id).filter((i) => i.status === "PENDING");
+    return new Set(openItems.map((i) => `${i.blastRequestId}:${i.batchIndex}`)).size;
   }, [blastItems, blastRequests, currentUser]);
 
   // Manager's badge: pending claim requests from their own team.
@@ -63,7 +66,7 @@ export default function MainNav() {
     { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
   if (currentUser.role === "SALESPERSON" || currentUser.role === "MANAGER") {
-    tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastItemCount });
+    tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastBatchCount });
   }
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
