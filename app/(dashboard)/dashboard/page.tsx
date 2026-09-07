@@ -278,7 +278,7 @@ export default function DashboardPage() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>团队表现</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <AreaFilter value={teamAreaId} onChange={setTeamAreaId} areas={availableAreas} />
               <input type="month" className="field-input" style={{ width: 150 }} value={teamMonth} onChange={(e) => setTeamMonth(e.target.value)} />
             </div>
@@ -381,7 +381,7 @@ export default function DashboardPage() {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Pipeline & 趋势</div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {canManage && <AreaFilter value={pipelineAreaId} onChange={setPipelineAreaId} areas={availableAreas} />}
           {canManage && (
             <select className="field-input" style={{ width: 200 }} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
@@ -480,7 +480,7 @@ export default function DashboardPage() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>运营报表</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <AreaFilter value={opsAreaId} onChange={setOpsAreaId} areas={availableAreas} />
               <input type="month" className="field-input" style={{ width: 150 }} value={opsMonth} onChange={(e) => setOpsMonth(e.target.value)} />
             </div>
@@ -570,7 +570,7 @@ export default function DashboardPage() {
         <div style={{ fontSize: 15, fontWeight: 700 }} title="Only counts data from whenever the stage-tracking migration was run — no historical backfill">
           Sales Performance Tracker
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {canManage && <AreaFilter value={spAreaId} onChange={setSpAreaId} areas={availableAreas} />}
           <input type="month" className="field-input" style={{ width: 150 }} value={spMonth} onChange={(e) => setSpMonth(e.target.value)} />
         </div>
