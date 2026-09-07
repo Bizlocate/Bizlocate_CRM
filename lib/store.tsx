@@ -669,6 +669,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     usersRef.current = users;
   }, [users]);
 
+  // Set by login() (a fresh login) or adopted from the DB on auto-restore
+  // (an existing session continuing, e.g. reload/new tab -- never
+  // overwritten there). The session-guard effect below compares this
+  // against the value Realtime reports for this account's profiles row;
+  // a mismatch means a *different* login overwrote it, i.e. this session
+  // just got signed out elsewhere.
+  const mySessionTokenRef = useRef<string | null>(null);
+
   async function loadUsers(): Promise<User[]> {
     const supabase = createClient();
     const { data } = await supabase.from("profiles").select("*").order("name");
@@ -1114,6 +1122,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
+          const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
+          mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
           sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
@@ -1172,6 +1182,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Separate from the whole-store sync channel above -- different concern
+  // (one filtered row, not the whole table) and it needs to call logout()
+  // directly rather than merge a row into state.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel("session-guard")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${currentUserId}` },
+        (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
+          if (((payload.new as any).session_token ?? null) !== mySessionTokenRef.current) {
+            sessionStorage.setItem("bizlocate_kicked", "1");
+            logout();
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const currentUser = useMemo(
     () => users.find((u) => u.id === currentUserId) ?? null,
     [users, currentUserId]
@@ -1222,6 +1256,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
       return { ok: false, error: "This account has no CRM profile set up. Contact your administrator." };
     }
+    const sessionToken = crypto.randomUUID();
+    mySessionTokenRef.current = sessionToken;
+    const { error: tokenError } = await supabase.from("profiles").update({ session_token: sessionToken }).eq("id", profile.id);
+    if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
