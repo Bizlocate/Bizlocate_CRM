@@ -30,7 +30,6 @@ import {
   FirsttimeBranchType,
   Language,
   LeadSource,
-  Notification,
   PoolStatus,
   PropertyType,
   Purpose,
@@ -450,10 +449,6 @@ function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function mapNotification(row: { id: string; message: string; created_at: string; read: boolean }): Notification {
-  return { id: row.id, message: row.message, time: formatTimestamp(row.created_at), unread: !row.read };
-}
-
 // One Realtime channel (see the effect in StoreProvider) drives every
 // table-backed array in the store through this single reducer, reusing
 // the mapXxx row-mappers already defined above -- no per-table bespoke
@@ -518,7 +513,6 @@ interface Store {
   blastItems: BlastItem[];
   blastClaimRequests: BlastClaimRequest[];
   tasks: Task[];
-  notifications: Notification[];
   currentUser: User | null;
   initialized: boolean;
 
@@ -626,8 +620,6 @@ interface Store {
   addTask: (customerId: string, title: string, due: string) => void;
   toggleTaskDone: (taskId: string) => void;
 
-  markNotificationsRead: () => void;
-
   updateProfileName: (name: string) => void;
   updatePassword: (current: string, next: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -665,7 +657,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [blastItems, setBlastItems] = useState<BlastItem[]>([]);
   const [blastClaimRequests, setBlastClaimRequests] = useState<BlastClaimRequest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -819,18 +810,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase.from("pipeline_stages").select("*").order("order");
     const mapped = (data ?? []).map(mapStage);
     setStages(mapped);
-    return mapped;
-  }
-
-  async function loadNotifications(userId: string): Promise<Notification[]> {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    const mapped = (data ?? []).map(mapNotification);
-    setNotifications(mapped);
     return mapped;
   }
 
@@ -1074,7 +1053,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (!winner) continue;
       const winnerId = winner.id;
-      const winnerName = winner.name;
       pointerByTeam.set(team.id, winnerId);
       extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
       setCustomers((prev) =>
@@ -1083,7 +1061,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null, stage_2: defaultStage?.id ?? null }).eq("id", c.id).then(() => {});
       setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, lastAutoAssignedUserId: winnerId } : t)));
       supabase.from("teams").update({ last_auto_assigned_user_id: winnerId }).eq("id", team.id).then(() => {});
-      createNotification(winnerId, `${winnerName} was assigned ${c.name}.`);
       logAssignmentEvent(c.id, winnerId, 2);
     }
   }
@@ -1137,7 +1114,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
-          loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
@@ -1181,7 +1157,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "blast_items", setState: (fn) => setBlastItems(fn), mapRow: mapBlastItem, keyOf: (x) => x.id },
       { table: "blast_claim_requests", setState: (fn) => setBlastClaimRequests(fn), mapRow: mapBlastClaimRequest, keyOf: (x) => x.id },
       { table: "tasks", setState: (fn) => setTasks(fn), mapRow: mapTask, keyOf: (x) => x.id },
-      { table: "notifications", setState: (fn) => setNotifications(fn), mapRow: mapNotification, keyOf: (x) => x.id },
     ];
     const channel = supabase.channel("db-changes");
     for (const entry of entries) {
@@ -1248,7 +1223,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: "This account has no CRM profile set up. Contact your administrator." };
     }
     setCurrentUserId(profile.id);
-    await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
@@ -1260,7 +1234,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.auth.signOut();
     setCurrentUserId(null);
     setCustomers([]);
-    setNotifications([]);
   }
 
   const visibleCustomers = useMemo(() => {
@@ -2022,10 +1995,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update[stageColumn] = newStageId;
     }
     supabase.from("customers").update(update).eq("id", customerId).then(() => {});
-    const assignee = userId ? users.find((u) => u.id === userId) : undefined;
-    if (assignee) {
-      createNotification(userId!, `${assignee.name} was assigned ${customer.name}.`);
-    }
     if (userId && changing) {
       logAssignmentEvent(customerId, userId, slot);
     }
@@ -2401,10 +2370,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         reassignCustomer(request.customerId, request.slot, null);
       }
     }
-    createNotification(
-      request.requestedBy,
-      approve ? "Your client removal request was approved." : "Your client removal request was rejected."
-    );
   }
 
   // Manager's "add a row per team member" submit -- rows with no
@@ -2601,28 +2566,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("tasks").update({ done: !target.done }).eq("id", taskId).then(() => {});
   }
 
-  function markNotificationsRead() {
-    const unreadIds = notifications.filter((n) => n.unread).map((n) => n.id);
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
-    if (unreadIds.length === 0) return;
-    const supabase = createClient();
-    supabase.from("notifications").update({ read: true }).in("id", unreadIds).then(() => {});
-  }
-
-  function createNotification(userId: string, message: string) {
-    const supabase = createClient();
-    supabase
-      .from("notifications")
-      .insert({ user_id: userId, type: "ASSIGNMENT", message, read: false })
-      .select()
-      .single()
-      .then(({ data, error }) => {
-        if (!error && data && data.user_id === currentUserId) {
-          setNotifications((prev) => [mapNotification(data), ...prev]);
-        }
-      });
-  }
-
   function updateProfileName(name: string) {
     if (!currentUserId) return;
     setUsers((prev) => prev.map((u) => (u.id === currentUserId ? { ...u, name } : u)));
@@ -2675,7 +2618,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     blastItems,
     blastClaimRequests,
     tasks,
-    notifications,
     currentUser,
     initialized,
     login,
@@ -2769,7 +2711,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     resolveBlastClaim,
     addTask,
     toggleTaskDone,
-    markNotificationsRead,
     updateProfileName,
     updatePassword,
   };

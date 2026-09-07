@@ -273,13 +273,6 @@ export interface Task {
   done: boolean;
 }
 
-export interface Notification {
-  id: string;
-  message: string;
-  time: string;
-  unread: boolean;
-}
-
 export interface CustomerChangeLogEntry {
   id: string;
   customerId: string;
