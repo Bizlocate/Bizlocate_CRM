@@ -34,7 +34,9 @@ rows are independent even though a user might submit several).
 - `business_name_keyword` (text, nullable — substring match)
 - `area_id` (→ areas, nullable)
 - `sub_area_id` (→ areas/sub-areas, nullable)
-- `business_type_id` (→ business_types, nullable)
+- `business_industry_id` (→ business_tag_industries, nullable)
+- `business_category_id` (→ business_tag_categories, nullable)
+- `business_type_id` (→ business_tag_types, nullable)
 - `status`: `'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'`
 - `approved_total` (nullable, set on approve — how many customers admin
   approved, ≤ the matching count at approve time)
@@ -42,11 +44,14 @@ rows are independent even though a user might submit several).
 - `resolved_by`, `resolved_at` (nullable)
 - `created_at`
 
-All four criteria fields are independently optional; a blank field means
+All six criteria fields are independently optional; a blank field means
 "match all" for that dimension. Matching is AND across whichever fields are
-filled, using the same dropdown-backed lookups already used elsewhere
-(areas/sub-areas cascade, business types lookup) plus a plain substring
-match on `customers.businessName` for the keyword.
+filled, using the same dropdown-backed lookups already used elsewhere on the
+customer profile form (area→sub-area cascade, business industry→category→
+type cascade) plus a plain substring match on `customers.businessName` for
+the keyword. The industry/category/type fields map to `Customer.businessIndustryId` /
+`businessCategoryId` / `businessTypeId` — the existing three-level business
+tag hierarchy, not a single flat field.
 
 ### `blast_items`
 
