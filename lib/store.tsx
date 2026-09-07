@@ -596,7 +596,7 @@ interface Store {
   updateStageExcludeFromAutoAssign: (id: string, excluded: boolean) => void;
   upsertSalesTarget: (userId: string, yearMonth: string, amount: number) => void;
 
-  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string }>;
+  addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string; customerId?: string }>;
   reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   logAssignmentRemoval: (customerId: string, slot: 1 | 2 | 3, removedUserName: string, note?: string) => void;
   deleteAssigneeActivities: (customerId: string, userId: string) => void;
@@ -1992,7 +1992,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (input.assignedToUserId) logAssignmentEvent(data.id, input.assignedToUserId, 1);
     if (input.assignedToUserId2) logAssignmentEvent(data.id, input.assignedToUserId2, 2);
     if (input.assignedToUserId3) logAssignmentEvent(data.id, input.assignedToUserId3, 3);
-    return { ok: true };
+    return { ok: true, customerId: data.id as string };
   }
 
   function reassignCustomer(customerId: string, slot: 1 | 2 | 3, userId: string | null) {

@@ -668,6 +668,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function NewCustomerForm({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
   const {
     customers,
     users,
@@ -804,7 +805,15 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
       setFormError(result.error ?? "Could not add customer.");
       return;
     }
-    onClose();
+    // Land straight on the new customer's profile -- Admin/Manager
+    // creating one almost always wants to assign it right away, not
+    // re-find it in the list. onClose() unmounts this form as part of
+    // navigating away.
+    if (result.customerId) {
+      router.push(`/customers/${result.customerId}`);
+    } else {
+      onClose();
+    }
   }
 
   function clearInvalid(fieldKey: string) {
