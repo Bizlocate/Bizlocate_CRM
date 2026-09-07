@@ -39,11 +39,12 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding: "24px 16px",
       }}
     >
       <form
         onSubmit={handleSubmit}
-        style={{ width: 380, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}
+        style={{ width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}
       >
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
           <img src="/logo-outline.png" alt="BizLocate" style={{ width: 200, height: "auto" }} />
