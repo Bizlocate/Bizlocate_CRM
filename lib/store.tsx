@@ -5,11 +5,18 @@ import { createClient } from "./supabase/client";
 import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
+import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
 import {
   Activity,
   ActivityType,
   Area,
   AssignmentEvent,
+  BlastClaimRequest,
+  BlastClaimRequestStatus,
+  BlastItem,
+  BlastItemStatus,
+  BlastRequest,
+  BlastRequestStatus,
   BusinessTagCategory,
   BusinessTagIndustry,
   BusinessTagType,
@@ -349,6 +356,86 @@ function mapRemovalRequest(row: {
   };
 }
 
+function mapBlastRequest(row: {
+  id: string;
+  requested_by: string;
+  salesperson_id: string;
+  business_name_keyword: string | null;
+  area_id: string | null;
+  sub_area_id: string | null;
+  business_industry_id: string | null;
+  business_category_id: string | null;
+  business_type_id: string | null;
+  status: string;
+  approved_total: number | null;
+  locked_expiry_days: number | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}): BlastRequest {
+  return {
+    id: row.id,
+    requestedBy: row.requested_by,
+    salespersonId: row.salesperson_id,
+    businessNameKeyword: row.business_name_keyword,
+    areaId: row.area_id,
+    subAreaId: row.sub_area_id,
+    businessIndustryId: row.business_industry_id,
+    businessCategoryId: row.business_category_id,
+    businessTypeId: row.business_type_id,
+    status: row.status as BlastRequestStatus,
+    approvedTotal: row.approved_total,
+    lockedExpiryDays: row.locked_expiry_days,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapBlastItem(row: {
+  id: string;
+  blast_request_id: string;
+  customer_id: string;
+  batch_index: number;
+  unlocked_at: string | null;
+  status: string;
+  remark: string | null;
+  done_at: string | null;
+  created_at: string;
+}): BlastItem {
+  return {
+    id: row.id,
+    blastRequestId: row.blast_request_id,
+    customerId: row.customer_id,
+    batchIndex: row.batch_index,
+    unlockedAt: row.unlocked_at,
+    status: row.status as BlastItemStatus,
+    remark: row.remark,
+    doneAt: row.done_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapBlastClaimRequest(row: {
+  id: string;
+  requested_by: string;
+  customer_ids: string[];
+  status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}): BlastClaimRequest {
+  return {
+    id: row.id,
+    requestedBy: row.requested_by,
+    customerIds: row.customer_ids,
+    status: row.status as BlastClaimRequestStatus,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
 function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
   return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
 }
@@ -392,6 +479,9 @@ interface Store {
   assignmentEvents: AssignmentEvent[];
   removalReasons: RemovalReason[];
   removalRequests: RemovalRequest[];
+  blastRequests: BlastRequest[];
+  blastItems: BlastItem[];
+  blastClaimRequests: BlastClaimRequest[];
   tasks: Task[];
   notifications: Notification[];
   currentUser: User | null;
@@ -492,6 +582,11 @@ interface Store {
   logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
   requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string) => { ok: boolean; error?: string };
   resolveClientRemoval: (requestId: string, approve: boolean) => void;
+  submitBlastRequests: (rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null }[]) => void;
+  resolveBlastRequest: (requestId: string, decision: { approve: true; approvedTotal: number; lockedExpiryDays: number } | { approve: false }) => void;
+  markBlastItemDone: (itemId: string, remark: string) => void;
+  requestBlastClaim: (customerIds: string[]) => void;
+  resolveBlastClaim: (requestId: string, approve: boolean) => void;
   addTask: (customerId: string, title: string, due: string) => void;
   toggleTaskDone: (taskId: string) => void;
 
@@ -529,6 +624,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [assignmentEvents, setAssignmentEvents] = useState<AssignmentEvent[]>([]);
   const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
   const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
+  const [blastRequests, setBlastRequests] = useState<BlastRequest[]>([]);
+  const [blastItems, setBlastItems] = useState<BlastItem[]>([]);
+  const [blastClaimRequests, setBlastClaimRequests] = useState<BlastClaimRequest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -748,6 +846,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadBlastRequests(): Promise<BlastRequest[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("blast_requests").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapBlastRequest);
+    setBlastRequests(mapped);
+    return mapped;
+  }
+
+  async function loadBlastItems(): Promise<BlastItem[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("blast_items").select("*").order("batch_index");
+    const mapped = (data ?? []).map(mapBlastItem);
+    setBlastItems(mapped);
+    return mapped;
+  }
+
+  async function loadBlastClaimRequests(): Promise<BlastClaimRequest[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("blast_claim_requests").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapBlastClaimRequest);
+    setBlastClaimRequests(mapped);
+    return mapped;
+  }
+
+  // Admin-session-only compute-on-load sweep for all three blast batch/
+  // expiry rules (see lib/blasting.ts computeBlastSweep for the actual
+  // math). Mirrors sweepAutoSecondAssign's admin-only convention: unlocking
+  // a batch only ever changes rows already scoped to their own
+  // salesperson, so it doesn't need to run under every session -- but it
+  // does mean batches only advance while an admin's session loads the app.
+  // ponytail: same accepted lag as sweepAutoSecondAssign. Upgrade path: a
+  // real cron/edge function sweep if this needs to run without an admin
+  // logging in.
+  function sweepBlastRequests(requestsList: BlastRequest[], itemsList: BlastItem[], isAdmin: boolean) {
+    if (!isAdmin) return;
+    const { toUnlock, toExpireItems, toExpireRequests } = computeBlastSweep(requestsList, itemsList);
+    if (toUnlock.length === 0 && toExpireItems.length === 0 && toExpireRequests.length === 0) return;
+    const now = new Date().toISOString();
+    setBlastItems((prev) =>
+      prev.map((i) => {
+        if (toUnlock.includes(i.id)) return { ...i, unlockedAt: now };
+        if (toExpireItems.includes(i.id)) return { ...i, status: "EXPIRED" as const };
+        return i;
+      })
+    );
+    if (toExpireRequests.length > 0) {
+      setBlastRequests((prev) => prev.map((r) => (toExpireRequests.includes(r.id) ? { ...r, status: "EXPIRED" as const } : r)));
+    }
+    const supabase = createClient();
+    for (const id of toUnlock) supabase.from("blast_items").update({ unlocked_at: now }).eq("id", id).then(() => {});
+    for (const id of toExpireItems) supabase.from("blast_items").update({ status: "EXPIRED" }).eq("id", id).then(() => {});
+    for (const id of toExpireRequests) supabase.from("blast_requests").update({ status: "EXPIRED" }).eq("id", id).then(() => {});
+  }
+
   // Auto-removal for both pools: any assignee slot (1, 2, or 3 -- all three
   // are nullable now that a customer can go unassigned) sitting stale for
   // 30+ days (active pool) or 60+ days (potential pool) with no activity
@@ -921,12 +1073,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedAssignmentEvents = await loadAssignmentEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
+        const loadedBlastRequests = await loadBlastRequests();
+        const loadedBlastItems = await loadBlastItems();
+        await loadBlastClaimRequests();
         const profile = loadedUsers.find((u) => u.id === data.user!.id);
         if (profile) {
           setCurrentUserId(profile.id);
           loadNotifications(profile.id);
           sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
+          sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
       setInitialized(true);
@@ -974,6 +1130,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedAssignmentEvents = await loadAssignmentEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
+    const loadedBlastRequests = await loadBlastRequests();
+    const loadedBlastItems = await loadBlastItems();
+    await loadBlastClaimRequests();
     const profile = loadedUsers.find((u) => u.id === data.user.id);
     if (!profile || !profile.active) {
       await supabase.auth.signOut();
@@ -983,6 +1142,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadNotifications(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
+    sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
   }
 
@@ -1978,8 +2138,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .then(({ data, error }) => {
         if (!error && data) {
           setActivities((prev) => [mapActivity(data, new Map(users.map((u) => [u.id, u]))), ...prev]);
+          markBlastItemDoneForActivity(customerId);
         }
       });
+  }
+
+  // Logging any activity on a customer while it's still an open (unlocked,
+  // not done, not expired) blast item for the current user flips that item
+  // to Done too -- the alternate path to the remark box, per the
+  // retargeting blasting design. No-op if there's no matching open item.
+  function markBlastItemDoneForActivity(customerId: string) {
+    if (!currentUser) return;
+    const openItem = blastItems.find((i) => {
+      if (i.customerId !== customerId || i.status !== "PENDING" || !i.unlockedAt) return false;
+      const request = blastRequests.find((r) => r.id === i.blastRequestId);
+      return request?.salespersonId === currentUser.id && request.status === "APPROVED";
+    });
+    if (!openItem) return;
+    const now = new Date().toISOString();
+    setBlastItems((prev) => prev.map((i) => (i.id === openItem.id ? { ...i, status: "DONE", doneAt: now } : i)));
+    const supabase = createClient();
+    supabase.from("blast_items").update({ status: "DONE", done_at: now }).eq("id", openItem.id).then(() => {});
   }
 
   // Editing a log entry re-dates it to now and bumps it to the top of the
@@ -2101,6 +2280,168 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  // Manager's "add a row per team member" submit -- rows with no
+  // salespersonId picked are simply skipped (a member who doesn't need
+  // blasting this week is left off, not submitted as an empty ask).
+  function submitBlastRequests(rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null }[]) {
+    if (!currentUser) return;
+    const supabase = createClient();
+    for (const row of rows) {
+      if (!row.salespersonId) continue;
+      supabase
+        .from("blast_requests")
+        .insert({
+          requested_by: currentUser.id,
+          salesperson_id: row.salespersonId,
+          business_name_keyword: row.businessNameKeyword.trim() || null,
+          area_id: row.areaId,
+          sub_area_id: row.subAreaId,
+          business_industry_id: row.businessIndustryId,
+          business_category_id: row.businessCategoryId,
+          business_type_id: row.businessTypeId,
+          status: "PENDING",
+        })
+        .select()
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) setBlastRequests((prev) => [mapBlastRequest(data), ...prev]);
+        });
+    }
+  }
+
+  // Admin approves (drawing + batching the sample right away) or rejects a
+  // pending blast request. Draw order and batch size come from
+  // lib/blasting.ts so the same rules the sweep uses later stay in one
+  // place.
+  function resolveBlastRequest(requestId: string, decision: { approve: true; approvedTotal: number; lockedExpiryDays: number } | { approve: false }) {
+    if (!currentUser) return;
+    const request = blastRequests.find((r) => r.id === requestId);
+    if (!request) return;
+    const now = new Date().toISOString();
+    const supabase = createClient();
+
+    if (!decision.approve) {
+      setBlastRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: "REJECTED", resolvedBy: currentUser.id, resolvedAt: now } : r))
+      );
+      supabase
+        .from("blast_requests")
+        .update({ status: "REJECTED", resolved_by: currentUser.id, resolved_at: now })
+        .eq("id", requestId)
+        .then(() => {});
+      return;
+    }
+
+    const sample = sampleForApproval(customers, request, decision.approvedTotal);
+    const batches = splitIntoBatches(sample.map((c) => c.id));
+
+    setBlastRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? { ...r, status: "APPROVED", approvedTotal: decision.approvedTotal, lockedExpiryDays: decision.lockedExpiryDays, resolvedBy: currentUser.id, resolvedAt: now }
+          : r
+      )
+    );
+    supabase
+      .from("blast_requests")
+      .update({
+        status: "APPROVED",
+        approved_total: decision.approvedTotal,
+        locked_expiry_days: decision.lockedExpiryDays,
+        resolved_by: currentUser.id,
+        resolved_at: now,
+      })
+      .eq("id", requestId)
+      .then(() => {});
+
+    const rows = batches.flatMap((batch, batchIdx) =>
+      batch.map((customerId) => ({
+        blast_request_id: requestId,
+        customer_id: customerId,
+        batch_index: batchIdx + 1,
+        unlocked_at: batchIdx === 0 ? now : null,
+        status: "PENDING",
+      }))
+    );
+    if (rows.length === 0) return;
+    supabase
+      .from("blast_items")
+      .insert(rows)
+      .select()
+      .then(({ data, error }) => {
+        if (!error && data) setBlastItems((prev) => [...prev, ...data.map(mapBlastItem)]);
+      });
+  }
+
+  // The salesperson's remark-box path to marking a blast item Done (the
+  // other path is markBlastItemDoneForActivity below addActivity, via
+  // logging an activity on the customer's profile).
+  function markBlastItemDone(itemId: string, remark: string) {
+    const now = new Date().toISOString();
+    setBlastItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, status: "DONE", remark, doneAt: now } : i)));
+    const supabase = createClient();
+    supabase.from("blast_items").update({ status: "DONE", remark, done_at: now }).eq("id", itemId).then(() => {});
+  }
+
+  // Salesperson batches up several responded-to customers and asks their
+  // manager to assign them back. One row, array of customer ids -- the
+  // manager approves/rejects the whole batch at once.
+  function requestBlastClaim(customerIds: string[]) {
+    if (!currentUser || customerIds.length === 0) return;
+    const supabase = createClient();
+    supabase
+      .from("blast_claim_requests")
+      .insert({ requested_by: currentUser.id, customer_ids: customerIds, status: "PENDING" })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setBlastClaimRequests((prev) => [mapBlastClaimRequest(data), ...prev]);
+      });
+  }
+
+  // Always the requester's own manager, regardless of which area/team the
+  // customer itself belongs to -- deliberate exception to normal
+  // area-scoping, per the design spec. Approval reuses reassignCustomer
+  // into the requester's first empty slot; a customer that can't be
+  // assigned (no empty slot, pool limit) is reported and skipped without
+  // blocking the rest of the batch.
+  function resolveBlastClaim(requestId: string, approve: boolean) {
+    if (!currentUser) return;
+    const request = blastClaimRequests.find((r) => r.id === requestId);
+    if (!request) return;
+    const status: BlastClaimRequestStatus = approve ? "APPROVED" : "REJECTED";
+    const now = new Date().toISOString();
+    setBlastClaimRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status, resolvedBy: currentUser.id, resolvedAt: now } : r))
+    );
+    const supabase = createClient();
+    supabase
+      .from("blast_claim_requests")
+      .update({ status, resolved_by: currentUser.id, resolved_at: now })
+      .eq("id", requestId)
+      .then(() => {});
+    if (!approve) return;
+
+    const errors: string[] = [];
+    for (const customerId of request.customerIds) {
+      const customer = customers.find((c) => c.id === customerId);
+      if (!customer) {
+        errors.push("A claimed customer could not be found.");
+        continue;
+      }
+      const emptySlot: 1 | 2 | 3 | null = !customer.assignedToUserId ? 1 : !customer.assignedToUserId2 ? 2 : !customer.assignedToUserId3 ? 3 : null;
+      if (!emptySlot) {
+        errors.push(`${customer.name}: no empty assignee slot.`);
+        continue;
+      }
+      const result = reassignCustomer(customerId, emptySlot, request.requestedBy);
+      if (!result.ok) errors.push(`${customer.name}: ${result.error}`);
+    }
+    if (errors.length > 0) {
+      alert(`Some customers could not be assigned:\n${errors.join("\n")}`);
+    }
+  }
+
   function addTask(customerId: string, title: string, due: string) {
     if (!currentUser) return;
     const supabase = createClient();
@@ -2191,6 +2532,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     assignmentEvents,
     removalReasons,
     removalRequests,
+    blastRequests,
+    blastItems,
+    blastClaimRequests,
     tasks,
     notifications,
     currentUser,
@@ -2278,6 +2622,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     logActivityAndStage,
     requestClientRemoval,
     resolveClientRemoval,
+    submitBlastRequests,
+    resolveBlastRequest,
+    markBlastItemDone,
+    requestBlastClaim,
+    resolveBlastClaim,
     addTask,
     toggleTaskDone,
     markNotificationsRead,
