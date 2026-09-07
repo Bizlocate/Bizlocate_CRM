@@ -139,3 +139,22 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+.profile-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.detail-two-col {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 28px;
+  margin-top: 28px;
+}
+
+@media (max-width: 900px) {
+  .detail-two-col {
+    grid-template-columns: 1fr;
+  }
+}

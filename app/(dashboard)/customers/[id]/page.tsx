@@ -398,7 +398,7 @@ export default function CustomerDetailPage() {
       <a href="#" onClick={(e) => { e.preventDefault(); router.push("/customers"); }} style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
         ← Back to Customers
       </a>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
           {canEditIdentity ? (
             <input
@@ -574,7 +574,7 @@ export default function CustomerDetailPage() {
 
       <div className="card" style={{ marginTop: 20, padding: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Business Profile</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <div className="profile-field-grid">
           {profileSelect("Source", profileDraft.sourceId, leadSources, (v) => setProfileDraft((d) => ({ ...d, sourceId: v || null })))}
           {profileSelect("Area", profileDraft.areaId, areas, (v) => setProfileDraft((d) => ({ ...d, areaId: v || null, subAreaId: null })))}
           {profileSelect("Subarea", profileDraft.subAreaId, filteredSubAreas, (v) => setProfileDraft((d) => ({ ...d, subAreaId: v || null })), !profileDraft.areaId)}
@@ -661,7 +661,7 @@ export default function CustomerDetailPage() {
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, marginTop: 28 }}>
+      <div className="detail-two-col">
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Activity Log</div>
           {canLogActivity && (

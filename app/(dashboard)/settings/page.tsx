@@ -48,8 +48,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={{ padding: "40px 0 56px", display: "flex", justifyContent: "center" }}>
-      <div style={{ width: 560, display: "flex", flexDirection: "column", gap: 32 }}>
+    <div style={{ padding: "40px 16px 56px", display: "flex", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 32 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 18 }}>Settings</div>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Profile</div>
