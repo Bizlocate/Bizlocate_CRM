@@ -364,3 +364,49 @@ export interface RemovalRequest {
   resolvedAt: string | null;
   createdAt: string;
 }
+
+export type BlastRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+
+export interface BlastRequest {
+  id: string;
+  requestedBy: string;
+  salespersonId: string;
+  businessNameKeyword: string | null;
+  areaId: string | null;
+  subAreaId: string | null;
+  businessIndustryId: string | null;
+  businessCategoryId: string | null;
+  businessTypeId: string | null;
+  status: BlastRequestStatus;
+  approvedTotal: number | null;
+  lockedExpiryDays: number | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export type BlastItemStatus = "PENDING" | "DONE" | "EXPIRED";
+
+export interface BlastItem {
+  id: string;
+  blastRequestId: string;
+  customerId: string;
+  batchIndex: number;
+  unlockedAt: string | null;
+  status: BlastItemStatus;
+  remark: string | null;
+  doneAt: string | null;
+  createdAt: string;
+}
+
+export type BlastClaimRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface BlastClaimRequest {
+  id: string;
+  requestedBy: string;
+  customerIds: string[];
+  status: BlastClaimRequestStatus;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
