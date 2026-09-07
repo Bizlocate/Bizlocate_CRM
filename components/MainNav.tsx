@@ -5,9 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { warnZoneSlotsFor } from "@/lib/inactiveListings";
+import { visibleBlastItemsFor } from "@/lib/blasting";
 
 export default function MainNav() {
-  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks } = useStore();
+  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests } = useStore();
   const pathname = usePathname();
 
   // tasks is already RLS-scoped to "mine" (private per creator), so this is
@@ -25,6 +26,27 @@ export default function MainNav() {
     [customers, activities, assignmentEvents, users, currentUser, removalRequests]
   );
 
+  // Salesperson's own badge: still-pending items on their currently
+  // visible (unlocked, unexpired) blasting list.
+  const myOpenBlastItemCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+    return visibleBlastItemsFor(blastItems, blastRequests, currentUser.id).filter((i) => i.status === "PENDING").length;
+  }, [blastItems, blastRequests, currentUser]);
+
+  // Manager's badge: pending claim requests from their own team.
+  const pendingBlastClaimCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "MANAGER") return 0;
+    const teamUserIds = new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id));
+    return blastClaimRequests.filter((r) => r.status === "PENDING" && teamUserIds.has(r.requestedBy)).length;
+  }, [blastClaimRequests, users, currentUser]);
+
+  // Admin's badge: every pending blast request awaiting approval --
+  // matches the existing Remove Approvals badge convention.
+  const pendingBlastRequestCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return 0;
+    return blastRequests.filter((r) => r.status === "PENDING").length;
+  }, [blastRequests, currentUser]);
+
   if (!currentUser) return null;
 
   // removalRequests is already RLS-scoped per session (admin sees every
@@ -38,6 +60,9 @@ export default function MainNav() {
     { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
     { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
+  if (currentUser.role === "SALESPERSON") {
+    tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastItemCount });
+  }
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
     const removeApprovalsHref = currentUser.role === "ADMIN" ? "/admin/remove-approvals" : "/team/remove-approvals";
@@ -45,6 +70,15 @@ export default function MainNav() {
       { href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) },
       { href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref), badge: pendingRemovalCount }
     );
+  }
+  if (currentUser.role === "MANAGER") {
+    tabs.push(
+      { href: "/blast-requests", label: "Blast Requests", active: pathname.startsWith("/blast-requests") },
+      { href: "/team/blast-claims", label: "Blast Claims", active: pathname.startsWith("/team/blast-claims"), badge: pendingBlastClaimCount }
+    );
+  }
+  if (currentUser.role === "ADMIN") {
+    tabs.push({ href: "/admin/blast-requests", label: "Blast Approvals", active: pathname.startsWith("/admin/blast-requests"), badge: pendingBlastRequestCount });
   }
 
   return (
