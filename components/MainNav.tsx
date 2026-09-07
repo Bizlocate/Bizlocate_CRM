@@ -8,8 +8,25 @@ import { warnZoneSlotsFor } from "@/lib/inactiveListings";
 import { visibleBlastItemsFor } from "@/lib/blasting";
 
 export default function MainNav() {
-  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests } = useStore();
+  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests, stages } = useStore();
   const pathname = usePathname();
+
+  // SP's own badge: how many of their customers sit in the default ("New")
+  // stage -- same stage-slot logic as myStageId in customers/page.tsx (own
+  // assignee slot, whichever of the 3 is theirs).
+  const newStageCustomerCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+    const defaultStage = stages.find((s) => s.isDefault);
+    if (!defaultStage) return 0;
+    return customers.filter((c) => {
+      const stageId =
+        c.assignedToUserId === currentUser.id ? c.stage1Id :
+        c.assignedToUserId2 === currentUser.id ? c.stage2Id :
+        c.assignedToUserId3 === currentUser.id ? c.stage3Id :
+        null;
+      return stageId === defaultStage.id;
+    }).length;
+  }, [customers, currentUser, stages]);
 
   // tasks is already RLS-scoped to "mine" (private per creator), so this is
   // just the current user's own open-task count -- same list TodoTasksBrowser
@@ -61,7 +78,7 @@ export default function MainNav() {
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
-    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers") },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
     { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
     { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];

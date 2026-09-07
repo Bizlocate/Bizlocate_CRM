@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store";
  * request) but filtered out of what's rendered here.
  */
 export default function BlastingListBrowser() {
-  const { blastItems, blastRequests, customers, currentUser, markBlastItemDone, requestBlastClaim } = useStore();
+  const { blastItems, blastRequests, customers, currentUser, markBlastItemDone, dismissBlastItem, requestBlastClaim } = useStore();
   const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeBatch, setActiveBatch] = useState<number | null>(null);
@@ -49,11 +49,13 @@ export default function BlastingListBrowser() {
     setSelected(new Set());
   }
 
-  async function copyPhone(phone: string) {
+  async function copySelectedPhones() {
+    const phones = rows.filter((r) => selected.has(r.id)).map((r) => customerById.get(r.customerId)?.phone).filter(Boolean);
+    if (phones.length === 0) return;
     try {
-      await navigator.clipboard.writeText(phone);
+      await navigator.clipboard.writeText(phones.join(", "));
     } catch {
-      // clipboard permission denied -- nothing else to do, the number is still visible to copy by hand
+      // clipboard permission denied -- nothing else to do, the numbers are still visible to copy by hand
     }
   }
 
@@ -96,7 +98,6 @@ export default function BlastingListBrowser() {
                 <div style={{ fontSize: 12, color: "#9aa0ab", marginTop: 2 }}>{item.status === "DONE" ? "Done" : "Pending"}</div>
               </Link>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>{customer.phone}</div>
-              <button className="btn btn-outline" type="button" onClick={() => copyPhone(customer.phone)}>Copy</button>
               <input
                 className="field-input"
                 style={{ flex: 1, minWidth: 160 }}
@@ -105,15 +106,19 @@ export default function BlastingListBrowser() {
                 onChange={(e) => setRemarkDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
               />
               <button className="btn btn-outline" type="button" onClick={() => markBlastItemDone(item.id, draft)}>Save</button>
+              <button className="btn btn-outline" type="button" onClick={() => dismissBlastItem(item.id)}>Delete</button>
             </div>
           );
         })}
       </div>
 
       {rows.length > 0 && (
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
           <button className="btn btn-primary" type="button" disabled={selected.size === 0} onClick={submitClaim}>
             Request Assign to Me ({selected.size})
+          </button>
+          <button className="btn btn-outline" type="button" disabled={selected.size === 0} onClick={copySelectedPhones}>
+            Copy ({selected.size})
           </button>
         </div>
       )}

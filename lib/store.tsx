@@ -620,6 +620,7 @@ interface Store {
   submitBlastRequests: (rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null }[]) => void;
   resolveBlastRequest: (requestId: string, decision: { approve: true; approvedTotal: number; lockedExpiryDays: number } | { approve: false }) => void;
   markBlastItemDone: (itemId: string, remark: string) => void;
+  dismissBlastItem: (itemId: string) => void;
   requestBlastClaim: (customerIds: string[]) => void;
   resolveBlastClaim: (requestId: string, approve: boolean) => void;
   addTask: (customerId: string, title: string, due: string) => void;
@@ -2509,6 +2510,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("blast_items").update({ status: "DONE", remark, done_at: now }).eq("id", itemId).then(() => {});
   }
 
+  // Salesperson hides one item from their own blasting list -- no undo, so
+  // this just reuses "EXPIRED": every place that renders the list or counts
+  // the nav badge already filters status !== "EXPIRED" (see
+  // visibleBlastItemsFor / BlastingListBrowser), so it disappears everywhere
+  // for free.
+  function dismissBlastItem(itemId: string) {
+    setBlastItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, status: "EXPIRED" } : i)));
+    const supabase = createClient();
+    supabase.from("blast_items").update({ status: "EXPIRED" }).eq("id", itemId).then(() => {});
+  }
+
   // Salesperson batches up several responded-to customers and asks their
   // manager to assign them back. One row, array of customer ids -- the
   // manager approves/rejects the whole batch at once.
@@ -2752,6 +2764,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     submitBlastRequests,
     resolveBlastRequest,
     markBlastItemDone,
+    dismissBlastItem,
     requestBlastClaim,
     resolveBlastClaim,
     addTask,
