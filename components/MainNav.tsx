@@ -104,7 +104,7 @@ export default function MainNav() {
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, padding: "12px 28px 0", background: "#ffffff", borderBottom: "1px solid #e2e4e9" }}>
+    <div style={{ display: "flex", gap: 8, padding: "12px 16px 0", background: "#ffffff", borderBottom: "1px solid #e2e4e9", overflowX: "auto" }}>
       {tabs.map((tab) => (
         <Link
           key={tab.href}
@@ -119,6 +119,7 @@ export default function MainNav() {
             color: tab.active ? "#4046c9" : "#6b7280",
             textDecoration: "none",
             borderBottom: tab.active ? "2px solid #4046c9" : "2px solid transparent",
+            flexShrink: 0,
           }}
         >
           {tab.label}
