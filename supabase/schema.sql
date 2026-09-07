@@ -1910,3 +1910,112 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table areas add column if not exists auto_assign_enabled boolean not null default true;
 -- alter table pipeline_stages add column if not exists exclude_from_auto_assign boolean not null default false;
+
+-- ============================================================
+-- Migration: Retargeting Blasting — manager requests a batch of old-
+-- customer leads per team member by criteria, admin approves with a
+-- quantity cap, salesperson gets a self-expiring phone/name list drip-fed
+-- in batches of 50, then can request their manager assign responders back
+-- to them. Run once against an already-provisioned database.
+-- ============================================================
+--
+-- create table blast_requests (
+--   id uuid primary key default gen_random_uuid(),
+--   requested_by uuid not null references profiles (id),
+--   salesperson_id uuid not null references profiles (id),
+--   business_name_keyword text,
+--   area_id uuid references areas (id),
+--   sub_area_id uuid references sub_areas (id),
+--   business_industry_id uuid references business_tag_industries (id),
+--   business_category_id uuid references business_tag_categories (id),
+--   business_type_id uuid references business_tag_types (id),
+--   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED', 'EXPIRED')),
+--   approved_total int check (approved_total is null or approved_total >= 0),
+--   locked_expiry_days int check (locked_expiry_days is null or locked_expiry_days >= 0),
+--   resolved_by uuid references profiles (id),
+--   resolved_at timestamptz,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- create table blast_items (
+--   id uuid primary key default gen_random_uuid(),
+--   blast_request_id uuid not null references blast_requests (id) on delete cascade,
+--   customer_id uuid not null references customers (id) on delete cascade,
+--   batch_index int not null check (batch_index >= 1),
+--   unlocked_at timestamptz,
+--   status text not null default 'PENDING' check (status in ('PENDING', 'DONE', 'EXPIRED')),
+--   remark text,
+--   done_at timestamptz,
+--   created_at timestamptz not null default now(),
+--   unique (blast_request_id, customer_id)
+-- );
+--
+-- create table blast_claim_requests (
+--   id uuid primary key default gen_random_uuid(),
+--   requested_by uuid not null references profiles (id),
+--   customer_ids uuid[] not null,
+--   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+--   resolved_by uuid references profiles (id),
+--   resolved_at timestamptz,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table blast_requests enable row level security;
+-- alter table blast_items enable row level security;
+-- alter table blast_claim_requests enable row level security;
+--
+-- -- blast_requests: admin approves/rejects everything; a manager sees and
+-- -- submits only for their own team's salespeople; the salesperson can see
+-- -- (but never write) their own requests.
+-- create policy "blast_requests_select" on blast_requests for select using (
+--   is_admin() or requested_by = auth.uid() or salesperson_id = auth.uid()
+-- );
+-- create policy "blast_requests_insert" on blast_requests for insert with check (
+--   requested_by = auth.uid()
+--   and exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--   and exists (select 1 from profiles sp where sp.id = blast_requests.salesperson_id and sp.team_id = my_team_id())
+-- );
+-- create policy "blast_requests_update_admin" on blast_requests for update using (is_admin());
+--
+-- -- blast_items: visible/writable by admin (approval draw + the sweep) or
+-- -- the salesperson the parent request targets (their own remark/done
+-- -- marking). A manager has no direct access -- they only ever see
+-- -- aggregate status via blast_requests.
+-- create policy "blast_items_select" on blast_items for select using (
+--   is_admin()
+--   or exists (
+--     select 1 from blast_requests br
+--     where br.id = blast_items.blast_request_id and br.salesperson_id = auth.uid()
+--   )
+-- );
+-- create policy "blast_items_insert_admin" on blast_items for insert with check (is_admin());
+-- create policy "blast_items_update" on blast_items for update using (
+--   is_admin()
+--   or exists (
+--     select 1 from blast_requests br
+--     where br.id = blast_items.blast_request_id and br.salesperson_id = auth.uid()
+--   )
+-- );
+--
+-- -- blast_claim_requests: the salesperson sees/submits their own; approval
+-- -- is the requester's own manager only -- deliberately not is_admin(),
+-- -- per the design spec ("admin does not see or act on claim requests").
+-- create policy "blast_claim_requests_select" on blast_claim_requests for select using (
+--   is_admin()
+--   or requested_by = auth.uid()
+--   or exists (
+--     select 1 from profiles me
+--     join profiles req on req.team_id = me.team_id
+--     where me.id = auth.uid() and me.role = 'MANAGER' and req.id = blast_claim_requests.requested_by
+--   )
+-- );
+-- create policy "blast_claim_requests_insert" on blast_claim_requests for insert with check (
+--   requested_by = auth.uid()
+-- );
+-- create policy "blast_claim_requests_update" on blast_claim_requests for update using (
+--   exists (
+--     select 1 from profiles me
+--     join profiles req on req.team_id = me.team_id
+--     where me.id = auth.uid() and me.role = 'MANAGER' and req.id = blast_claim_requests.requested_by
+--   )
+-- );
