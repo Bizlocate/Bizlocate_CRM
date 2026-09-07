@@ -91,7 +91,7 @@ export default function AgentLogBrowser({ agents, customers, areas: areasProp }:
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
           <option value="">All Areas</option>
           {filterAreas.map((a) => (
