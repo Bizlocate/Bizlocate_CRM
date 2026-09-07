@@ -26,10 +26,12 @@ export default function MainNav() {
     [customers, activities, assignmentEvents, users, currentUser, removalRequests]
   );
 
-  // Salesperson's own badge: still-pending items on their currently
-  // visible (unlocked, unexpired) blasting list.
+  // Own badge: still-pending items on the current viewer's own currently
+  // visible (unlocked, unexpired) blasting list -- a manager can be a
+  // blast target too (they can request a list for themselves), not just
+  // salespeople.
   const myOpenBlastItemCount = useMemo(() => {
-    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+    if (!currentUser) return 0;
     return visibleBlastItemsFor(blastItems, blastRequests, currentUser.id).filter((i) => i.status === "PENDING").length;
   }, [blastItems, blastRequests, currentUser]);
 
@@ -60,7 +62,7 @@ export default function MainNav() {
     { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
     { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
-  if (currentUser.role === "SALESPERSON") {
+  if (currentUser.role === "SALESPERSON" || currentUser.role === "MANAGER") {
     tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastItemCount });
   }
   if (currentUser.role !== "SALESPERSON") {

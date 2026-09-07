@@ -49,8 +49,11 @@ export default function BlastRequestForm() {
   } = useStore();
   const [rows, setRows] = useState<DraftRow[]>([{ ...emptyRow }]);
 
-  const teamSalespeople = currentUser
-    ? users.filter((u) => u.teamId === currentUser.teamId && u.role === "SALESPERSON")
+  // A manager can request a blasting list for themselves too, not just
+  // their salespeople -- so the dropdown offers the manager plus their
+  // team's salespeople.
+  const teamMembers = currentUser
+    ? [currentUser, ...users.filter((u) => u.teamId === currentUser.teamId && u.role === "SALESPERSON")]
     : [];
 
   function updateRow(index: number, patch: Partial<DraftRow>) {
@@ -101,7 +104,7 @@ export default function BlastRequestForm() {
                 <label className="field-label">Salesperson</label>
                 <select className="field-input" value={row.salespersonId} onChange={(e) => updateRow(index, { salespersonId: e.target.value })}>
                   <option value="">Select…</option>
-                  {teamSalespeople.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  {teamMembers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div style={{ minWidth: 160 }}>

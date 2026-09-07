@@ -90,11 +90,19 @@ blasting.
 
 ### Manager submits (`/blast-requests`)
 
-New page, add-a-row form: pick a team member, optionally fill business name
-keyword / area+subarea / business type (all optional — a member who
-doesn't need blasting is simply left off the form). Submitting creates one
-`blast_requests` row per filled-in member row, all `PENDING`. The manager
-can also see their own submitted requests and current status on this page.
+New page, add-a-row form: pick a team member — the dropdown includes the
+manager themselves alongside their salespeople, since a manager can
+request a blasting list for their own use too, not only for their team —
+optionally fill business name keyword / area+subarea / business type (all
+optional — a member who doesn't need blasting is simply left off the
+form). Submitting creates one `blast_requests` row per filled-in member
+row, all `PENDING`. The manager can also see their own submitted requests
+and current status on this page.
+
+A manager who targets themselves shows up on their own `/blasting` list
+exactly like a salesperson does (the page is role-agnostic, scoped only by
+`salespersonId === currentUser.id`) — the nav tab is visible to
+MANAGER as well as SALESPERSON for this reason.
 
 ### Admin approves (`/admin/blast-requests`)
 
