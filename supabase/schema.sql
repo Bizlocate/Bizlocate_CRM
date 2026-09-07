@@ -2090,3 +2090,20 @@ insert into mandatory_field_settings (field_key, required) values
 --     where me.id = auth.uid() and me.role = 'MANAGER' and req.id = blast_claim_requests.requested_by
 --   )
 -- );
+
+-- ============================================================
+-- Migration: Realtime sync — add every table the client keeps
+-- live in lib/store.tsx to the Realtime publication (notifications
+-- was already added; this covers the other 30 state-backed tables).
+-- ============================================================
+--
+-- alter publication supabase_realtime add table
+--   profiles, teams, areas, sub_areas,
+--   business_tag_industries, business_tag_categories, business_tag_types,
+--   lead_sources, property_types, purposes, languages, firsttime_branch_types,
+--   races, target_races, target_types, removal_reasons,
+--   mandatory_field_settings, pipeline_stages,
+--   customers, activities, customer_change_log, deal_closures, sales_targets,
+--   assignment_events, stage_events,
+--   removal_requests, blast_requests, blast_items, blast_claim_requests,
+--   tasks;
