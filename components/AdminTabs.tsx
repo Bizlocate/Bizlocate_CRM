@@ -16,7 +16,7 @@ const TABS = [
 export default function AdminTabs() {
   const pathname = usePathname();
   return (
-    <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+    <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto" }}>
       {TABS.map((tab) => {
         const active = pathname === tab.href;
         return (
@@ -31,6 +31,7 @@ export default function AdminTabs() {
               background: active ? "#eef0ff" : "transparent",
               color: active ? "#4046c9" : "#6b7280",
               textDecoration: "none",
+              flexShrink: 0,
             }}
           >
             {tab.label}

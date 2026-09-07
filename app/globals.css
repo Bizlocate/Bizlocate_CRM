@@ -127,3 +127,15 @@ select {
     white-space: nowrap;
   }
 }
+
+.sidebar-detail-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 640px) {
+  .sidebar-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

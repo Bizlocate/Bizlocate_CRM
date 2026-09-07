@@ -143,7 +143,7 @@ export default function AdminBusinessTagsPage() {
   return (
     <div style={{ padding: "28px 32px" }}>
       <AdminTabs />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Admin — Business Tag</div>
         <div style={{ display: "flex", gap: 10 }}>
           <label className="btn btn-outline" style={{ cursor: "pointer" }}>
@@ -204,7 +204,7 @@ export default function AdminBusinessTagsPage() {
       )}
 
       {showForm && (
-        <form onSubmit={handleCreateIndustry} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-end" }}>
+        <form onSubmit={handleCreateIndustry} className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 200px" }}>
             <label className="field-label">Industry name</label>
             <input className="field-input" value={newIndustryName} onChange={(e) => setNewIndustryName(e.target.value)} required />

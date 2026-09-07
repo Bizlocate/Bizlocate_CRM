@@ -79,7 +79,7 @@ export default function AdminProfileListsPage() {
     <div style={{ padding: "28px 32px" }}>
       <AdminTabs />
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Admin — Profile Lists</div>
-      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 20 }}>
+      <div className="sidebar-detail-grid">
         <div className="card" style={{ padding: 8 }}>
           {LISTS.map((name) => (
             <div
