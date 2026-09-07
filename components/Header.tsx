@@ -46,7 +46,7 @@ export default function Header() {
         alignItems: "center",
         justifyContent: "space-between",
         height: 64,
-        padding: "0 28px",
+        padding: "0 16px",
         background: "#ffffff",
         borderBottom: "1px solid #e2e4e9",
         position: "relative",
@@ -78,7 +78,7 @@ export default function Header() {
             >
               {initials}
             </div>
-            <span style={{ fontSize: 13.5, color: "#20222b", fontWeight: 500 }}>
+            <span className="header-username" style={{ fontSize: 13.5, color: "#20222b", fontWeight: 500 }}>
               {currentUser.name} ({currentUser.role})
             </span>
             <div

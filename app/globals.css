@@ -115,3 +115,15 @@ select {
   color: #c0392b;
   font-size: 12.5px;
 }
+
+.header-username {
+  overflow: hidden;
+}
+
+@media (max-width: 480px) {
+  .header-username {
+    max-width: 120px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
