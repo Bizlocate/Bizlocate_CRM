@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 
@@ -11,6 +11,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [kickedNotice, setKickedNotice] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem("bizlocate_kicked")) {
+      sessionStorage.removeItem("bizlocate_kicked");
+      setKickedNotice(true);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +73,9 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          {kickedNotice && !error && (
+            <div className="error-text">You were logged out because this account signed in somewhere else.</div>
+          )}
           {error && <div className="error-text">{error}</div>}
           <button className="btn btn-primary" type="submit" disabled={submitting} style={{ marginTop: 6 }}>
             {submitting ? "Signing in…" : "Log in"}
