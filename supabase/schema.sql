@@ -2107,3 +2107,11 @@ insert into mandatory_field_settings (field_key, required) values
 --   assignment_events, stage_events,
 --   removal_requests, blast_requests, blast_items, blast_claim_requests,
 --   tasks;
+
+-- ============================================================
+-- Migration: Single session per login — profiles.session_token
+-- lets a fresh login invalidate any other session already active
+-- for that account (see docs/superpowers/specs/2026-09-07-single-session-login-design.md).
+-- ============================================================
+--
+-- alter table profiles add column if not exists session_token uuid;
