@@ -253,6 +253,20 @@ create table assignment_events (
   created_at timestamptz not null default now()
 );
 
+-- Append-only log of every stage change on a slot, so dashboard reports
+-- can measure duration between two stages (e.g. assign -> Appointment,
+-- Appointment -> Closed Case) instead of only ever seeing the current
+-- stage. Only forward-looking: a slot's stage history before this table
+-- existed is not recoverable.
+create table stage_events (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references customers(id) on delete cascade,
+  user_id uuid not null references profiles(id),
+  slot smallint not null check (slot in (1, 2, 3)),
+  stage_id uuid not null references pipeline_stages(id),
+  created_at timestamptz not null default now()
+);
+
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
@@ -536,6 +550,7 @@ alter table removal_reasons enable row level security;
 alter table removal_requests enable row level security;
 alter table sales_targets enable row level security;
 alter table assignment_events enable row level security;
+alter table stage_events enable row level security;
 alter table notifications enable row level security;
 
 -- profiles: self, admin (all), manager (own team)
@@ -850,6 +865,26 @@ create policy "assignment_events_select" on assignment_events for select using (
 );
 create policy "assignment_events_insert" on assignment_events for insert with check (
   is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+);
+
+-- stage_events: logged by whoever moves a stage — the slot's own
+-- assignee, same actor as activities_insert (not admin/manager, who
+-- don't carry a slot). Visible the same way assignment_events is.
+create policy "stage_events_select" on stage_events for select using (
+  is_admin()
+  or user_id = auth.uid()
+  or (
+    exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+    and user_id in (select id from profiles where team_id = my_team_id())
+  )
+);
+create policy "stage_events_insert" on stage_events for insert with check (
+  is_admin()
+  or exists (
+    select 1 from customers c
+    where c.id = stage_events.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
 );
 
 -- notifications: recipient only; inserted by admin/manager on customer assignment
@@ -1833,6 +1868,42 @@ insert into mandatory_field_settings (field_key, required) values
 -- );
 -- create policy "assignment_events_insert" on assignment_events for insert with check (
 --   is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+-- );
+
+-- ============================================================
+-- Migration: stage_events table (per-stage-change log so dashboard
+-- reports can measure duration between two stages, e.g. assign ->
+-- Appointment). Run once against an already-provisioned database
+-- (everything below already exists in the main schema above for fresh
+-- installs). Only forward-looking — no historical backfill.
+-- ============================================================
+--
+-- create table stage_events (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers(id) on delete cascade,
+--   user_id uuid not null references profiles(id),
+--   slot smallint not null check (slot in (1, 2, 3)),
+--   stage_id uuid not null references pipeline_stages(id),
+--   created_at timestamptz not null default now()
+-- );
+--
+-- alter table stage_events enable row level security;
+--
+-- create policy "stage_events_select" on stage_events for select using (
+--   is_admin()
+--   or user_id = auth.uid()
+--   or (
+--     exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--     and user_id in (select id from profiles where team_id = my_team_id())
+--   )
+-- );
+-- create policy "stage_events_insert" on stage_events for insert with check (
+--   is_admin()
+--   or exists (
+--     select 1 from customers c
+--     where c.id = stage_events.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
 -- );
 
 -- ============================================================

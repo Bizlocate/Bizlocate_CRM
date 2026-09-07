@@ -3,16 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import {
+  appointmentMonthlyTrend,
+  assignToAppointmentDuration,
   assignmentCounts,
-  conversionRatePct,
+  closedDurationBySource,
+  createdToClosedBySource,
   leaderboard,
   leadsBySource,
-  lostCount,
   monthlyTrend,
-  openTaskCount,
   pacePct,
+  removalCohortBreakdown,
   removalCounts,
   removalReasonBreakdown,
+  removalSourceBreakdown,
   scopedUserIds,
   stageFunnel,
   wonAmountInMonth,
@@ -30,6 +33,26 @@ const TRACK = "#eef0f4";
 function currentYearMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function yearMonthToDate(yearMonth: string): Date {
+  const [y, m] = yearMonth.split("-").map(Number);
+  return new Date(y, m - 1, 1);
+}
+
+// Each of the 4 sections below (团队表现 / Pipeline & 趋势 / 运营报表 / Sales Performance Tracker)
+// owns its own area+month filter so picking one doesn't move another —
+// this is the shared control pair they each render in their header.
+function AreaFilter({ value, onChange, areas }: { value: string; onChange: (v: string) => void; areas: { id: string; name: string }[] }) {
+  if (areas.length === 0) return null;
+  return (
+    <select className="field-input" style={{ width: 160 }} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">All areas</option>
+      {areas.map((a) => (
+        <option key={a.id} value={a.id}>{a.name}</option>
+      ))}
+    </select>
+  );
 }
 
 function formatMoney(n: number): string {
@@ -64,28 +87,6 @@ function ProgressBar({ pct, pace, height = 8 }: { pct: number | null; pace?: num
   );
 }
 
-function StatTile({
-  label,
-  value,
-  valueColor,
-  grow,
-  children,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  grow?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="card" style={{ padding: "14px 16px", flex: grow ? "2 1 300px" : "1 1 170px" }}>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: "#9aa0ab", textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, margin: "6px 0 0", color: valueColor ?? "#20222b" }}>{value}</div>
-      {children}
-    </div>
-  );
-}
-
 // 3-tick y-axis (max / half / 0) for the two trend charts below.
 function AxisLabels({ max, format, height }: { max: number; format: (n: number) => string; height: number }) {
   return (
@@ -105,11 +106,6 @@ function GridLines() {
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, borderTop: "1px solid #d7d9de" }} />
     </>
   );
-}
-
-function formatCompact(n: number): string {
-  if (n >= 1000) return (n % 1000 === 0 ? n / 1000 : Math.round((n / 1000) * 10) / 10) + "k";
-  return String(Math.round(n));
 }
 
 function CardLabel({ children }: { children: React.ReactNode }) {
@@ -162,139 +158,131 @@ export default function DashboardPage() {
     salesTargets,
     visibleCustomers,
     upsertSalesTarget,
-    tasks,
     leadSources,
     removalReasons,
     removalRequests,
     assignmentEvents,
+    stageEvents,
   } = useStore();
-  const [yearMonth, setYearMonth] = useState(currentYearMonth);
-  const [areaId, setAreaId] = useState("");
-  // Member filter — ADMIN/MANAGER only, scoped to "Pipeline & 趋势" (funnel +
-  // both trend charts) only, not the top stat row or 团队表现.
+  // Each section below owns its own area+month (independent filters, per
+  // section — picking one doesn't move another).
+  const [teamAreaId, setTeamAreaId] = useState("");
+  const [teamMonth, setTeamMonth] = useState(currentYearMonth);
+  const [pipelineAreaId, setPipelineAreaId] = useState("");
+  const [pipelineMonth, setPipelineMonth] = useState(currentYearMonth);
+  // Member filter — ADMIN/MANAGER only, "Pipeline & 趋势" only.
   const [memberId, setMemberId] = useState("");
+  const [opsAreaId, setOpsAreaId] = useState("");
+  const [opsMonth, setOpsMonth] = useState(currentYearMonth);
+  const [spAreaId, setSpAreaId] = useState("");
+  const [spMonth, setSpMonth] = useState(currentYearMonth);
   // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
   // value above the bar — click/tap toggles, independent per chart.
   const [activeWonMonth, setActiveWonMonth] = useState<string | null>(null);
-  const [activeTrendMonth, setActiveTrendMonth] = useState<string | null>(null);
+  const [activeApptMonth, setActiveApptMonth] = useState<string | null>(null);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
   const scopedDealClosures = useMemo(() => dealClosures.filter((d) => scopedIds.has(d.userId)), [dealClosures, scopedIds]);
-  const scopedTargets = useMemo(
-    () => salesTargets.filter((t) => scopedIds.has(t.userId) && t.yearMonth === yearMonth),
-    [salesTargets, scopedIds, yearMonth]
-  );
 
   if (!currentUser) return null;
 
   const canManage = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   // ADMIN picks from every area; MANAGER only from areas admin has assigned
   // to their team (Area.teamId) — zero assigned areas means no dropdown at
-  // all, since there's nothing to narrow down to.
+  // all, since there's nothing to narrow down to. SP never gets one — they
+  // only ever see their own scope regardless of area.
   const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => a.teamId === currentUser.teamId);
-
-  // Area filter (ADMIN/MANAGER only) narrows every section below to one
-  // area's customers — "" means all areas, no filtering.
-  const areaCustomers = areaId ? visibleCustomers.filter((c) => c.areaId === areaId) : visibleCustomers;
   const customerAreaMap = new Map(visibleCustomers.map((c) => [c.id, c.areaId]));
-  const inAreaScope = (customerId: string) => !areaId || customerAreaMap.get(customerId) === areaId;
-  const areaDealClosures = scopedDealClosures.filter((d) => inAreaScope(d.customerId));
-  const areaLeaderboardDealClosures = dealClosures.filter((d) => inAreaScope(d.customerId));
-  const areaActivities = activities.filter((a) => inAreaScope(a.customerId));
 
-  // Pipeline & 趋势 filters down further to one member on top of the area
-  // filter — "" (All members) leaves the area-level scope untouched.
-  const memberOptions = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN").sort((a, b) => a.name.localeCompare(b.name));
-  const pipelineScopedIds = memberId ? new Set([memberId]) : scopedIds;
-  const pipelineCustomers = memberId
-    ? areaCustomers.filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].includes(memberId))
-    : areaCustomers;
-  const pipelineDealClosures = memberId ? areaDealClosures.filter((d) => d.userId === memberId) : areaDealClosures;
-
-  const funnel = stageFunnel(pipelineCustomers, stages, pipelineScopedIds);
-  const won = wonAmountInMonth(areaDealClosures, yearMonth);
-  const lost = lostCount(areaCustomers, stages, scopedIds);
-  const targetTotal = scopedTargets.reduce((sum, t) => sum + t.amount, 0);
-  const attainmentPct = targetTotal > 0 ? Math.round((won / targetTotal) * 100) : null;
-  const maxFunnelCount = Math.max(1, ...funnel.map((f) => f.count));
-  const conversionRate = conversionRatePct(areaDealClosures, areaCustomers, yearMonth);
-  const pace = pacePct(new Date(), yearMonth);
-  const openTasks = openTaskCount(tasks, new Set(areaCustomers.map((c) => c.id)));
-
-  const myWon = wonAmountInMonth(dealClosures.filter((d) => d.userId === currentUser.id), yearMonth);
-  const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === yearMonth)?.amount ?? null;
-  const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
-  const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === yearMonth).length;
-
-  const trend = monthlyTrend(pipelineCustomers, pipelineDealClosures, 6, new Date());
-  const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
-  // One shared scale — newLeads and wonCount are both deal counts, so their
-  // bars are directly comparable (won *amount* never was).
-  const maxTrendCount = Math.max(1, ...trend.map((p) => Math.max(p.newLeads, p.wonCount)));
+  // Narrows every list this section reads to one area's customers — ""
+  // means all areas, no filtering. Called once per section with that
+  // section's own areaId so each has an independent slice of the data.
+  function scopeByArea(areaId: string) {
+    const inScope = (customerId: string) => !areaId || customerAreaMap.get(customerId) === areaId;
+    return {
+      customers: areaId ? visibleCustomers.filter((c) => c.areaId === areaId) : visibleCustomers,
+      dealClosures: scopedDealClosures.filter((d) => inScope(d.customerId)),
+      leaderboardDealClosures: dealClosures.filter((d) => inScope(d.customerId)),
+      activities: activities.filter((a) => inScope(a.customerId)),
+      assignmentEvents: assignmentEvents.filter((e) => inScope(e.customerId)),
+      stageEvents: stageEvents.filter((e) => inScope(e.customerId)),
+      removalRequests: removalRequests.filter((r) => inScope(r.customerId)),
+    };
+  }
 
   // Reused by 团队表现 and the three ops reports below — active, in-scope,
   // never ADMIN (admins don't carry deals or get assigned customers).
   const teamMembers = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN");
-  const leaderboardRows = leaderboard(teamMembers, areaLeaderboardDealClosures, salesTargets, areaActivities, yearMonth);
 
-  const areaAssignmentEvents = assignmentEvents.filter((e) => inAreaScope(e.customerId));
-  const areaRemovalRequests = removalRequests.filter((r) => inAreaScope(r.customerId));
-  const sourceRows = leadsBySource(areaCustomers, leadSources, yearMonth);
-  const assignRows = assignmentCounts(teamMembers, areaAssignmentEvents, yearMonth);
-  const removedRows = removalCounts(teamMembers, areaRemovalRequests, yearMonth);
-  const reasonRows = removalReasonBreakdown(areaRemovalRequests, removalReasons, yearMonth);
+  const team = scopeByArea(teamAreaId);
+  const leaderboardRows = leaderboard(teamMembers, team.leaderboardDealClosures, salesTargets, team.activities, teamMonth);
+  const teamWonTotal = leaderboardRows.reduce((sum, r) => sum + r.won, 0);
+  const teamTargetTotal = leaderboardRows.reduce((sum, r) => sum + (r.target ?? 0), 0);
+  const teamAttainmentPct = teamTargetTotal > 0 ? Math.round((teamWonTotal / teamTargetTotal) * 100) : null;
+  const teamPace = pacePct(new Date(), teamMonth);
+
+  // Own-numbers card is a personal snapshot, always the real current month —
+  // no filter of its own to keep.
+  const thisMonth = currentYearMonth();
+  const myWon = wonAmountInMonth(dealClosures.filter((d) => d.userId === currentUser.id), thisMonth);
+  const myTarget = salesTargets.find((t) => t.userId === currentUser.id && t.yearMonth === thisMonth)?.amount ?? null;
+  const myAttainmentPct = myTarget && myTarget > 0 ? Math.round((myWon / myTarget) * 100) : null;
+  const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === thisMonth).length;
+  const myPace = pacePct(new Date(), thisMonth);
+
+  // Pipeline & 趋势 filters down further to one member on top of the area
+  // filter — "" (All members) leaves the area-level scope untouched. Its
+  // month picks which month the 6-month trend windows end at.
+  const memberOptions = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN").sort((a, b) => a.name.localeCompare(b.name));
+  const pipeline = scopeByArea(pipelineAreaId);
+  const pipelineScopedIds = memberId ? new Set([memberId]) : scopedIds;
+  const pipelineCustomers = memberId
+    ? pipeline.customers.filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].includes(memberId))
+    : pipeline.customers;
+  const pipelineDealClosures = memberId ? pipeline.dealClosures.filter((d) => d.userId === memberId) : pipeline.dealClosures;
+
+  const funnel = stageFunnel(pipelineCustomers, stages, pipelineScopedIds);
+  const maxFunnelCount = Math.max(1, ...funnel.map((f) => f.count));
+  const trend = monthlyTrend(pipelineCustomers, pipelineDealClosures, 6, yearMonthToDate(pipelineMonth));
+  const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
+
+  const ops = scopeByArea(opsAreaId);
+  const sourceRows = leadsBySource(ops.customers, leadSources, opsMonth);
+  const assignRows = assignmentCounts(teamMembers, ops.assignmentEvents, opsMonth);
+  const removedRows = removalCounts(teamMembers, ops.removalRequests, opsMonth);
+  const reasonRows = removalReasonBreakdown(ops.removalRequests, removalReasons, opsMonth);
+  const removalSourceRows = removalSourceBreakdown(ops.removalRequests, ops.customers, leadSources, opsMonth);
+  const removalCohortRows = removalCohortBreakdown(ops.removalRequests, ops.customers, opsMonth);
   const maxSourceCount = Math.max(1, ...sourceRows.map((r) => r.count));
+
+  // Sales Performance Tracker — visible to everyone, not just canManage
+  // (teamMembers is just [self] for a SALESPERSON, so this naturally shows
+  // their own numbers only; the area filter itself stays canManage-only
+  // since a SALESPERSON has no area of their own to narrow by). See
+  // dashboardMetrics.ts for why these only have data from whenever
+  // stage_events was migrated in, not before.
+  const sp = scopeByArea(spAreaId);
+  const apptDurationRows = assignToAppointmentDuration(teamMembers, sp.customers, sp.assignmentEvents, sp.stageEvents, stages);
+  const apptTrend = appointmentMonthlyTrend(sp.stageEvents, stages, 6, yearMonthToDate(spMonth));
+  const maxApptTrend = Math.max(1, ...apptTrend.map((p) => p.count));
+  const closedBySourceRows = closedDurationBySource(sp.dealClosures, sp.customers, sp.assignmentEvents, leadSources, spMonth);
+  const createdToClosedRows = createdToClosedBySource(sp.dealClosures, sp.customers, leadSources, spMonth);
 
   const leaderCols = "1.3fr .8fr .9fr .9fr 1.3fr .5fr";
 
   return (
     <div style={{ padding: "28px 32px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>Dashboard — {monthLabel(yearMonth)}</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {canManage && availableAreas.length > 0 && (
-            <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="">All areas</option>
-              {availableAreas.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          )}
-          <input type="month" className="field-input" style={{ width: 160 }} value={yearMonth} onChange={(e) => setYearMonth(e.target.value)} />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
-        <StatTile label="Won this month" value={formatMoney(won)} grow>
-          {targetTotal > 0 ? (
-            <div style={{ marginTop: 10 }}>
-              <ProgressBar pct={attainmentPct} pace={pace} />
-              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 7 }}>
-                {attainmentPct}% of {formatMoney(targetTotal)} target · {pace}% of the month elapsed
-              </div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: "#9aa0ab", marginTop: 8 }}>
-              {canManage ? "No target set — set one in 团队表现 below" : "No target set for you this month"}
-            </div>
-          )}
-        </StatTile>
-        <StatTile label="Conversion" value={conversionRate !== null ? `${conversionRate}%` : "—"}>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            {conversionRate !== null ? "of new leads won" : "no new leads this month"}
-          </div>
-        </StatTile>
-        <StatTile label="Lost" value={String(lost)} valueColor={lost > 0 ? DANGER : undefined}>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>deals lost</div>
-        </StatTile>
-        <StatTile label="Open tasks" value={String(openTasks)}>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>not yet done</div>
-        </StatTile>
-      </div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Dashboard</div>
 
       {canManage && (
         <>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>团队表现</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>团队表现</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <AreaFilter value={teamAreaId} onChange={setTeamAreaId} areas={availableAreas} />
+              <input type="month" className="field-input" style={{ width: 150 }} value={teamMonth} onChange={(e) => setTeamMonth(e.target.value)} />
+            </div>
+          </div>
           <div className="card" style={{ marginBottom: 24 }}>
             <div
               style={{
@@ -332,7 +320,7 @@ export default function DashboardPage() {
                   <div style={{ color: "#6b7280" }}>{rowTeamName}</div>
                   <div>{formatMoney(row.won)}</div>
                   <div>
-                    <TargetCell userId={row.userId} yearMonth={yearMonth} target={row.target} onSave={upsertSalesTarget} />
+                    <TargetCell userId={row.userId} yearMonth={teamMonth} target={row.target} onSave={upsertSalesTarget} />
                   </div>
                   {row.attainmentPct !== null ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -349,21 +337,34 @@ export default function DashboardPage() {
               );
             })}
           </div>
+
+          <div className="card" style={{ padding: "14px 16px 16px", marginBottom: 24 }}>
+            <CardLabel>Team total</CardLabel>
+            {teamTargetTotal > 0 ? (
+              <>
+                <ProgressBar pct={teamAttainmentPct} pace={teamPace} />
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 7 }}>
+                  {formatMoney(teamWonTotal)} won · {teamAttainmentPct}% of {formatMoney(teamTargetTotal)} target · {teamPace}% of the month elapsed
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: "#9aa0ab" }}>No targets set for this team yet</div>
+            )}
+          </div>
         </>
       )}
 
       {currentUser.role !== "ADMIN" && (
         <>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>我的数字</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Won this month</div>
           <div className="card" style={{ padding: 20, marginBottom: 24, display: "flex", gap: 40, flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 280px" }}>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>My won this month</div>
               <div style={{ fontSize: 22, fontWeight: 700, margin: "2px 0 10px" }}>{formatMoney(myWon)}</div>
               {myTarget && myTarget > 0 ? (
                 <>
-                  <ProgressBar pct={myAttainmentPct} pace={pace} />
+                  <ProgressBar pct={myAttainmentPct} pace={myPace} />
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 7 }}>
-                    {myAttainmentPct}% of {formatMoney(myTarget)} target · {pace}% of the month elapsed
+                    {myAttainmentPct}% of {formatMoney(myTarget)} target · {myPace}% of the month elapsed
                   </div>
                 </>
               ) : (
@@ -380,14 +381,25 @@ export default function DashboardPage() {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Pipeline & 趋势</div>
-        {canManage && (
-          <select className="field-input" style={{ width: 200 }} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-            <option value="">All members</option>
-            {memberOptions.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          {canManage && <AreaFilter value={pipelineAreaId} onChange={setPipelineAreaId} areas={availableAreas} />}
+          {canManage && (
+            <select className="field-input" style={{ width: 200 }} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+              <option value="">All members</option>
+              {memberOptions.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          )}
+          <input
+            type="month"
+            className="field-input"
+            style={{ width: 150 }}
+            value={pipelineMonth}
+            onChange={(e) => setPipelineMonth(e.target.value)}
+            title="6-month trend window ends at this month"
+          />
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: "14px 16px" }}>
@@ -462,57 +474,17 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-
-        <div className="card" style={{ padding: "14px 16px" }}>
-          <CardLabel>New profiles created vs deals won</CardLabel>
-          <div style={{ display: "flex", gap: 14, marginTop: -6, marginBottom: 12, fontSize: 11.5, color: "#6b7280" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 2, background: BRAND, display: "inline-block" }} />New profiles created
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 2, background: GREEN, display: "inline-block" }} />Deals won
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            <AxisLabels max={maxTrendCount} format={formatCompact} height={100} />
-            <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
-              <GridLines />
-              {trend.map((p) => {
-                const active = activeTrendMonth === p.yearMonth;
-                return (
-                  <div
-                    key={p.yearMonth}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
-                    title={`${monthLabel(p.yearMonth)}: ${p.newLeads} new profiles created, ${p.wonCount} won`}
-                    onClick={() => setActiveTrendMonth(active ? null : p.yearMonth)}
-                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTrendMonth(active ? null : p.yearMonth)}
-                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", cursor: "pointer", outline: "none" }}
-                  >
-                    {active && (
-                      <div style={{ fontSize: 10.5, fontWeight: 600, color: "#20222b", marginBottom: 3, whiteSpace: "nowrap" }}>{p.newLeads} / {p.wonCount}</div>
-                    )}
-                    <div style={{ display: "flex", gap: 2, alignItems: "flex-end" }}>
-                      <div style={{ width: 12, background: BRAND, opacity: active ? 1 : 0.9, borderRadius: "4px 4px 0 0", height: `${(p.newLeads / maxTrendCount) * 92 + (p.newLeads > 0 ? 4 : 0)}px` }} />
-                      <div style={{ width: 12, background: GREEN, opacity: active ? 1 : 0.9, borderRadius: "4px 4px 0 0", height: `${(p.wonCount / maxTrendCount) * 92 + (p.wonCount > 0 ? 4 : 0)}px` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 48 }}>
-            {trend.map((p) => (
-              <div key={p.yearMonth} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#9aa0ab" }}>{shortMonthLabel(p.yearMonth)}</div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {canManage && (
         <>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>运营报表</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>运营报表</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <AreaFilter value={opsAreaId} onChange={setOpsAreaId} areas={availableAreas} />
+              <input type="month" className="field-input" style={{ width: 150 }} value={opsMonth} onChange={(e) => setOpsMonth(e.target.value)} />
+            </div>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
             <div className="card" style={{ padding: "14px 16px" }}>
               <CardLabel>New leads by source</CardLabel>
@@ -563,10 +535,128 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
+              {removalSourceRows.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e4e9" }}>
+                  <div style={{ fontSize: 11, color: "#9aa0ab", marginBottom: 6 }}>By source</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {removalSourceRows.map((r) => (
+                      <span key={r.id ?? "none"} style={{ fontSize: 11.5, color: "#6b7280", background: TRACK, borderRadius: 4, padding: "3px 8px" }}>
+                        {r.name}: {r.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {removalCohortRows.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e4e9" }}>
+                  <div style={{ fontSize: 11, color: "#9aa0ab", marginBottom: 6 }} title="Which lead-intake month these removed customers came from — a stand-in for which ad run brought them in">
+                    By lead's intake month
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {removalCohortRows.map((r) => (
+                      <span key={r.id} style={{ fontSize: 11.5, color: "#6b7280", background: TRACK, borderRadius: 4, padding: "3px 8px" }}>
+                        {monthLabel(r.id!)}: {r.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
       )}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }} title="Only counts data from whenever the stage-tracking migration was run — no historical backfill">
+          Sales Performance Tracker
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {canManage && <AreaFilter value={spAreaId} onChange={setSpAreaId} areas={availableAreas} />}
+          <input type="month" className="field-input" style={{ width: 150 }} value={spMonth} onChange={(e) => setSpMonth(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <CardLabel>Assign → Appointment (currently there)</CardLabel>
+          {apptDurationRows.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No data yet — needs an "Appointment" stage and time to accumulate.</div>}
+          {apptDurationRows.map((r) => (
+            <div key={r.userId} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #eef0f2" }}>
+              <span>{r.name}</span>
+              <span><strong>{r.avgDays}</strong> days avg · {r.count} customer{r.count === 1 ? "" : "s"}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <CardLabel>Appointments reached by month</CardLabel>
+          <div style={{ display: "flex", gap: 4 }}>
+            <AxisLabels max={maxApptTrend} format={(n) => String(Math.round(n))} height={100} />
+            <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
+              <GridLines />
+              {apptTrend.map((p) => {
+                const active = activeApptMonth === p.yearMonth;
+                return (
+                  <div
+                    key={p.yearMonth}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${monthLabel(p.yearMonth)}: ${p.count}`}
+                    title={`${monthLabel(p.yearMonth)}: ${p.count}`}
+                    onClick={() => setActiveApptMonth(active ? null : p.yearMonth)}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveApptMonth(active ? null : p.yearMonth)}
+                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", cursor: "pointer", outline: "none" }}
+                  >
+                    {active && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#20222b", marginBottom: 3, whiteSpace: "nowrap" }}>{p.count}</div>
+                    )}
+                    <div
+                      style={{
+                        width: "100%",
+                        maxWidth: 34,
+                        background: BRAND,
+                        opacity: active ? 1 : 0.9,
+                        outline: active ? `2px solid ${BRAND}` : "none",
+                        outlineOffset: 1,
+                        borderRadius: "4px 4px 0 0",
+                        height: `${(p.count / maxApptTrend) * 92 + (p.count > 0 ? 4 : 0)}px`,
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 48 }}>
+            {apptTrend.map((p) => (
+              <div key={p.yearMonth} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#9aa0ab" }}>{shortMonthLabel(p.yearMonth)}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <CardLabel>Assign → Closed Case, by source</CardLabel>
+          {closedBySourceRows.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No deals closed this month with assignment data.</div>}
+          {closedBySourceRows.map((r) => (
+            <div key={r.id ?? "none"} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #eef0f2" }}>
+              <span>{r.name}</span>
+              <span><strong>{r.avgDays}</strong> days avg · {r.count} deal{r.count === 1 ? "" : "s"}</span>
+            </div>
+          ))}
+        </div>
+
+        {canManage && (
+          <div className="card" style={{ padding: "14px 16px" }}>
+            <CardLabel>Created → Closed Case, by source</CardLabel>
+            {createdToClosedRows.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No deals closed this month.</div>}
+            {createdToClosedRows.map((r) => (
+              <div key={r.id ?? "none"} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #eef0f2" }}>
+                <span>{r.name}</span>
+                <span><strong>{r.avgDays}</strong> days avg · {r.count} deal{r.count === 1 ? "" : "s"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -40,6 +40,7 @@ import {
   Role,
   SalesTarget,
   Stage,
+  StageEvent,
   SubArea,
   TargetRace,
   TargetType,
@@ -312,6 +313,10 @@ function mapAssignmentEvent(row: { id: string; customer_id: string; user_id: str
   return { id: row.id, customerId: row.customer_id, userId: row.user_id, slot: row.slot as 1 | 2 | 3, createdAt: row.created_at };
 }
 
+function mapStageEvent(row: { id: string; customer_id: string; user_id: string; slot: number; stage_id: string; created_at: string }): StageEvent {
+  return { id: row.id, customerId: row.customer_id, userId: row.user_id, slot: row.slot as 1 | 2 | 3, stageId: row.stage_id, createdAt: row.created_at };
+}
+
 function mapSalesTarget(row: {
   id: string;
   user_id: string;
@@ -477,6 +482,7 @@ interface Store {
   dealClosures: DealClosure[];
   salesTargets: SalesTarget[];
   assignmentEvents: AssignmentEvent[];
+  stageEvents: StageEvent[];
   removalReasons: RemovalReason[];
   removalRequests: RemovalRequest[];
   blastRequests: BlastRequest[];
@@ -622,6 +628,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
   const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
   const [assignmentEvents, setAssignmentEvents] = useState<AssignmentEvent[]>([]);
+  const [stageEvents, setStageEvents] = useState<StageEvent[]>([]);
   const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
   const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
   const [blastRequests, setBlastRequests] = useState<BlastRequest[]>([]);
@@ -835,6 +842,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase.from("assignment_events").select("*").order("created_at", { ascending: false });
     const mapped = (data ?? []).map(mapAssignmentEvent);
     setAssignmentEvents(mapped);
+    return mapped;
+  }
+
+  // Table only exists once the stage_events migration has been run
+  // manually (see schema.sql) — a missing table just leaves this empty
+  // rather than breaking the rest of the load.
+  async function loadStageEvents(): Promise<StageEvent[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("stage_events").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapStageEvent);
+    setStageEvents(mapped);
     return mapped;
   }
 
@@ -1071,6 +1089,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await loadDealClosures();
         await loadSalesTargets();
         const loadedAssignmentEvents = await loadAssignmentEvents();
+        await loadStageEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
         const loadedBlastRequests = await loadBlastRequests();
@@ -1128,6 +1147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadDealClosures();
     await loadSalesTargets();
     const loadedAssignmentEvents = await loadAssignmentEvents();
+    await loadStageEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
     const loadedBlastRequests = await loadBlastRequests();
@@ -1867,6 +1887,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .single();
     if (dbError || !data) return { ok: false, error: dbError?.message ?? "Could not create customer." };
     setCustomers((prev) => [...prev, mapCustomer(data)]);
+    // Initial assignment counts too, not just later reassigns — same
+    // "assigned N this month" report reassignCustomer feeds.
+    if (input.assignedToUserId) logAssignmentEvent(data.id, input.assignedToUserId, 1);
+    if (input.assignedToUserId2) logAssignmentEvent(data.id, input.assignedToUserId2, 2);
+    if (input.assignedToUserId3) logAssignmentEvent(data.id, input.assignedToUserId3, 3);
     return { ok: true };
   }
 
@@ -2197,9 +2222,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!currentUser) return;
     const stageKey = slot === 1 ? "stage1Id" : slot === 2 ? "stage2Id" : "stage3Id";
     const stageColumn = slot === 1 ? "stage_1" : slot === 2 ? "stage_2" : "stage_3";
+    const stageChanged = customers.find((c) => c.id === customerId)?.[stageKey] !== stageId;
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [stageKey]: stageId } : c)));
     const supabase = createClient();
     supabase.from("customers").update({ [stageColumn]: stageId }).eq("id", customerId).then(() => {});
+    // Log the transition (not a same-stage re-log) for duration reports —
+    // "assign -> Appointment" and friends. See stage_events in schema.sql.
+    if (stageChanged) {
+      supabase
+        .from("stage_events")
+        .insert({ customer_id: customerId, user_id: currentUser.id, slot, stage_id: stageId })
+        .select()
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) setStageEvents((prev) => [mapStageEvent(data), ...prev]);
+        });
+    }
     if (content.trim()) {
       addActivity(customerId, type, content.trim(), followUp);
     }
@@ -2530,6 +2568,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dealClosures,
     salesTargets,
     assignmentEvents,
+    stageEvents,
     removalReasons,
     removalRequests,
     blastRequests,

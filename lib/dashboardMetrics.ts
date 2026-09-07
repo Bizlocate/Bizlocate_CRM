@@ -1,4 +1,4 @@
-import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, Task, User } from "./types";
+import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types";
 
 export function yearMonthOf(iso: string): string {
   return iso.slice(0, 7);
@@ -200,6 +200,207 @@ export function removalReasonBreakdown(removalRequests: RemovalRequest[], remova
     id,
     name: removalReasons.find((rr) => rr.id === id)?.name ?? "Unknown reason",
     count,
+  }));
+  return rows.sort((a, b) => b.count - a.count);
+}
+
+// Which lead source's customers get removed most — same APPROVED-this-month
+// scope as removalReasonBreakdown, grouped by the removed customer's source
+// instead of by reason.
+export function removalSourceBreakdown(
+  removalRequests: RemovalRequest[],
+  customers: Customer[],
+  leadSources: LeadSource[],
+  yearMonth: string
+): NamedCount[] {
+  const customersById = new Map(customers.map((c) => [c.id, c]));
+  const counts = new Map<string | null, number>();
+  for (const r of removalRequests) {
+    if (r.status !== "APPROVED" || r.resolvedAt === null || yearMonthOf(r.resolvedAt) !== yearMonth) continue;
+    const sourceId = customersById.get(r.customerId)?.sourceId ?? null;
+    counts.set(sourceId, (counts.get(sourceId) ?? 0) + 1);
+  }
+  const rows: NamedCount[] = [...counts.entries()].map(([id, count]) => ({
+    id,
+    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
+    count,
+  }));
+  return rows.sort((a, b) => b.count - a.count);
+}
+
+// Which intake cohort (the removed customer's created month — a stand-in
+// for "which ad run brought these in") ends up getting removed most. `id`
+// and `name` are both the yearMonth string; the caller formats it for
+// display (see monthLabel in the dashboard page).
+export function removalCohortBreakdown(removalRequests: RemovalRequest[], customers: Customer[], yearMonth: string): NamedCount[] {
+  const customersById = new Map(customers.map((c) => [c.id, c]));
+  const counts = new Map<string, number>();
+  for (const r of removalRequests) {
+    if (r.status !== "APPROVED" || r.resolvedAt === null || yearMonthOf(r.resolvedAt) !== yearMonth) continue;
+    const customer = customersById.get(r.customerId);
+    if (!customer) continue;
+    const cohort = yearMonthOf(customer.createdAt);
+    counts.set(cohort, (counts.get(cohort) ?? 0) + 1);
+  }
+  const rows: NamedCount[] = [...counts.entries()].map(([id, count]) => ({ id, name: id, count }));
+  return rows.sort((a, b) => (a.id! < b.id! ? -1 : 1));
+}
+
+function avgDays(durationsMs: number[]): number | null {
+  if (durationsMs.length === 0) return null;
+  const avgMs = durationsMs.reduce((sum, ms) => sum + ms, 0) / durationsMs.length;
+  return Math.round((avgMs / 86_400_000) * 10) / 10;
+}
+
+// Latest assignment of `customerId`'s `slot` at or before `beforeIso` — the
+// hand-off that produced whatever we're measuring duration from.
+function latestAssignmentBefore(assignmentEvents: AssignmentEvent[], customerId: string, slot: 1 | 2 | 3, beforeIso: string): AssignmentEvent | null {
+  const candidates = assignmentEvents.filter((e) => e.customerId === customerId && e.slot === slot && e.createdAt <= beforeIso);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((latest, e) => (e.createdAt > latest.createdAt ? e : latest));
+}
+
+export interface DurationRow {
+  userId: string;
+  name: string;
+  count: number;
+  avgDays: number | null;
+}
+
+// Assign -> Appointment duration for every slot currently sitting in the
+// "Appointment" stage (matched by name, same convention as lostCount),
+// averaged per assignee. Needs both an assignment_events row (who/when) and
+// a stage_events row for that slot's move into Appointment — data only
+// exists from whenever the stage_events migration was run, so older
+// Appointment customers with no logged transition are silently excluded
+// rather than guessed at.
+export function assignToAppointmentDuration(
+  users: User[],
+  customers: Customer[],
+  assignmentEvents: AssignmentEvent[],
+  stageEvents: StageEvent[],
+  stages: Stage[]
+): DurationRow[] {
+  const appointmentStageIds = new Set(stages.filter((s) => s.name.trim().toLowerCase() === "appointment").map((s) => s.id));
+  if (appointmentStageIds.size === 0) return [];
+  const durationsByUser = new Map<string, number[]>();
+  for (const c of customers) {
+    const slots: { stageId: string | null; userId: string | null; slot: 1 | 2 | 3 }[] = [
+      { stageId: c.stage1Id, userId: c.assignedToUserId, slot: 1 },
+      { stageId: c.stage2Id, userId: c.assignedToUserId2, slot: 2 },
+      { stageId: c.stage3Id, userId: c.assignedToUserId3, slot: 3 },
+    ];
+    for (const s of slots) {
+      if (!s.userId || !s.stageId || !appointmentStageIds.has(s.stageId)) continue;
+      const enteredEvents = stageEvents
+        .filter((e) => e.customerId === c.id && e.slot === s.slot && appointmentStageIds.has(e.stageId))
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      const enteredAppointment = enteredEvents[0];
+      if (!enteredAppointment) continue;
+      const assignedAt = latestAssignmentBefore(assignmentEvents, c.id, s.slot, enteredAppointment.createdAt);
+      if (!assignedAt) continue;
+      const ms = new Date(enteredAppointment.createdAt).getTime() - new Date(assignedAt.createdAt).getTime();
+      if (ms < 0) continue;
+      const list = durationsByUser.get(s.userId) ?? [];
+      list.push(ms);
+      durationsByUser.set(s.userId, list);
+    }
+  }
+  return users
+    .map((u) => {
+      const durations = durationsByUser.get(u.id) ?? [];
+      return { userId: u.id, name: u.name, count: durations.length, avgDays: avgDays(durations) };
+    })
+    .filter((r) => r.count > 0)
+    .sort((a, b) => (a.avgDays ?? 0) - (b.avgDays ?? 0));
+}
+
+export interface MonthCount {
+  yearMonth: string;
+  count: number;
+}
+
+// How many slots newly entered the "Appointment" stage each month — same
+// forward-looking limitation as assignToAppointmentDuration.
+export function appointmentMonthlyTrend(stageEvents: StageEvent[], stages: Stage[], monthsBack: number, now: Date): MonthCount[] {
+  const appointmentStageIds = new Set(stages.filter((s) => s.name.trim().toLowerCase() === "appointment").map((s) => s.id));
+  const points: MonthCount[] = [];
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const count = stageEvents.filter((e) => appointmentStageIds.has(e.stageId) && yearMonthOf(e.createdAt) === yearMonth).length;
+    points.push({ yearMonth, count });
+  }
+  return points;
+}
+
+export interface SourceDurationRow {
+  id: string | null;
+  name: string;
+  count: number;
+  avgDays: number | null;
+}
+
+// Assign -> Closed Case duration for deals closed in `yearMonth`, grouped
+// by the customer's lead source. Only deals with a matching assignment_event
+// (see latestAssignmentBefore) contribute — a deal closed on a slot assigned
+// before assignment_events existed just doesn't have a start time to measure from.
+export function closedDurationBySource(
+  dealClosures: DealClosure[],
+  customers: Customer[],
+  assignmentEvents: AssignmentEvent[],
+  leadSources: LeadSource[],
+  yearMonth: string
+): SourceDurationRow[] {
+  const customersById = new Map(customers.map((c) => [c.id, c]));
+  const bySource = new Map<string | null, number[]>();
+  for (const d of dealClosures) {
+    if (yearMonthOf(d.createdAt) !== yearMonth) continue;
+    const assignedAt = latestAssignmentBefore(assignmentEvents, d.customerId, d.slot, d.createdAt);
+    if (!assignedAt) continue;
+    const ms = new Date(d.createdAt).getTime() - new Date(assignedAt.createdAt).getTime();
+    if (ms < 0) continue;
+    const sourceId = customersById.get(d.customerId)?.sourceId ?? null;
+    const list = bySource.get(sourceId) ?? [];
+    list.push(ms);
+    bySource.set(sourceId, list);
+  }
+  const rows: SourceDurationRow[] = [...bySource.entries()].map(([id, durations]) => ({
+    id,
+    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
+    count: durations.length,
+    avgDays: avgDays(durations),
+  }));
+  return rows.sort((a, b) => b.count - a.count);
+}
+
+// Created -> Closed Case duration for deals closed in `yearMonth`, grouped
+// by lead source. Unlike closedDurationBySource this never needs
+// assignment_events — customers.createdAt has always been there.
+export function createdToClosedBySource(
+  dealClosures: DealClosure[],
+  customers: Customer[],
+  leadSources: LeadSource[],
+  yearMonth: string
+): SourceDurationRow[] {
+  const customersById = new Map(customers.map((c) => [c.id, c]));
+  const bySource = new Map<string | null, number[]>();
+  for (const d of dealClosures) {
+    if (yearMonthOf(d.createdAt) !== yearMonth) continue;
+    const customer = customersById.get(d.customerId);
+    if (!customer) continue;
+    const ms = new Date(d.createdAt).getTime() - new Date(customer.createdAt).getTime();
+    if (ms < 0) continue;
+    const sourceId = customer.sourceId;
+    const list = bySource.get(sourceId) ?? [];
+    list.push(ms);
+    bySource.set(sourceId, list);
+  }
+  const rows: SourceDurationRow[] = [...bySource.entries()].map(([id, durations]) => ({
+    id,
+    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
+    count: durations.length,
+    avgDays: avgDays(durations),
   }));
   return rows.sort((a, b) => b.count - a.count);
 }

@@ -2,21 +2,27 @@
 //   node --experimental-strip-types lib/dashboardMetrics.check.ts
 import assert from "node:assert";
 import {
+  appointmentMonthlyTrend,
+  assignToAppointmentDuration,
   assignmentCounts,
+  closedDurationBySource,
   conversionRatePct,
+  createdToClosedBySource,
   leaderboard,
   leadsBySource,
   lostCount,
   monthlyTrend,
   openTaskCount,
   pacePct,
+  removalCohortBreakdown,
   removalCounts,
   removalReasonBreakdown,
+  removalSourceBreakdown,
   scopedUserIds,
   stageFunnel,
   wonAmountInMonth,
 } from "./dashboardMetrics.ts";
-import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, Task, User } from "./types.ts";
+import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string }): Customer {
   return {
@@ -70,6 +76,10 @@ function removalRequest(
 }
 
 function assignmentEvent(overrides: Partial<AssignmentEvent> & { id: string; customerId: string; userId: string; createdAt: string }): AssignmentEvent {
+  return { slot: 1, ...overrides };
+}
+
+function stageEvent(overrides: Partial<StageEvent> & { id: string; customerId: string; userId: string; stageId: string; createdAt: string }): StageEvent {
   return { slot: 1, ...overrides };
 }
 
@@ -212,5 +222,70 @@ const reasonRows = removalReasonBreakdown(removals, reasons, "2026-08");
 assert.deepEqual(reasonRows.map((r) => r.name), ["No response", "Wrong number"], "sorted desc by count");
 assert.equal(reasonRows.find((r) => r.name === "No response")!.count, 2);
 assert.equal(reasonRows.find((r) => r.name === "Wrong number")!.count, 1);
+
+// --- removalSourceBreakdown / removalCohortBreakdown ---
+const removalCustomers = [
+  customer({ id: "c1", sourceId: "s1", createdAt: "2026-06-01T00:00:00Z" }),
+  customer({ id: "c2", sourceId: "s1", createdAt: "2026-06-15T00:00:00Z" }),
+  customer({ id: "c3", sourceId: "s2", createdAt: "2026-07-01T00:00:00Z" }),
+  customer({ id: "c4", sourceId: null, createdAt: "2026-08-01T00:00:00Z" }),
+];
+const removalsForSource = [
+  removalRequest({ id: "rr1", customerId: "c1", requestedBy: "u1", reasonId: "r1", status: "APPROVED", resolvedAt: "2026-08-10T00:00:00Z" }),
+  removalRequest({ id: "rr2", customerId: "c2", requestedBy: "u1", reasonId: "r1", status: "APPROVED", resolvedAt: "2026-08-12T00:00:00Z" }),
+  removalRequest({ id: "rr3", customerId: "c3", requestedBy: "u2", reasonId: "r2", status: "APPROVED", resolvedAt: "2026-08-14T00:00:00Z" }),
+  removalRequest({ id: "rr4", customerId: "c4", requestedBy: "u1", reasonId: "r1", status: "PENDING" }), // excluded
+];
+const bySourceRemovals = removalSourceBreakdown(removalsForSource, removalCustomers, sources, "2026-08");
+assert.equal(bySourceRemovals.find((r) => r.name === "Facebook")!.count, 2, "c1 + c2, both sourceId s1 (Facebook)");
+assert.equal(bySourceRemovals.find((r) => r.name === "Referral")!.count, 1, "c3");
+const byCohort = removalCohortBreakdown(removalsForSource, removalCustomers, "2026-08");
+assert.deepEqual(byCohort.map((r) => r.id), ["2026-06", "2026-07"], "sorted chronologically; c1+c2 created June, c3 created July");
+assert.equal(byCohort.find((r) => r.id === "2026-06")!.count, 2);
+
+// --- assignToAppointmentDuration / appointmentMonthlyTrend ---
+const apptStage = stage({ id: "appt", name: "Appointment", order: 2 });
+const apptCustomers = [
+  customer({ id: "c1", assignedToUserId: "u1", stage1Id: "appt" }),
+  customer({ id: "c2", assignedToUserId: "u1", stage1Id: "new" }), // not in Appointment -> excluded
+];
+const apptAssignEvents = [
+  assignmentEvent({ id: "e1", customerId: "c1", userId: "u1", slot: 1, createdAt: "2026-08-01T00:00:00Z" }),
+];
+const apptStageEvents = [
+  stageEvent({ id: "se1", customerId: "c1", userId: "u1", slot: 1, stageId: "appt", createdAt: "2026-08-06T00:00:00Z" }), // 5 days after assign
+];
+const durationRows = assignToAppointmentDuration(users, apptCustomers, apptAssignEvents, apptStageEvents, [newStage, apptStage]);
+assert.equal(durationRows.length, 1, "only u1 has a customer currently in Appointment with a logged transition");
+assert.equal(durationRows[0].userId, "u1");
+assert.equal(durationRows[0].count, 1);
+assert.equal(durationRows[0].avgDays, 5);
+assert.deepEqual(
+  assignToAppointmentDuration(users, apptCustomers, apptAssignEvents, apptStageEvents, [newStage]),
+  [],
+  "no stage configured as Appointment -> empty, not a crash"
+);
+const apptTrend = appointmentMonthlyTrend(apptStageEvents, [newStage, apptStage], 3, new Date(2026, 7, 15));
+assert.deepEqual(apptTrend.map((p) => p.yearMonth), ["2026-06", "2026-07", "2026-08"]);
+assert.equal(apptTrend[2].count, 1, "the one Appointment stage_event landed in August");
+assert.equal(apptTrend[0].count, 0);
+
+// --- closedDurationBySource / createdToClosedBySource ---
+const durCustomers = [
+  customer({ id: "c1", sourceId: "s1", createdAt: "2026-08-01T00:00:00Z" }),
+  customer({ id: "c2", sourceId: "s2", createdAt: "2026-08-01T00:00:00Z" }),
+];
+const durClosures = [
+  dealClosure({ id: "d1", customerId: "c1", userId: "u1", slot: 1, amount: 100, createdAt: "2026-08-11T00:00:00Z" }), // 10 days after created
+  dealClosure({ id: "d2", customerId: "c2", userId: "u1", slot: 1, amount: 50, createdAt: "2026-08-21T00:00:00Z" }), // 20 days after created
+];
+const durAssignEvents = [assignmentEvent({ id: "e1", customerId: "c1", userId: "u1", slot: 1, createdAt: "2026-08-06T00:00:00Z" })]; // c1 only, 5 days before close
+const closedBySource = closedDurationBySource(durClosures, durCustomers, durAssignEvents, sources, "2026-08");
+assert.equal(closedBySource.length, 1, "c2's deal has no assignment_events row -> excluded, not guessed at");
+assert.equal(closedBySource[0].name, "Facebook");
+assert.equal(closedBySource[0].avgDays, 5);
+const createdToClosed = createdToClosedBySource(durClosures, durCustomers, sources, "2026-08");
+assert.equal(createdToClosed.find((r) => r.name === "Facebook")!.avgDays, 10);
+assert.equal(createdToClosed.find((r) => r.name === "Referral")!.avgDays, 20);
 
 console.log("dashboardMetrics: all checks passed");

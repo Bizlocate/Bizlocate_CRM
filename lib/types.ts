@@ -346,6 +346,18 @@ export interface AssignmentEvent {
   createdAt: string;
 }
 
+// One row per stage change on a slot — lets dashboard reports measure
+// duration between two stages (e.g. assign -> Appointment) instead of
+// only ever seeing the current stage. Forward-looking only.
+export interface StageEvent {
+  id: string;
+  customerId: string;
+  userId: string;
+  slot: 1 | 2 | 3;
+  stageId: string;
+  createdAt: string;
+}
+
 export interface RemovalReason {
   id: string;
   name: string;
