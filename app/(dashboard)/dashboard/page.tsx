@@ -183,7 +183,11 @@ export default function DashboardPage() {
   const [activeWonMonth, setActiveWonMonth] = useState<string | null>(null);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
-  const scopedDealClosures = useMemo(() => dealClosures.filter((d) => scopedIds.has(d.userId)), [dealClosures, scopedIds]);
+  // A deal whose closer account was later deleted (userId null) can't be
+  // attributed to any particular team, but the money is still real -- keep
+  // it in scope everywhere rather than letting a deletion silently shrink
+  // a manager's historical trend numbers.
+  const scopedDealClosures = useMemo(() => dealClosures.filter((d) => d.userId === null || scopedIds.has(d.userId)), [dealClosures, scopedIds]);
 
   if (!currentUser) return null;
 

@@ -153,9 +153,9 @@ create table customers (
   email text,
   phone text,
   optional_phone text,
-  assigned_to uuid references profiles (id),
-  assigned_to_2 uuid references profiles (id),
-  assigned_to_3 uuid references profiles (id),
+  assigned_to uuid references profiles (id) on delete set null,
+  assigned_to_2 uuid references profiles (id) on delete set null,
+  assigned_to_3 uuid references profiles (id) on delete set null,
   pool_1 text check (pool_1 in ('ACTIVE', 'INACTIVE')),
   pool_2 text check (pool_2 in ('ACTIVE', 'INACTIVE')),
   pool_3 text check (pool_3 in ('ACTIVE', 'INACTIVE')),
@@ -182,7 +182,7 @@ create table customers (
   budget_min numeric,
   budget_max numeric,
   remark text,
-  created_by uuid references profiles (id),
+  created_by uuid references profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -190,17 +190,24 @@ create table customers (
 create table activities (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
-  user_id uuid not null references profiles (id),
+  user_id uuid not null references profiles (id) on delete cascade,
   type text not null check (type in ('CALL', 'VISIT', 'NOTE')),
   content text not null,
   follow_up text,
   created_at timestamptz not null default now()
 );
 
+-- changed_by_name is a permanent text snapshot of the author's name, taken
+-- when the row is written (see logProfileFieldChange in lib/store.tsx) --
+-- Change History must keep showing a real name even after changed_by goes
+-- null (the author's account was later deleted). changed_by itself is kept
+-- for whatever it's still useful for, but nothing should ever need it to
+-- render a name again.
 create table customer_change_log (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
-  changed_by uuid not null references profiles (id),
+  changed_by uuid references profiles (id) on delete set null,
+  changed_by_name text not null,
   field_key text not null,
   old_value text,
   new_value text,
@@ -210,21 +217,25 @@ create table customer_change_log (
 create table deal_closures (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
-  user_id uuid not null references profiles (id),
+  user_id uuid references profiles (id) on delete set null,
   slot smallint not null check (slot in (1, 2, 3)),
   stage_id uuid not null references pipeline_stages (id),
   amount numeric not null,
   created_at timestamptz not null default now()
 );
 
+-- requested_by cascades: the request is that person's own ask, gone with
+-- them. resolved_by only goes null -- cascading it would delete a
+-- different customer's removal-request history just because the admin who
+-- approved it later left.
 create table removal_requests (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
   slot smallint not null check (slot in (1, 2, 3)),
-  requested_by uuid not null references profiles (id),
+  requested_by uuid not null references profiles (id) on delete cascade,
   reason_id uuid not null references removal_reasons (id),
   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
-  resolved_by uuid references profiles (id),
+  resolved_by uuid references profiles (id) on delete set null,
   resolved_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -244,9 +255,9 @@ create table customer_delete_requests (
   customer_id uuid references customers (id) on delete set null,
   customer_name text not null,
   business_name text,
-  requested_by uuid not null references profiles (id),
+  requested_by uuid references profiles (id) on delete set null,
   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
-  resolved_by uuid references profiles (id),
+  resolved_by uuid references profiles (id) on delete set null,
   resolved_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -258,7 +269,7 @@ create table sales_targets (
   user_id uuid not null references profiles(id) on delete cascade,
   year_month text not null,
   amount numeric not null check (amount >= 0),
-  set_by uuid not null references profiles(id),
+  set_by uuid references profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, year_month)
@@ -272,7 +283,7 @@ create table sales_targets (
 create table assignment_events (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers(id) on delete cascade,
-  user_id uuid not null references profiles(id),
+  user_id uuid references profiles(id) on delete set null,
   slot smallint not null check (slot in (1, 2, 3)),
   created_at timestamptz not null default now()
 );
@@ -285,7 +296,7 @@ create table assignment_events (
 create table stage_events (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers(id) on delete cascade,
-  user_id uuid not null references profiles(id),
+  user_id uuid references profiles(id) on delete set null,
   slot smallint not null check (slot in (1, 2, 3)),
   stage_id uuid not null references pipeline_stages(id),
   created_at timestamptz not null default now()
@@ -294,7 +305,7 @@ create table stage_events (
 create table tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete cascade,
-  user_id uuid not null references profiles (id),
+  user_id uuid not null references profiles (id) on delete cascade,
   title text not null,
   due text,
   done boolean not null default false,
@@ -2036,8 +2047,8 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- create table blast_requests (
 --   id uuid primary key default gen_random_uuid(),
---   requested_by uuid not null references profiles (id),
---   salesperson_id uuid not null references profiles (id),
+--   requested_by uuid not null references profiles (id) on delete cascade,
+--   salesperson_id uuid references profiles (id) on delete set null,
 --   business_name_keyword text,
 --   area_id uuid references areas (id),
 --   sub_area_id uuid references sub_areas (id),
@@ -2049,7 +2060,7 @@ insert into mandatory_field_settings (field_key, required) values
 --   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED', 'EXPIRED')),
 --   approved_total int check (approved_total is null or approved_total >= 0),
 --   locked_expiry_days int check (locked_expiry_days is null or locked_expiry_days >= 0),
---   resolved_by uuid references profiles (id),
+--   resolved_by uuid references profiles (id) on delete set null,
 --   resolved_at timestamptz,
 --   created_at timestamptz not null default now()
 -- );
@@ -2069,10 +2080,10 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- create table blast_claim_requests (
 --   id uuid primary key default gen_random_uuid(),
---   requested_by uuid not null references profiles (id),
+--   requested_by uuid not null references profiles (id) on delete cascade,
 --   customer_ids uuid[] not null,
 --   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
---   resolved_by uuid references profiles (id),
+--   resolved_by uuid references profiles (id) on delete set null,
 --   resolved_at timestamptz,
 --   created_at timestamptz not null default now()
 -- );
@@ -2210,3 +2221,83 @@ insert into mandatory_field_settings (field_key, required) values
 -- create policy "customer_delete_requests_update_admin" on customer_delete_requests for update using (is_admin());
 --
 -- alter publication supabase_realtime add table customer_delete_requests;
+
+-- ============================================================
+-- Migration: Fix "admin can't delete a user" -- every FK below pointed at
+-- profiles(id) with no ON DELETE action (Postgres default NO ACTION), so
+-- deleting a user with any history at all (an assigned customer, a logged
+-- activity, a closed deal...) was blocked by a foreign-key violation.
+-- See docs/superpowers/specs/2026-09-09-user-delete-fk-cleanup-design.md
+-- for which columns cascade vs go null vs (customer_change_log) keep a
+-- permanent text snapshot, and why. Run once against an already-
+-- provisioned database.
+-- ============================================================
+--
+-- alter table customers drop constraint if exists customers_assigned_to_fkey;
+-- alter table customers add constraint customers_assigned_to_fkey foreign key (assigned_to) references profiles (id) on delete set null;
+-- alter table customers drop constraint if exists customers_assigned_to_2_fkey;
+-- alter table customers add constraint customers_assigned_to_2_fkey foreign key (assigned_to_2) references profiles (id) on delete set null;
+-- alter table customers drop constraint if exists customers_assigned_to_3_fkey;
+-- alter table customers add constraint customers_assigned_to_3_fkey foreign key (assigned_to_3) references profiles (id) on delete set null;
+-- alter table customers drop constraint if exists customers_created_by_fkey;
+-- alter table customers add constraint customers_created_by_fkey foreign key (created_by) references profiles (id) on delete set null;
+--
+-- alter table activities drop constraint if exists activities_user_id_fkey;
+-- alter table activities add constraint activities_user_id_fkey foreign key (user_id) references profiles (id) on delete cascade;
+--
+-- alter table tasks drop constraint if exists tasks_user_id_fkey;
+-- alter table tasks add constraint tasks_user_id_fkey foreign key (user_id) references profiles (id) on delete cascade;
+--
+-- alter table deal_closures alter column user_id drop not null;
+-- alter table deal_closures drop constraint if exists deal_closures_user_id_fkey;
+-- alter table deal_closures add constraint deal_closures_user_id_fkey foreign key (user_id) references profiles (id) on delete set null;
+--
+-- alter table assignment_events alter column user_id drop not null;
+-- alter table assignment_events drop constraint if exists assignment_events_user_id_fkey;
+-- alter table assignment_events add constraint assignment_events_user_id_fkey foreign key (user_id) references profiles (id) on delete set null;
+--
+-- alter table stage_events alter column user_id drop not null;
+-- alter table stage_events drop constraint if exists stage_events_user_id_fkey;
+-- alter table stage_events add constraint stage_events_user_id_fkey foreign key (user_id) references profiles (id) on delete set null;
+--
+-- alter table sales_targets alter column set_by drop not null;
+-- alter table sales_targets drop constraint if exists sales_targets_set_by_fkey;
+-- alter table sales_targets add constraint sales_targets_set_by_fkey foreign key (set_by) references profiles (id) on delete set null;
+--
+-- alter table removal_requests drop constraint if exists removal_requests_requested_by_fkey;
+-- alter table removal_requests add constraint removal_requests_requested_by_fkey foreign key (requested_by) references profiles (id) on delete cascade;
+-- alter table removal_requests drop constraint if exists removal_requests_resolved_by_fkey;
+-- alter table removal_requests add constraint removal_requests_resolved_by_fkey foreign key (resolved_by) references profiles (id) on delete set null;
+--
+-- alter table customer_delete_requests alter column requested_by drop not null;
+-- alter table customer_delete_requests drop constraint if exists customer_delete_requests_requested_by_fkey;
+-- alter table customer_delete_requests add constraint customer_delete_requests_requested_by_fkey foreign key (requested_by) references profiles (id) on delete set null;
+-- alter table customer_delete_requests drop constraint if exists customer_delete_requests_resolved_by_fkey;
+-- alter table customer_delete_requests add constraint customer_delete_requests_resolved_by_fkey foreign key (resolved_by) references profiles (id) on delete set null;
+--
+-- alter table blast_requests drop constraint if exists blast_requests_requested_by_fkey;
+-- alter table blast_requests add constraint blast_requests_requested_by_fkey foreign key (requested_by) references profiles (id) on delete cascade;
+-- alter table blast_requests alter column salesperson_id drop not null;
+-- alter table blast_requests drop constraint if exists blast_requests_salesperson_id_fkey;
+-- alter table blast_requests add constraint blast_requests_salesperson_id_fkey foreign key (salesperson_id) references profiles (id) on delete set null;
+-- alter table blast_requests drop constraint if exists blast_requests_resolved_by_fkey;
+-- alter table blast_requests add constraint blast_requests_resolved_by_fkey foreign key (resolved_by) references profiles (id) on delete set null;
+--
+-- alter table blast_claim_requests drop constraint if exists blast_claim_requests_requested_by_fkey;
+-- alter table blast_claim_requests add constraint blast_claim_requests_requested_by_fkey foreign key (requested_by) references profiles (id) on delete cascade;
+-- alter table blast_claim_requests drop constraint if exists blast_claim_requests_resolved_by_fkey;
+-- alter table blast_claim_requests add constraint blast_claim_requests_resolved_by_fkey foreign key (resolved_by) references profiles (id) on delete set null;
+--
+-- -- customer_change_log: permanent text snapshot of the author's name, so
+-- -- Change History keeps showing it after changed_by goes null.
+-- alter table customer_change_log add column if not exists changed_by_name text;
+-- update customer_change_log set changed_by_name = coalesce((select name from profiles where profiles.id = customer_change_log.changed_by), 'Unknown') where changed_by_name is null;
+-- alter table customer_change_log alter column changed_by_name set not null;
+-- alter table customer_change_log alter column changed_by drop not null;
+-- alter table customer_change_log drop constraint if exists customer_change_log_changed_by_fkey;
+-- alter table customer_change_log add constraint customer_change_log_changed_by_fkey foreign key (changed_by) references profiles (id) on delete set null;
+--
+-- -- If any "drop constraint" above errors with "constraint does not
+-- -- exist", the auto-generated name guess was wrong for that column --
+-- -- find the real one with:
+-- -- select conname from pg_constraint where conrelid = '<table>'::regclass and contype = 'f';

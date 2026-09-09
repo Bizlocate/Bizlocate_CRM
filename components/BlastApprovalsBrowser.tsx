@@ -15,8 +15,8 @@ export default function BlastApprovalsBrowser() {
   const [approvedTotalDrafts, setApprovedTotalDrafts] = useState<Record<string, number>>({});
   const [lockedExpiryDrafts, setLockedExpiryDrafts] = useState<Record<string, number>>({});
 
-  function userName(id: string) {
-    return users.find((u) => u.id === id)?.name ?? "Unknown";
+  function userName(id: string | null) {
+    return id ? users.find((u) => u.id === id)?.name ?? "Unknown" : "Unknown";
   }
   function lookupName(list: { id: string; name: string }[], id: string | null) {
     return id ? list.find((x) => x.id === id)?.name ?? "Unknown" : "All";

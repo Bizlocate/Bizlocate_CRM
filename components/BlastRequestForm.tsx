@@ -93,8 +93,8 @@ export default function BlastRequestForm() {
 
   const myHistory = currentUser ? blastRequests.filter((r) => r.requestedBy === currentUser.id) : [];
 
-  function salespersonName(id: string) {
-    return users.find((u) => u.id === id)?.name ?? "Unknown";
+  function salespersonName(id: string | null) {
+    return id ? users.find((u) => u.id === id)?.name ?? "Unknown" : "Unknown";
   }
 
   return (

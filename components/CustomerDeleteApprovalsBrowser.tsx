@@ -18,8 +18,8 @@ export default function CustomerDeleteApprovalsBrowser() {
   const { customerDeleteRequests, users, rejectCustomerDeleteRequest } = useStore();
   const pending = customerDeleteRequests.filter((r) => r.status === "PENDING");
 
-  function userName(id: string) {
-    return users.find((u) => u.id === id)?.name ?? "Unknown";
+  function userName(id: string | null) {
+    return id ? users.find((u) => u.id === id)?.name ?? "Unknown" : "Unknown";
   }
 
   return (

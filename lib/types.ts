@@ -282,7 +282,7 @@ export interface CustomerChangeLogEntry {
   oldValue: string | null;
   newValue: string | null;
   changedByName: string;
-  changedByUserId: string;
+  changedByUserId: string | null;
   time: string;
   createdAt: string;
 }
@@ -316,7 +316,7 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
 export interface DealClosure {
   id: string;
   customerId: string;
-  userId: string;
+  userId: string | null;
   slot: 1 | 2 | 3;
   stageId: string;
   amount: number;
@@ -328,7 +328,7 @@ export interface SalesTarget {
   userId: string;
   yearMonth: string; // 'YYYY-MM'
   amount: number;
-  setBy: string;
+  setBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -336,7 +336,7 @@ export interface SalesTarget {
 export interface AssignmentEvent {
   id: string;
   customerId: string;
-  userId: string;
+  userId: string | null;
   slot: 1 | 2 | 3;
   createdAt: string;
 }
@@ -347,7 +347,7 @@ export interface AssignmentEvent {
 export interface StageEvent {
   id: string;
   customerId: string;
-  userId: string;
+  userId: string | null;
   slot: 1 | 2 | 3;
   stageId: string;
   createdAt: string;
@@ -379,7 +379,7 @@ export interface CustomerDeleteRequest {
   customerId: string | null;
   customerName: string;
   businessName: string | null;
-  requestedBy: string;
+  requestedBy: string | null;
   status: CustomerDeleteRequestStatus;
   resolvedBy: string | null;
   resolvedAt: string | null;
@@ -391,7 +391,7 @@ export type BlastRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED"
 export interface BlastRequest {
   id: string;
   requestedBy: string;
-  salespersonId: string;
+  salespersonId: string | null;
   businessNameKeyword: string | null;
   areaId: string | null;
   subAreaId: string | null;

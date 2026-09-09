@@ -269,22 +269,28 @@ function mapActivity(row: {
   };
 }
 
+// changed_by_name is a permanent text snapshot taken when the row was
+// written (see logProfileFieldChange/logAssignmentRemoval) -- reading it
+// directly instead of joining changed_by against the live users list means
+// Change History keeps showing a real name even after that account is
+// later deleted (changed_by goes null, changed_by_name doesn't).
 function mapChangeLog(row: {
   id: string;
   customer_id: string;
   field_key: string;
   old_value: string | null;
   new_value: string | null;
-  changed_by: string;
+  changed_by: string | null;
+  changed_by_name: string;
   created_at: string;
-}, usersById: Map<string, User>): CustomerChangeLogEntry {
+}): CustomerChangeLogEntry {
   return {
     id: row.id,
     customerId: row.customer_id,
     fieldKey: row.field_key,
     oldValue: row.old_value,
     newValue: row.new_value,
-    changedByName: usersById.get(row.changed_by)?.name ?? "",
+    changedByName: row.changed_by_name,
     changedByUserId: row.changed_by,
     time: formatTimestamp(row.created_at),
     createdAt: row.created_at,
@@ -294,7 +300,7 @@ function mapChangeLog(row: {
 function mapDealClosure(row: {
   id: string;
   customer_id: string;
-  user_id: string;
+  user_id: string | null;
   slot: number;
   stage_id: string;
   amount: number;
@@ -311,11 +317,11 @@ function mapDealClosure(row: {
   };
 }
 
-function mapAssignmentEvent(row: { id: string; customer_id: string; user_id: string; slot: number; created_at: string }): AssignmentEvent {
+function mapAssignmentEvent(row: { id: string; customer_id: string; user_id: string | null; slot: number; created_at: string }): AssignmentEvent {
   return { id: row.id, customerId: row.customer_id, userId: row.user_id, slot: row.slot as 1 | 2 | 3, createdAt: row.created_at };
 }
 
-function mapStageEvent(row: { id: string; customer_id: string; user_id: string; slot: number; stage_id: string; created_at: string }): StageEvent {
+function mapStageEvent(row: { id: string; customer_id: string; user_id: string | null; slot: number; stage_id: string; created_at: string }): StageEvent {
   return { id: row.id, customerId: row.customer_id, userId: row.user_id, slot: row.slot as 1 | 2 | 3, stageId: row.stage_id, createdAt: row.created_at };
 }
 
@@ -324,7 +330,7 @@ function mapSalesTarget(row: {
   user_id: string;
   year_month: string;
   amount: number;
-  set_by: string;
+  set_by: string | null;
   created_at: string;
   updated_at: string;
 }): SalesTarget {
@@ -368,7 +374,7 @@ function mapCustomerDeleteRequest(row: {
   customer_id: string | null;
   customer_name: string;
   business_name: string | null;
-  requested_by: string;
+  requested_by: string | null;
   status: string;
   resolved_by: string | null;
   resolved_at: string | null;
@@ -390,7 +396,7 @@ function mapCustomerDeleteRequest(row: {
 function mapBlastRequest(row: {
   id: string;
   requested_by: string;
-  salesperson_id: string;
+  salesperson_id: string | null;
   business_name_keyword: string | null;
   area_id: string | null;
   sub_area_id: string | null;
@@ -873,11 +879,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
-  async function loadChangeLog(usersList: User[]): Promise<CustomerChangeLogEntry[]> {
+  async function loadChangeLog(): Promise<CustomerChangeLogEntry[]> {
     const supabase = createClient();
     const { data } = await supabase.from("customer_change_log").select("*").order("created_at", { ascending: false });
-    const usersById = new Map(usersList.map((u) => [u.id, u]));
-    const mapped = (data ?? []).map((row) => mapChangeLog(row, usersById));
+    const mapped = (data ?? []).map(mapChangeLog);
     setChangeLog(mapped);
     return mapped;
   }
@@ -1153,7 +1158,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedCustomers = loadResults[17];
         const loadedTasks = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
-        await loadChangeLog(loadedUsers);
+        await loadChangeLog();
         await loadDealClosures();
         await loadSalesTargets();
         const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -1201,7 +1206,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "pipeline_stages", setState: (fn) => setStages(fn), mapRow: mapStage, keyOf: (x) => x.id },
       { table: "customers", setState: (fn) => setCustomers(fn), mapRow: mapCustomer, keyOf: (x) => x.id },
       { table: "activities", setState: (fn) => setActivities(fn), mapRow: (row) => mapActivity(row, new Map(usersRef.current.map((u) => [u.id, u]))), keyOf: (x) => x.id },
-      { table: "customer_change_log", setState: (fn) => setChangeLog(fn), mapRow: (row) => mapChangeLog(row, new Map(usersRef.current.map((u) => [u.id, u]))), keyOf: (x) => x.id },
+      { table: "customer_change_log", setState: (fn) => setChangeLog(fn), mapRow: mapChangeLog, keyOf: (x) => x.id },
       { table: "deal_closures", setState: (fn) => setDealClosures(fn), mapRow: mapDealClosure, keyOf: (x) => x.id },
       { table: "sales_targets", setState: (fn) => setSalesTargets(fn), mapRow: mapSalesTarget, keyOf: (x) => x.id },
       { table: "assignment_events", setState: (fn) => setAssignmentEvents(fn), mapRow: mapAssignmentEvent, keyOf: (x) => x.id },
@@ -1288,7 +1293,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedCustomers = loadResults[17];
     const loadedTasks = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
-    await loadChangeLog(loadedUsers);
+    await loadChangeLog();
     await loadDealClosures();
     await loadSalesTargets();
     const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -2202,7 +2207,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     patch: Record<string, unknown>
   ) {
     if (!currentUser) return;
-    const rows: { customer_id: string; changed_by: string; field_key: string; old_value: string | null; new_value: string | null }[] = [];
+    const rows: { customer_id: string; changed_by: string; changed_by_name: string; field_key: string; old_value: string | null; new_value: string | null }[] = [];
     for (const [key, newRaw] of Object.entries(patch)) {
       const column = columnMap[key];
       if (!column) continue;
@@ -2212,6 +2217,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       rows.push({
         customer_id: customerId,
         changed_by: currentUser.id,
+        changed_by_name: currentUser.name,
         field_key: column,
         old_value: oldDisplay || null,
         new_value: newDisplay || null,
@@ -2246,6 +2252,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const row = {
       customer_id: customerId,
       changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
       field_key: column,
       old_value: removedUserName,
       new_value: note ? `Removed — ${note}` : "Removed",
