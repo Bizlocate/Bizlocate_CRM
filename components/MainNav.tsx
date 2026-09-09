@@ -81,18 +81,15 @@ export default function MainNav() {
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
     { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
     { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
-    { href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount },
   ];
-  if (currentUser.role === "SALESPERSON" || currentUser.role === "MANAGER") {
-    tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastBatchCount });
-  }
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
+    tabs.push({ href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) });
+  }
+  tabs.push({ href: "/inactive-listings", label: "Inactive Listings", active: pathname.startsWith("/inactive-listings"), badge: inactiveListingsCount });
+  if (currentUser.role !== "SALESPERSON") {
     const removeApprovalsHref = currentUser.role === "ADMIN" ? "/admin/remove-approvals" : "/team/remove-approvals";
-    tabs.push(
-      { href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) },
-      { href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref), badge: pendingRemovalCount }
-    );
+    tabs.push({ href: removeApprovalsHref, label: "Remove Approvals", active: pathname.startsWith(removeApprovalsHref), badge: pendingRemovalCount });
   }
   if (currentUser.role === "MANAGER") {
     tabs.push(
@@ -103,6 +100,9 @@ export default function MainNav() {
   if (currentUser.role === "ADMIN") {
     tabs.push({ href: "/admin/blast-requests", label: "Blast Approvals", active: pathname.startsWith("/admin/blast-requests"), badge: pendingBlastRequestCount });
     tabs.push({ href: "/admin/delete-approvals", label: "Delete Approvals", active: pathname.startsWith("/admin/delete-approvals"), badge: pendingDeleteRequestCount });
+  }
+  if (currentUser.role === "SALESPERSON" || currentUser.role === "MANAGER") {
+    tabs.push({ href: "/blasting", label: "Blasting", active: pathname.startsWith("/blasting"), badge: myOpenBlastBatchCount });
   }
 
   return (
