@@ -70,6 +70,8 @@ export default function CustomerDetailPage() {
     removalReasons,
     removalRequests,
     requestClientRemoval,
+    customerDeleteRequests,
+    requestCustomerDelete,
     updateCustomerProfile,
     updateCustomerIdentity,
     updateCustomerRemark,
@@ -392,6 +394,18 @@ export default function CustomerDetailPage() {
     router.push("/customers");
   }
 
+  // MANAGER can't delete directly -- this only files a request an ADMIN
+  // resolves by using the Delete button above, on this same page.
+  const pendingDeleteRequest = customer
+    ? customerDeleteRequests.find((r) => r.customerId === customer.id && r.status === "PENDING")
+    : undefined;
+
+  function handleRequestDelete() {
+    if (!customer) return;
+    const result = requestCustomerDelete(customer.id);
+    if (!result.ok) alert(result.error ?? "Could not submit the delete request.");
+  }
+
   function profileSelect(
     label: string,
     value: string | null,
@@ -518,6 +532,11 @@ export default function CustomerDetailPage() {
         {currentUser.role === "ADMIN" && (
           <button className="btn btn-danger" onClick={handleDelete}>
             {confirmDelete ? "Confirm delete?" : "Delete"}
+          </button>
+        )}
+        {currentUser.role === "MANAGER" && (
+          <button className="btn btn-danger" onClick={handleRequestDelete} disabled={!!pendingDeleteRequest}>
+            {pendingDeleteRequest ? "Delete request pending" : "Request Delete"}
           </button>
         )}
       </div>

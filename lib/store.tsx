@@ -23,6 +23,8 @@ import {
   BusinessTagType,
   Customer,
   CustomerChangeLogEntry,
+  CustomerDeleteRequest,
+  CustomerDeleteRequestStatus,
   CsvBusinessTagPreview,
   CsvPreview,
   DealClosure,
@@ -361,6 +363,30 @@ function mapRemovalRequest(row: {
   };
 }
 
+function mapCustomerDeleteRequest(row: {
+  id: string;
+  customer_id: string | null;
+  customer_name: string;
+  business_name: string | null;
+  requested_by: string;
+  status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}): CustomerDeleteRequest {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    businessName: row.business_name,
+    requestedBy: row.requested_by,
+    status: row.status as CustomerDeleteRequestStatus,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
 function mapBlastRequest(row: {
   id: string;
   requested_by: string;
@@ -371,6 +397,8 @@ function mapBlastRequest(row: {
   business_industry_id: string | null;
   business_category_id: string | null;
   business_type_id: string | null;
+  created_from: string | null;
+  created_to: string | null;
   status: string;
   approved_total: number | null;
   locked_expiry_days: number | null;
@@ -388,6 +416,8 @@ function mapBlastRequest(row: {
     businessIndustryId: row.business_industry_id,
     businessCategoryId: row.business_category_id,
     businessTypeId: row.business_type_id,
+    createdFrom: row.created_from,
+    createdTo: row.created_to,
     status: row.status as BlastRequestStatus,
     approvedTotal: row.approved_total,
     lockedExpiryDays: row.locked_expiry_days,
@@ -509,6 +539,7 @@ interface Store {
   stageEvents: StageEvent[];
   removalReasons: RemovalReason[];
   removalRequests: RemovalRequest[];
+  customerDeleteRequests: CustomerDeleteRequest[];
   blastRequests: BlastRequest[];
   blastItems: BlastItem[];
   blastClaimRequests: BlastClaimRequest[];
@@ -612,7 +643,9 @@ interface Store {
   logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
   requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string) => { ok: boolean; error?: string };
   resolveClientRemoval: (requestId: string, approve: boolean) => void;
-  submitBlastRequests: (rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null }[]) => void;
+  requestCustomerDelete: (customerId: string) => { ok: boolean; error?: string };
+  rejectCustomerDeleteRequest: (requestId: string) => void;
+  submitBlastRequests: (rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; createdFrom: string | null; createdTo: string | null }[]) => void;
   resolveBlastRequest: (requestId: string, decision: { approve: true; approvedTotal: number; lockedExpiryDays: number } | { approve: false }) => void;
   markBlastItemDone: (itemId: string, remark: string) => void;
   dismissBlastItem: (itemId: string) => void;
@@ -654,6 +687,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [stageEvents, setStageEvents] = useState<StageEvent[]>([]);
   const [removalReasons, setRemovalReasons] = useState<RemovalReason[]>([]);
   const [removalRequests, setRemovalRequests] = useState<RemovalRequest[]>([]);
+  const [customerDeleteRequests, setCustomerDeleteRequests] = useState<CustomerDeleteRequest[]>([]);
   const [blastRequests, setBlastRequests] = useState<BlastRequest[]>([]);
   const [blastItems, setBlastItems] = useState<BlastItem[]>([]);
   const [blastClaimRequests, setBlastClaimRequests] = useState<BlastClaimRequest[]>([]);
@@ -891,6 +925,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadCustomerDeleteRequests(): Promise<CustomerDeleteRequest[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("customer_delete_requests").select("*").order("created_at", { ascending: false });
+    const mapped = (data ?? []).map(mapCustomerDeleteRequest);
+    setCustomerDeleteRequests(mapped);
+    return mapped;
+  }
+
   async function loadBlastRequests(): Promise<BlastRequest[]> {
     const supabase = createClient();
     const { data } = await supabase.from("blast_requests").select("*").order("created_at", { ascending: false });
@@ -1118,6 +1160,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await loadStageEvents();
         await loadRemovalReasons();
         await loadRemovalRequests();
+        await loadCustomerDeleteRequests();
         const loadedBlastRequests = await loadBlastRequests();
         const loadedBlastItems = await loadBlastItems();
         await loadBlastClaimRequests();
@@ -1165,6 +1208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "stage_events", setState: (fn) => setStageEvents(fn), mapRow: mapStageEvent, keyOf: (x) => x.id },
       { table: "removal_reasons", setState: (fn) => setRemovalReasons(fn), mapRow: mapRemovalReason, keyOf: (x) => x.id },
       { table: "removal_requests", setState: (fn) => setRemovalRequests(fn), mapRow: mapRemovalRequest, keyOf: (x) => x.id },
+      { table: "customer_delete_requests", setState: (fn) => setCustomerDeleteRequests(fn), mapRow: mapCustomerDeleteRequest, keyOf: (x) => x.id },
       { table: "blast_requests", setState: (fn) => setBlastRequests(fn), mapRow: mapBlastRequest, keyOf: (x) => x.id },
       { table: "blast_items", setState: (fn) => setBlastItems(fn), mapRow: mapBlastItem, keyOf: (x) => x.id },
       { table: "blast_claim_requests", setState: (fn) => setBlastClaimRequests(fn), mapRow: mapBlastClaimRequest, keyOf: (x) => x.id },
@@ -1251,6 +1295,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await loadStageEvents();
     await loadRemovalReasons();
     await loadRemovalRequests();
+    await loadCustomerDeleteRequests();
     const loadedBlastRequests = await loadBlastRequests();
     const loadedBlastItems = await loadBlastItems();
     await loadBlastClaimRequests();
@@ -2094,10 +2139,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  // Single delete path for a customer, whichever way an admin arrives at
+  // it: their own initiative, or via a pending customer_delete_requests row
+  // (see requestCustomerDelete). Either way, any PENDING request against
+  // this customer gets closed out to APPROVED here -- so a request can
+  // never end up dangling PENDING against a customer that's already gone.
   function deleteCustomer(customerId: string) {
     setCustomers((prev) => prev.filter((c) => c.id !== customerId));
     const supabase = createClient();
     supabase.from("customers").delete().eq("id", customerId).then(() => {});
+
+    const pendingRequest = customerDeleteRequests.find((r) => r.customerId === customerId && r.status === "PENDING");
+    if (pendingRequest && currentUser) {
+      const now = new Date().toISOString();
+      setCustomerDeleteRequests((prev) =>
+        prev.map((r) => (r.id === pendingRequest.id ? { ...r, status: "APPROVED", resolvedBy: currentUser.id, resolvedAt: now } : r))
+      );
+      supabase
+        .from("customer_delete_requests")
+        .update({ status: "APPROVED", resolved_by: currentUser.id, resolved_at: now })
+        .eq("id", pendingRequest.id)
+        .then(() => {});
+    }
   }
 
   // Business-profile field change log: resolves a raw stored value (a
@@ -2428,10 +2491,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // MANAGER requests a customer be deleted -- inserts a PENDING row only;
+  // the actual delete happens when an ADMIN opens the customer's profile
+  // and uses the existing Delete button (see deleteCustomer, which resolves
+  // this same request to APPROVED as part of that call). Blocks a second
+  // request while one is already pending for this customer. Snapshots the
+  // name/business name now, since neither will be readable once the
+  // customer is actually gone.
+  function requestCustomerDelete(customerId: string): { ok: boolean; error?: string } {
+    if (!currentUser) return { ok: false, error: "Not signed in." };
+    const alreadyPending = customerDeleteRequests.some((r) => r.customerId === customerId && r.status === "PENDING");
+    if (alreadyPending) return { ok: false, error: "A delete request for this customer is already pending." };
+    const customer = customers.find((c) => c.id === customerId);
+    if (!customer) return { ok: false, error: "Customer not found." };
+    const supabase = createClient();
+    supabase
+      .from("customer_delete_requests")
+      .insert({
+        customer_id: customerId,
+        customer_name: customer.name,
+        business_name: customer.businessName || null,
+        requested_by: currentUser.id,
+        status: "PENDING",
+      })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setCustomerDeleteRequests((prev) => [mapCustomerDeleteRequest(data), ...prev]);
+      });
+    return { ok: true };
+  }
+
+  // ADMIN-only: turns down a pending delete request without touching the
+  // customer. Approval isn't a symmetric function here -- it's just using
+  // the existing Delete button on the customer's profile (deleteCustomer
+  // resolves the matching request itself).
+  function rejectCustomerDeleteRequest(requestId: string) {
+    if (!currentUser) return;
+    const now = new Date().toISOString();
+    setCustomerDeleteRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status: "REJECTED", resolvedBy: currentUser.id, resolvedAt: now } : r))
+    );
+    const supabase = createClient();
+    supabase
+      .from("customer_delete_requests")
+      .update({ status: "REJECTED", resolved_by: currentUser.id, resolved_at: now })
+      .eq("id", requestId)
+      .then(() => {});
+  }
+
   // Manager's "add a row per team member" submit -- rows with no
   // salespersonId picked are simply skipped (a member who doesn't need
   // blasting this week is left off, not submitted as an empty ask).
-  function submitBlastRequests(rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null }[]) {
+  function submitBlastRequests(rows: { salespersonId: string; businessNameKeyword: string; areaId: string | null; subAreaId: string | null; businessIndustryId: string | null; businessCategoryId: string | null; businessTypeId: string | null; createdFrom: string | null; createdTo: string | null }[]) {
     if (!currentUser) return;
     const supabase = createClient();
     for (const row of rows) {
@@ -2447,6 +2559,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           business_industry_id: row.businessIndustryId,
           business_category_id: row.businessCategoryId,
           business_type_id: row.businessTypeId,
+          created_from: row.createdFrom,
+          created_to: row.createdTo,
           status: "PENDING",
         })
         .select()
@@ -2670,6 +2784,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     stageEvents,
     removalReasons,
     removalRequests,
+    customerDeleteRequests,
     blastRequests,
     blastItems,
     blastClaimRequests,
@@ -2760,6 +2875,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     logActivityAndStage,
     requestClientRemoval,
     resolveClientRemoval,
+    requestCustomerDelete,
+    rejectCustomerDeleteRequest,
     submitBlastRequests,
     resolveBlastRequest,
     markBlastItemDone,

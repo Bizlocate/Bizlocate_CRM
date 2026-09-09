@@ -372,6 +372,20 @@ export interface RemovalRequest {
   createdAt: string;
 }
 
+export type CustomerDeleteRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface CustomerDeleteRequest {
+  id: string;
+  customerId: string | null;
+  customerName: string;
+  businessName: string | null;
+  requestedBy: string;
+  status: CustomerDeleteRequestStatus;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 export type BlastRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
 export interface BlastRequest {
@@ -384,6 +398,8 @@ export interface BlastRequest {
   businessIndustryId: string | null;
   businessCategoryId: string | null;
   businessTypeId: string | null;
+  createdFrom: string | null;
+  createdTo: string | null;
   status: BlastRequestStatus;
   approvedTotal: number | null;
   lockedExpiryDays: number | null;

@@ -8,7 +8,7 @@ import { warnZoneSlotsFor } from "@/lib/inactiveListings";
 import { visibleBlastItemsFor } from "@/lib/blasting";
 
 export default function MainNav() {
-  const { currentUser, removalRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests, stages } = useStore();
+  const { currentUser, removalRequests, customerDeleteRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests, stages } = useStore();
   const pathname = usePathname();
 
   // SP's own badge: how many of their customers sit in the default ("New")
@@ -75,6 +75,7 @@ export default function MainNav() {
   // pending request, a manager sees only their own team's) -- see
   // RemovalApprovalsBrowser's own note on the same array.
   const pendingRemovalCount = removalRequests.filter((r) => r.status === "PENDING").length;
+  const pendingDeleteRequestCount = customerDeleteRequests.filter((r) => r.status === "PENDING").length;
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
@@ -101,6 +102,7 @@ export default function MainNav() {
   }
   if (currentUser.role === "ADMIN") {
     tabs.push({ href: "/admin/blast-requests", label: "Blast Approvals", active: pathname.startsWith("/admin/blast-requests"), badge: pendingBlastRequestCount });
+    tabs.push({ href: "/admin/delete-approvals", label: "Delete Approvals", active: pathname.startsWith("/admin/delete-approvals"), badge: pendingDeleteRequestCount });
   }
 
   return (

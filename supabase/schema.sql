@@ -231,6 +231,28 @@ create table removal_requests (
 
 create unique index removal_requests_one_pending on removal_requests (customer_id, slot) where status = 'PENDING';
 
+-- customer_delete_requests: a MANAGER requests a customer be deleted; an
+-- ADMIN approves by opening the customer's profile and using the existing
+-- (admin-only) Delete button -- see deleteCustomer in lib/store.tsx, which
+-- resolves the matching PENDING row to APPROVED as part of that same
+-- delete. customer_id is "on delete set null" (not cascade) so the request
+-- survives as history once the customer it named is actually gone;
+-- customer_name/business_name are snapshotted at request time for the same
+-- reason (nothing left to join against afterwards).
+create table customer_delete_requests (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references customers (id) on delete set null,
+  customer_name text not null,
+  business_name text,
+  requested_by uuid not null references profiles (id),
+  status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+  resolved_by uuid references profiles (id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index customer_delete_requests_one_pending on customer_delete_requests (customer_id) where status = 'PENDING';
+
 create table sales_targets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
@@ -550,6 +572,7 @@ alter table customer_change_log enable row level security;
 alter table deal_closures enable row level security;
 alter table removal_reasons enable row level security;
 alter table removal_requests enable row level security;
+alter table customer_delete_requests enable row level security;
 alter table sales_targets enable row level security;
 alter table assignment_events enable row level security;
 alter table stage_events enable row level security;
@@ -824,6 +847,25 @@ create policy "removal_requests_update" on removal_requests for update using (
     )
   )
 );
+
+-- customer_delete_requests: select is admin (all) or the requester (their
+-- own submissions' status); insert is a MANAGER on a customer they're
+-- already scoped to (is_customer_assignee already resolves to "assignee is
+-- on my team"); update (reject, or the delete-side auto-resolve) is admin
+-- only -- a manager can never approve their own request.
+create policy "customer_delete_requests_select" on customer_delete_requests for select using (
+  is_admin() or requested_by = auth.uid()
+);
+create policy "customer_delete_requests_insert" on customer_delete_requests for insert with check (
+  requested_by = auth.uid()
+  and exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+  and exists (
+    select 1 from customers c
+    where c.id = customer_delete_requests.customer_id
+      and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+  )
+);
+create policy "customer_delete_requests_update_admin" on customer_delete_requests for update using (is_admin());
 
 -- sales_targets: admin sets anyone's; manager sets own team's + own; everyone
 -- in scope can read (self, own team, or admin sees all)
@@ -2002,6 +2044,8 @@ insert into mandatory_field_settings (field_key, required) values
 --   business_industry_id uuid references business_tag_industries (id),
 --   business_category_id uuid references business_tag_categories (id),
 --   business_type_id uuid references business_tag_types (id),
+--   created_from date,
+--   created_to date,
 --   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED', 'EXPIRED')),
 --   approved_total int check (approved_total is null or approved_total >= 0),
 --   locked_expiry_days int check (locked_expiry_days is null or locked_expiry_days >= 0),
@@ -2108,7 +2152,7 @@ insert into mandatory_field_settings (field_key, required) values
 --   customers, activities, customer_change_log, deal_closures, sales_targets,
 --   assignment_events, stage_events,
 --   removal_requests, blast_requests, blast_items, blast_claim_requests,
---   tasks;
+--   tasks, customer_delete_requests;
 
 -- ============================================================
 -- Migration: Single session per login — profiles.session_token
@@ -2117,3 +2161,52 @@ insert into mandatory_field_settings (field_key, required) values
 -- ============================================================
 --
 -- alter table profiles add column if not exists session_token uuid;
+
+-- ============================================================
+-- Migration: Blast request created-date range — manager can restrict
+-- a blast request to customers created within [created_from, created_to]
+-- (either end optional), on top of the existing criteria.
+-- ============================================================
+--
+-- alter table blast_requests add column if not exists created_from date;
+-- alter table blast_requests add column if not exists created_to date;
+
+-- ============================================================
+-- Migration: Customer delete requests — a MANAGER requests a customer be
+-- deleted; an ADMIN approves by opening the customer's profile and using
+-- the existing (admin-only) Delete button, which resolves the matching
+-- PENDING row to APPROVED as part of the same delete. Run once against an
+-- already-provisioned database.
+-- ============================================================
+--
+-- create table customer_delete_requests (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid references customers (id) on delete set null,
+--   customer_name text not null,
+--   business_name text,
+--   requested_by uuid not null references profiles (id),
+--   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+--   resolved_by uuid references profiles (id),
+--   resolved_at timestamptz,
+--   created_at timestamptz not null default now()
+-- );
+--
+-- create unique index customer_delete_requests_one_pending on customer_delete_requests (customer_id) where status = 'PENDING';
+--
+-- alter table customer_delete_requests enable row level security;
+--
+-- create policy "customer_delete_requests_select" on customer_delete_requests for select using (
+--   is_admin() or requested_by = auth.uid()
+-- );
+-- create policy "customer_delete_requests_insert" on customer_delete_requests for insert with check (
+--   requested_by = auth.uid()
+--   and exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--   and exists (
+--     select 1 from customers c
+--     where c.id = customer_delete_requests.customer_id
+--       and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   )
+-- );
+-- create policy "customer_delete_requests_update_admin" on customer_delete_requests for update using (is_admin());
+--
+-- alter publication supabase_realtime add table customer_delete_requests;

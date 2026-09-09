@@ -11,6 +11,8 @@ interface DraftRow {
   businessIndustryId: string;
   businessCategoryId: string;
   businessTypeId: string;
+  createdFrom: string;
+  createdTo: string;
 }
 
 const emptyRow: DraftRow = {
@@ -21,6 +23,8 @@ const emptyRow: DraftRow = {
   businessIndustryId: "",
   businessCategoryId: "",
   businessTypeId: "",
+  createdFrom: "",
+  createdTo: "",
 };
 
 function formatDate(iso: string): string {
@@ -80,6 +84,8 @@ export default function BlastRequestForm() {
           businessIndustryId: r.businessIndustryId || null,
           businessCategoryId: r.businessCategoryId || null,
           businessTypeId: r.businessTypeId || null,
+          createdFrom: r.createdFrom || null,
+          createdTo: r.createdTo || null,
         }))
     );
     setRows([{ ...emptyRow }]);
@@ -145,6 +151,14 @@ export default function BlastRequestForm() {
                   <option value="">All</option>
                   {filteredTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+              </div>
+              <div style={{ minWidth: 140 }}>
+                <label className="field-label">Created from</label>
+                <input className="field-input" type="date" value={row.createdFrom} onChange={(e) => updateRow(index, { createdFrom: e.target.value })} />
+              </div>
+              <div style={{ minWidth: 140 }}>
+                <label className="field-label">Created to</label>
+                <input className="field-input" type="date" value={row.createdTo} onChange={(e) => updateRow(index, { createdTo: e.target.value })} />
               </div>
               {rows.length > 1 && (
                 <button className="btn btn-outline" type="button" onClick={() => removeRow(index)}>Remove</button>

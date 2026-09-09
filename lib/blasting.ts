@@ -8,7 +8,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type BlastCriteria = Pick<
   BlastRequest,
-  "businessNameKeyword" | "areaId" | "subAreaId" | "businessIndustryId" | "businessCategoryId" | "businessTypeId"
+  | "businessNameKeyword"
+  | "areaId"
+  | "subAreaId"
+  | "businessIndustryId"
+  | "businessCategoryId"
+  | "businessTypeId"
+  | "createdFrom"
+  | "createdTo"
 >;
 
 /** AND-match across whichever criteria fields are filled; a blank field means "match all" for that dimension. */
@@ -21,6 +28,9 @@ export function matchesBlastCriteria(customer: Customer, criteria: BlastCriteria
   if (criteria.businessIndustryId && customer.businessIndustryId !== criteria.businessIndustryId) return false;
   if (criteria.businessCategoryId && customer.businessCategoryId !== criteria.businessCategoryId) return false;
   if (criteria.businessTypeId && customer.businessTypeId !== criteria.businessTypeId) return false;
+  const createdMs = new Date(customer.createdAt).getTime();
+  if (criteria.createdFrom && createdMs < new Date(`${criteria.createdFrom}T00:00:00`).getTime()) return false;
+  if (criteria.createdTo && createdMs > new Date(`${criteria.createdTo}T23:59:59.999`).getTime()) return false;
   return true;
 }
 

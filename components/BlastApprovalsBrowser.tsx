@@ -30,6 +30,7 @@ export default function BlastApprovalsBrowser() {
       r.businessIndustryId ? `Industry: ${lookupName(businessTagIndustries, r.businessIndustryId)}` : null,
       r.businessCategoryId ? `Category: ${lookupName(businessTagCategories, r.businessCategoryId)}` : null,
       r.businessTypeId ? `Type: ${lookupName(businessTagTypes, r.businessTypeId)}` : null,
+      r.createdFrom || r.createdTo ? `Created: ${r.createdFrom ?? "…"} to ${r.createdTo ?? "…"}` : null,
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : "All customers";
   }
