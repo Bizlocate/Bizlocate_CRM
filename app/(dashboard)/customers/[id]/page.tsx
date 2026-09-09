@@ -715,21 +715,21 @@ export default function CustomerDetailPage() {
                   <option value="CALL">Propose</option>
                   <option value="VISIT">Visit</option>
                 </select>
-                <input
+                <textarea
                   className="field-input"
-                  style={{ flex: 1 }}
-                  placeholder="What happened? (optional)"
+                  style={{ flex: 1, resize: "vertical", minHeight: 36 }}
+                  rows={1}
                   value={activityContent}
                   onChange={(e) => setActivityContent(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                 />
                 <button className="btn btn-primary" type="submit" disabled={!!myAssignedSlot && !logStageId}>Log</button>
               </div>
-              <input
-                className="field-input"
-                placeholder="Follow-up date (optional)"
-                value={followUp}
-                onChange={(e) => setFollowUp(e.target.value)}
-              />
             </form>
           )}
           {showClosedAmountModal && (
@@ -827,10 +827,18 @@ export default function CustomerDetailPage() {
                       </div>
                       {isEditing ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          <input
+                          <textarea
                             className="field-input"
+                            style={{ resize: "vertical", minHeight: 36 }}
+                            rows={1}
                             value={editActivityDraft}
                             onChange={(e) => setEditActivityDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                saveEditActivity();
+                              }
+                            }}
                             autoFocus
                           />
                           <div style={{ display: "flex", gap: 8 }}>
@@ -855,11 +863,19 @@ export default function CustomerDetailPage() {
                       )}
                       {isRemarking && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          <input
+                          <textarea
                             className="field-input"
-                            placeholder="Add remark"
+                            style={{ resize: "vertical", minHeight: 36 }}
+                            rows={1}
+                            placeholder="Add remark — Shift+Enter for a new line"
                             value={activityRemarkDraft}
                             onChange={(e) => setActivityRemarkDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                saveAddRemark(a);
+                              }
+                            }}
                             autoFocus
                           />
                           <div style={{ display: "flex", gap: 8 }}>
