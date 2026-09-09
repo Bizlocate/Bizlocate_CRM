@@ -9,6 +9,7 @@ import {
   createdToClosedBySource,
   leaderboard,
   leadsBySource,
+  leadsBySourceByYear,
   monthlyTrend,
   pacePct,
   removalCohortBreakdown,
@@ -28,6 +29,7 @@ const BRAND = "#4046c9";
 const GREEN = "#1e7a41";
 const DANGER = "#a13a2b";
 const TRACK = "#eef0f4";
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function currentYearMonth(): string {
   const d = new Date();
@@ -173,6 +175,7 @@ export default function DashboardPage() {
   const [memberId, setMemberId] = useState("");
   const [opsAreaId, setOpsAreaId] = useState("");
   const [opsMonth, setOpsMonth] = useState(currentYearMonth);
+  const [sourceYear, setSourceYear] = useState(() => new Date().getFullYear());
   const [spAreaId, setSpAreaId] = useState("");
   const [spMonth, setSpMonth] = useState(currentYearMonth);
   // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
@@ -246,6 +249,9 @@ export default function DashboardPage() {
 
   const ops = scopeByArea(opsAreaId);
   const sourceRows = leadsBySource(ops.customers, leadSources, opsMonth);
+  const sourceYearRows = leadsBySourceByYear(ops.customers, leadSources, sourceYear);
+  const sourceYearMonthTotals = Array.from({ length: 12 }, (_, i) => sourceYearRows.reduce((sum, r) => sum + r.monthlyCounts[i], 0));
+  const sourceYearGrandTotal = sourceYearMonthTotals.reduce((sum, n) => sum + n, 0);
   const assignRows = assignmentCounts(teamMembers, ops.assignmentEvents, opsMonth);
   const removedRows = removalCounts(teamMembers, ops.removalRequests, opsMonth);
   const reasonRows = removalReasonBreakdown(ops.removalRequests, removalReasons, opsMonth);
@@ -558,6 +564,52 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>New Leads by Source — Yearly</div>
+            <input
+              type="number"
+              className="field-input"
+              style={{ width: 100 }}
+              value={sourceYear}
+              onChange={(e) => setSourceYear(Number(e.target.value) || sourceYear)}
+            />
+          </div>
+          <div className="card" style={{ padding: "14px 16px", marginBottom: 24, overflowX: "auto" }}>
+            {sourceYearRows.length === 0 ? (
+              <div style={{ fontSize: 13, color: "#9aa0ab" }}>No new leads in {sourceYear}.</div>
+            ) : (
+              <table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 760 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", padding: "6px 10px", color: "#9aa0ab", fontWeight: 600 }}>Source</th>
+                    {MONTH_ABBR.map((m) => (
+                      <th key={m} style={{ textAlign: "right", padding: "6px 10px", color: "#9aa0ab", fontWeight: 600 }}>{m}</th>
+                    ))}
+                    <th style={{ textAlign: "right", padding: "6px 10px", color: "#9aa0ab", fontWeight: 700 }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sourceYearRows.map((r) => (
+                    <tr key={r.id ?? "none"} style={{ borderTop: "1px solid #eef0f2" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 500 }}>{r.name}</td>
+                      {r.monthlyCounts.map((count, i) => (
+                        <td key={i} style={{ textAlign: "right", padding: "6px 10px", color: count === 0 ? "#c7cbd3" : undefined }}>{count}</td>
+                      ))}
+                      <td style={{ textAlign: "right", padding: "6px 10px", fontWeight: 700 }}>{r.total}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: "2px solid #e2e4e9" }}>
+                    <td style={{ padding: "6px 10px", fontWeight: 700 }}>Total</td>
+                    {sourceYearMonthTotals.map((count, i) => (
+                      <td key={i} style={{ textAlign: "right", padding: "6px 10px", fontWeight: 700 }}>{count}</td>
+                    ))}
+                    <td style={{ textAlign: "right", padding: "6px 10px", fontWeight: 700 }}>{sourceYearGrandTotal}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}

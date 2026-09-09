@@ -10,6 +10,7 @@ import {
   createdToClosedBySource,
   leaderboard,
   leadsBySource,
+  leadsBySourceByYear,
   lostCount,
   monthlyTrend,
   openTaskCount,
@@ -194,6 +195,25 @@ assert.deepEqual(bySource.map((r) => r.name), ["Facebook", "Referral", "No sourc
 assert.equal(bySource.find((r) => r.name === "Facebook")!.count, 2);
 assert.equal(bySource.find((r) => r.name === "No source")!.count, 1);
 assert.equal(leadsBySource(sourceCustomers, sources, "2026-05").length, 0, "no leads that month -> empty, not a crash");
+
+// --- leadsBySourceByYear: same grouping, bucketed by month across a whole year ---
+const yearCustomers = [
+  customer({ id: "y1", sourceId: "s1", createdAt: "2026-01-05T00:00:00Z" }),
+  customer({ id: "y2", sourceId: "s1", createdAt: "2026-03-06T00:00:00Z" }),
+  customer({ id: "y3", sourceId: "s1", createdAt: "2026-03-07T00:00:00Z" }),
+  customer({ id: "y4", sourceId: "s2", createdAt: "2026-12-01T00:00:00Z" }),
+  customer({ id: "y5", sourceId: null, createdAt: "2026-06-15T00:00:00Z" }),
+  customer({ id: "y6", sourceId: "s1", createdAt: "2025-03-06T00:00:00Z" }), // wrong year, excluded
+];
+const byYear = leadsBySourceByYear(yearCustomers, sources, 2026);
+assert.deepEqual(byYear.map((r) => r.name), ["Facebook", "Referral", "No source"], "sorted desc by total");
+const facebookRow = byYear.find((r) => r.name === "Facebook")!;
+assert.equal(facebookRow.monthlyCounts.length, 12);
+assert.equal(facebookRow.monthlyCounts[0], 1, "January");
+assert.equal(facebookRow.monthlyCounts[2], 2, "March");
+assert.equal(facebookRow.total, 3);
+assert.equal(byYear.find((r) => r.name === "Referral")!.monthlyCounts[11], 1, "December");
+assert.equal(leadsBySourceByYear(yearCustomers, sources, 2020).length, 0, "no leads that year -> empty, not a crash");
 
 // --- assignmentCounts: one row per event, not deduped per customer ---
 const assignEvents = [

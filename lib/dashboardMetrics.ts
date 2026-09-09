@@ -152,6 +152,38 @@ export function leadsBySource(customers: Customer[], leadSources: LeadSource[], 
   return rows.sort((a, b) => b.count - a.count);
 }
 
+export interface SourceYearRow {
+  id: string | null;
+  name: string;
+  monthlyCounts: number[]; // 12 entries, index 0 = January
+  total: number;
+}
+
+// Same grouping rule as leadsBySource (no sourceId -> "No source" bucket),
+// bucketed by month-of-year across the whole `year` instead of one
+// yearMonth -- the source-by-month comparison table on the dashboard reads
+// this to let an admin/manager flip the year and see the year's shape, or
+// compare against a prior year by changing it. Only sources with at least
+// one lead somewhere in the year are included.
+export function leadsBySourceByYear(customers: Customer[], leadSources: LeadSource[], year: number): SourceYearRow[] {
+  const counts = new Map<string | null, number[]>();
+  const yearPrefix = String(year);
+  for (const c of customers) {
+    if (c.createdAt.slice(0, 4) !== yearPrefix) continue;
+    const monthIndex = Number(c.createdAt.slice(5, 7)) - 1;
+    const row = counts.get(c.sourceId) ?? new Array(12).fill(0);
+    row[monthIndex] += 1;
+    counts.set(c.sourceId, row);
+  }
+  const rows: SourceYearRow[] = [...counts.entries()].map(([id, monthlyCounts]) => ({
+    id,
+    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
+    monthlyCounts,
+    total: monthlyCounts.reduce((sum, n) => sum + n, 0),
+  }));
+  return rows.sort((a, b) => b.total - a.total);
+}
+
 export interface CountRow {
   userId: string;
   name: string;
