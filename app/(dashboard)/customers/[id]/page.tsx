@@ -123,6 +123,8 @@ export default function CustomerDetailPage() {
   const [removeReasonId, setRemoveReasonId] = useState("");
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [editActivityDraft, setEditActivityDraft] = useState("");
+  const [remarkingActivityId, setRemarkingActivityId] = useState<string | null>(null);
+  const [activityRemarkDraft, setActivityRemarkDraft] = useState("");
 
   useEffect(() => {
     setProfileDraft(draftFromCustomer(customer));
@@ -236,6 +238,25 @@ export default function CustomerDetailPage() {
     if (!editingActivityId || !editActivityDraft.trim()) return;
     updateActivity(editingActivityId, editActivityDraft.trim());
     cancelEditActivity();
+  }
+
+  // Propose-type entries only (see ACTIVITY_STYLES "CALL" -> "Propose") --
+  // appends to content instead of replacing it, unlike Edit above.
+  function startAddRemark(a: Activity) {
+    setRemarkingActivityId(a.id);
+    setActivityRemarkDraft("");
+  }
+
+  function cancelAddRemark() {
+    setRemarkingActivityId(null);
+    setActivityRemarkDraft("");
+  }
+
+  function saveAddRemark(a: Activity) {
+    if (!activityRemarkDraft.trim()) return;
+    const stamp = new Date().toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+    updateActivity(a.id, `${a.content}\n[${stamp}] ${activityRemarkDraft.trim()}`);
+    cancelAddRemark();
   }
 
   function handleCancel() {
@@ -691,7 +712,7 @@ export default function CustomerDetailPage() {
                   onChange={(e) => setActivityType(e.target.value as ActivityType)}
                 >
                   <option value="NOTE">Note</option>
-                  <option value="CALL">Call</option>
+                  <option value="CALL">Propose</option>
                   <option value="VISIT">Visit</option>
                 </select>
                 <input
@@ -775,6 +796,7 @@ export default function CustomerDetailPage() {
                   const style = ACTIVITY_STYLES[a.type];
                   const isMine = a.authorUserId === currentUser.id;
                   const isEditing = editingActivityId === a.id;
+                  const isRemarking = remarkingActivityId === a.id;
                   return (
                     <div key={a.id} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -782,14 +804,25 @@ export default function CustomerDetailPage() {
                           {style.label}
                         </span>
                         <span style={{ fontSize: 12, color: "#9aa0ab" }}>{a.time}</span>
-                        {isMine && !isEditing && !myPendingRemoval && (
-                          <button
-                            type="button"
-                            onClick={() => startEditActivity(a)}
-                            style={{ marginLeft: "auto", fontSize: 11.5, color: "#4046c9", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                          >
-                            Edit
-                          </button>
+                        {isMine && !isEditing && !isRemarking && !myPendingRemoval && (
+                          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+                            {a.type === "CALL" && (
+                              <button
+                                type="button"
+                                onClick={() => startAddRemark(a)}
+                                style={{ fontSize: 11.5, color: "#4046c9", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                              >
+                                Add remark
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => startEditActivity(a)}
+                              style={{ fontSize: 11.5, color: "#4046c9", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                            >
+                              Edit
+                            </button>
+                          </div>
                         )}
                       </div>
                       {isEditing ? (
@@ -806,7 +839,34 @@ export default function CustomerDetailPage() {
                           </div>
                         </div>
                       ) : (
-                        <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{a.content}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {a.content.split("\n").map((line, i) => {
+                            const remark = i > 0 ? line.match(/^\[(.+?)\]\s(.*)$/) : null;
+                            return remark ? (
+                              <div key={i}>
+                                <div style={{ fontSize: 12, color: "#9aa0ab" }}>{remark[1]}</div>
+                                <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{remark[2]}</div>
+                              </div>
+                            ) : (
+                              <div key={i} style={{ fontSize: 13.5, lineHeight: 1.5 }}>{line}</div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {isRemarking && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <input
+                            className="field-input"
+                            placeholder="Add remark"
+                            value={activityRemarkDraft}
+                            onChange={(e) => setActivityRemarkDraft(e.target.value)}
+                            autoFocus
+                          />
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="btn btn-primary" type="button" onClick={() => saveAddRemark(a)} disabled={!activityRemarkDraft.trim()}>Save</button>
+                            <button className="btn btn-outline" type="button" onClick={cancelAddRemark}>Cancel</button>
+                          </div>
+                        </div>
                       )}
                       {a.followUp && <div style={{ fontSize: 12, color: "#8a5a00", fontWeight: 500 }}>{a.followUp}</div>}
                     </div>

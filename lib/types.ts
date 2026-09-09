@@ -248,7 +248,7 @@ export interface Customer {
 export type ActivityType = "CALL" | "VISIT" | "NOTE";
 
 export const ACTIVITY_STYLES: Record<ActivityType, { label: string; bg: string; color: string }> = {
-  CALL: { label: "Call", bg: "#e8f0fe", color: "#2149b0" },
+  CALL: { label: "Propose", bg: "#e8f0fe", color: "#2149b0" },
   NOTE: { label: "Note", bg: "#eef0f4", color: "#4b5566" },
   VISIT: { label: "Visit", bg: "#f1e9fb", color: "#6b3fa0" },
 };

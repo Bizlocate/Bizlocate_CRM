@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import {
-  appointmentMonthlyTrend,
   assignToAppointmentDuration,
   assignmentCounts,
   closedDurationBySource,
@@ -179,7 +178,6 @@ export default function DashboardPage() {
   // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
   // value above the bar — click/tap toggles, independent per chart.
   const [activeWonMonth, setActiveWonMonth] = useState<string | null>(null);
-  const [activeApptMonth, setActiveApptMonth] = useState<string | null>(null);
 
   const scopedIds = useMemo(() => (currentUser ? scopedUserIds(users, currentUser) : new Set<string>()), [users, currentUser]);
   const scopedDealClosures = useMemo(() => dealClosures.filter((d) => scopedIds.has(d.userId)), [dealClosures, scopedIds]);
@@ -263,8 +261,6 @@ export default function DashboardPage() {
   // stage_events was migrated in, not before.
   const sp = scopeByArea(spAreaId);
   const apptDurationRows = assignToAppointmentDuration(teamMembers, sp.customers, sp.assignmentEvents, sp.stageEvents, stages);
-  const apptTrend = appointmentMonthlyTrend(sp.stageEvents, stages, 6, yearMonthToDate(spMonth));
-  const maxApptTrend = Math.max(1, ...apptTrend.map((p) => p.count));
   const closedBySourceRows = closedDurationBySource(sp.dealClosures, sp.customers, sp.assignmentEvents, leadSources, spMonth);
   const createdToClosedRows = createdToClosedBySource(sp.dealClosures, sp.customers, leadSources, spMonth);
 
@@ -585,52 +581,6 @@ export default function DashboardPage() {
               <span><strong>{r.avgDays}</strong> days avg · {r.count} customer{r.count === 1 ? "" : "s"}</span>
             </div>
           ))}
-        </div>
-
-        <div className="card" style={{ padding: "14px 16px" }}>
-          <CardLabel>Appointments reached by month</CardLabel>
-          <div style={{ display: "flex", gap: 4 }}>
-            <AxisLabels max={maxApptTrend} format={(n) => String(Math.round(n))} height={100} />
-            <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
-              <GridLines />
-              {apptTrend.map((p) => {
-                const active = activeApptMonth === p.yearMonth;
-                return (
-                  <div
-                    key={p.yearMonth}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${monthLabel(p.yearMonth)}: ${p.count}`}
-                    title={`${monthLabel(p.yearMonth)}: ${p.count}`}
-                    onClick={() => setActiveApptMonth(active ? null : p.yearMonth)}
-                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveApptMonth(active ? null : p.yearMonth)}
-                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", cursor: "pointer", outline: "none" }}
-                  >
-                    {active && (
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "#20222b", marginBottom: 3, whiteSpace: "nowrap" }}>{p.count}</div>
-                    )}
-                    <div
-                      style={{
-                        width: "100%",
-                        maxWidth: 34,
-                        background: BRAND,
-                        opacity: active ? 1 : 0.9,
-                        outline: active ? `2px solid ${BRAND}` : "none",
-                        outlineOffset: 1,
-                        borderRadius: "4px 4px 0 0",
-                        height: `${(p.count / maxApptTrend) * 92 + (p.count > 0 ? 4 : 0)}px`,
-                      }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 48 }}>
-            {apptTrend.map((p) => (
-              <div key={p.yearMonth} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#9aa0ab" }}>{shortMonthLabel(p.yearMonth)}</div>
-            ))}
-          </div>
         </div>
 
         <div className="card" style={{ padding: "14px 16px" }}>

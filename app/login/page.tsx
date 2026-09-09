@@ -29,7 +29,7 @@ export default function LoginPage() {
       setError(result.error ?? "Invalid email or password.");
       return;
     }
-    router.push("/customers");
+    router.push("/dashboard");
   }
 
   return (

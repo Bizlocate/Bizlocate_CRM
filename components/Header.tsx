@@ -53,7 +53,7 @@ export default function Header() {
         zIndex: 10,
       }}
     >
-      <Link href="/customers" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <img src="/logo.jpg" alt="BizLocate" style={{ height: 30, width: "auto" }} />
       </Link>
       <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
