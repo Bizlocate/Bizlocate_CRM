@@ -50,7 +50,7 @@ function dealClosure(overrides: Partial<DealClosure> & { id: string; customerId:
 }
 
 function user(overrides: Partial<User> & { id: string; name: string }): User {
-  return { email: "", phone: null, ic: null, role: "SALESPERSON", teamId: null, active: true, activePoolLimit: null, inactivePoolLimit: null, ...overrides };
+  return { email: "", phone: null, ic: null, role: "SALESPERSON", teamId: null, active: true, activePoolLimit: null, inactivePoolLimit: null, autoAssignEnabled: true, ...overrides };
 }
 
 function activity(overrides: Partial<Activity> & { id: string; customerId: string; authorUserId: string; createdAt: string }): Activity {
@@ -58,7 +58,7 @@ function activity(overrides: Partial<Activity> & { id: string; customerId: strin
 }
 
 function task(overrides: Partial<Task> & { id: string; customerId: string; done: boolean }): Task {
-  return { title: "T", due: "", ...overrides };
+  return { userId: "u1", title: "T", due: "", ...overrides };
 }
 
 function leadSource(overrides: { id: string; name: string }): LeadSource {

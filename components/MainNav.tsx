@@ -38,9 +38,9 @@ export default function MainNav() {
   const inactiveListingsCount = useMemo(
     () =>
       currentUser
-        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests).length
+        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests, tasks).length
         : 0,
-    [customers, activities, assignmentEvents, users, currentUser, removalRequests]
+    [customers, activities, assignmentEvents, users, currentUser, removalRequests, tasks]
   );
 
   // Own badge: how many batches on the current viewer's own currently

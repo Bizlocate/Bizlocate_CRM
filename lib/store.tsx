@@ -49,8 +49,8 @@ import {
   User,
 } from "./types";
 
-function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; active_pool_limit: number | null; inactive_pool_limit: number | null }): User {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit };
+function mapProfile(row: { id: string; name: string; email: string; phone: string | null; ic: string | null; role: Role; team_id: string | null; status: string; active_pool_limit: number | null; inactive_pool_limit: number | null; auto_assign_enabled: boolean }): User {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit, autoAssignEnabled: row.auto_assign_enabled ?? true };
 }
 
 function mapTeam(row: { id: string; name: string; manager_id: string | null; last_auto_assigned_user_id: string | null }): Team {
@@ -441,8 +441,8 @@ function mapBlastClaimRequest(row: {
   };
 }
 
-function mapTask(row: { id: string; customer_id: string; title: string; due: string | null; done: boolean }): Task {
-  return { id: row.id, customerId: row.customer_id, title: row.title, due: row.due ?? "No due date", done: row.done };
+function mapTask(row: { id: string; customer_id: string; user_id: string; title: string; due: string | null; done: boolean }): Task {
+  return { id: row.id, customerId: row.customer_id, userId: row.user_id, title: row.title, due: row.due ?? "No due date", done: row.done };
 }
 
 function formatTimestamp(iso: string): string {
@@ -526,6 +526,7 @@ interface Store {
   updateUserRole: (id: string, role: Role) => void;
   updateUserTeam: (id: string, teamId: string | null) => void;
   updateUserPoolLimit: (id: string, pool: PoolStatus, limit: number | null) => void;
+  updateUserAutoAssign: (id: string, enabled: boolean) => void;
   deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
   resetUserPassword: (id: string, password?: string) => Promise<{ tempPassword?: string; error?: string }>;
 
@@ -954,8 +955,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Inactive Listings warning tab (same thresholds, 5 days earlier).
   // ponytail: compute-on-load sweep, not real-time. Upgrade to a cron/edge
   // function sweep if sub-day precision ever matters.
-  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], assignmentEvents: AssignmentEvent[], forUserId: string, isAdmin: boolean) {
-    const stale = computeSlotAges(customersList, activitiesList, assignmentEvents)
+  function sweepStalePool(customersList: Customer[], activitiesList: Activity[], assignmentEvents: AssignmentEvent[], tasksList: Task[], forUserId: string, isAdmin: boolean) {
+    const stale = computeSlotAges(customersList, activitiesList, assignmentEvents, tasksList)
       .filter(isStalePastPull)
       .filter((age) => isAdmin || age.userId === forUserId)
       .map((age) => ({ customerId: age.customerId, slot: age.slot }));
@@ -1038,7 +1039,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
       const candidates = usersList
-        .filter((u) => u.active && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
+        .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       if (candidates.length === 0) continue;
       const currentPointer = pointerByTeam.has(team.id) ? pointerByTeam.get(team.id)! : team.lastAutoAssignedUserId;
@@ -1108,6 +1109,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ]);
         const loadedUsers = loadResults[1];
         const loadedCustomers = loadResults[17];
+        const loadedTasks = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog(loadedUsers);
         await loadDealClosures();
@@ -1124,7 +1126,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
-          sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
+          sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
           sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
@@ -1240,6 +1242,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ]);
     const loadedUsers = loadResults[1];
     const loadedCustomers = loadResults[17];
+    const loadedTasks = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog(loadedUsers);
     await loadDealClosures();
@@ -1261,7 +1264,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { error: tokenError } = await supabase.from("profiles").update({ session_token: sessionToken }).eq("id", profile.id);
     if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
-    sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, profile.id, profile.role === "ADMIN");
+    sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
     sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
@@ -1356,6 +1359,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .eq("id", id)
       .then(({ error }) => {
         if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, [field]: prevLimit } : u)));
+      });
+  }
+
+  function updateUserAutoAssign(id: string, enabled: boolean) {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    const prevEnabled = target.autoAssignEnabled;
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, autoAssignEnabled: enabled } : u)));
+    const supabase = createClient();
+    supabase
+      .from("profiles")
+      .update({ auto_assign_enabled: enabled })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, autoAssignEnabled: prevEnabled } : u)));
       });
   }
 
@@ -2667,6 +2685,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateUserRole,
     updateUserTeam,
     updateUserPoolLimit,
+    updateUserAutoAssign,
     deleteUser,
     resetUserPassword,
     addTeam,

@@ -11,6 +11,7 @@ export interface User {
   active: boolean;
   activePoolLimit: number | null;
   inactivePoolLimit: number | null;
+  autoAssignEnabled: boolean;
 }
 
 export type PoolStatus = "ACTIVE" | "INACTIVE";
@@ -268,6 +269,7 @@ export interface Activity {
 export interface Task {
   id: string;
   customerId: string;
+  userId: string;
   title: string;
   due: string;
   done: boolean;

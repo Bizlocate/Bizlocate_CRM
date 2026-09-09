@@ -22,7 +22,8 @@ create table profiles (
   team_id uuid references teams (id) on delete set null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
   active_pool_limit int check (active_pool_limit is null or active_pool_limit >= 0),
-  inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0)
+  inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0),
+  auto_assign_enabled boolean not null default true
 );
 
 -- Run this alone against an already-provisioned database:
@@ -30,6 +31,7 @@ create table profiles (
 -- alter table profiles add column if not exists ic text;
 -- alter table profiles rename column customer_limit to active_pool_limit;
 -- alter table profiles add column if not exists inactive_pool_limit int check (inactive_pool_limit is null or inactive_pool_limit >= 0);
+-- alter table profiles add column if not exists auto_assign_enabled boolean not null default true;
 -- create or replace function handle_new_user() returns trigger as $$
 -- begin
 --   insert into public.profiles (id, name, email, phone, ic, role, team_id, status, active_pool_limit, inactive_pool_limit)

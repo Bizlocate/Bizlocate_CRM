@@ -1,4 +1,4 @@
-import type { Activity, AssignmentEvent, Customer, PoolStatus, RemovalRequest, User } from "./types";
+import type { Activity, AssignmentEvent, Customer, PoolStatus, RemovalRequest, Task, User } from "./types";
 
 export interface SlotAge {
   customerId: string;
@@ -6,6 +6,7 @@ export interface SlotAge {
   userId: string;
   pool: PoolStatus;
   daysStale: number;
+  hasPendingTask: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,10 +44,18 @@ export function computeSlotAges(
   customers: Customer[],
   activities: Activity[],
   assignmentEvents: AssignmentEvent[],
+  tasks: Pick<Task, "customerId" | "userId" | "done">[] = [],
   now: number = Date.now()
 ): SlotAge[] {
   const lastActivity = latestByKey(activities, (a) => `${a.customerId}|${a.authorUserId}`, (a) => a.createdAt);
   const lastAssignment = latestByKey(assignmentEvents, (e) => `${e.customerId}|${e.slot}|${e.userId}`, (e) => e.createdAt);
+  // Tasks are RLS-scoped to "mine" (private per creator, see schema.sql's
+  // tasks_select policy) -- so this only catches pending tasks belonging to
+  // the assignee whose own session is running the sweep/warn check. An
+  // admin/manager viewing someone else's slot won't see that person's
+  // pending tasks and so won't get this protection for it; same accepted
+  // gap as the rest of this file's compute-on-load approach.
+  const pendingTask = new Set(tasks.filter((t) => !t.done).map((t) => `${t.customerId}|${t.userId}`));
 
   const ages: SlotAge[] = [];
   for (const c of customers) {
@@ -63,7 +72,8 @@ export function computeSlotAges(
           ? new Date(since ?? c.createdAt).getTime()
           : lastAssignment.get(`${c.id}|${slot}|${userId}`) ?? new Date(c.createdAt).getTime();
       const lastTouchedMs = Math.max(anchor, lastActivity.get(`${c.id}|${userId}`) ?? 0);
-      ages.push({ customerId: c.id, slot, userId, pool, daysStale: (now - lastTouchedMs) / DAY_MS });
+      const hasPendingTask = pendingTask.has(`${c.id}|${userId}`);
+      ages.push({ customerId: c.id, slot, userId, pool, daysStale: (now - lastTouchedMs) / DAY_MS, hasPendingTask });
     });
   }
   return ages;
@@ -77,9 +87,14 @@ function warnDaysFor(pool: PoolStatus): number {
   return pool === "ACTIVE" ? ACTIVE_WARN_DAYS : POTENTIAL_WARN_DAYS;
 }
 
-/** Past the auto-pull threshold -- sweepStalePool clears these. */
+/**
+ * Past the auto-pull threshold -- sweepStalePool clears these. A slot with a
+ * pending task for its assignee is never pulled or warned about (see
+ * hasPendingTask in computeSlotAges) -- an open task is a sign the assignee
+ * is still working the customer, so nagging/removing would be wrong.
+ */
 export function isStalePastPull(age: SlotAge): boolean {
-  return age.daysStale >= pullDaysFor(age.pool);
+  return !age.hasPendingTask && age.daysStale >= pullDaysFor(age.pool);
 }
 
 /**
@@ -91,7 +106,7 @@ export function isStalePastPull(age: SlotAge): boolean {
  * different questions (show it vs. pull it).
  */
 export function isWarnZone(age: SlotAge): boolean {
-  return age.daysStale >= warnDaysFor(age.pool);
+  return !age.hasPendingTask && age.daysStale >= warnDaysFor(age.pool);
 }
 
 /**
@@ -129,11 +144,12 @@ export function warnZoneSlotsFor(
   users: Pick<User, "id" | "teamId">[],
   viewer: Pick<User, "id" | "role" | "teamId">,
   removalRequests: Pick<RemovalRequest, "customerId" | "slot" | "status">[],
+  tasks: Pick<Task, "customerId" | "userId" | "done">[] = [],
   now: number = Date.now()
 ): SlotAge[] {
   const pending = new Set(
     removalRequests.filter((r) => r.status === "PENDING").map((r) => `${r.customerId}|${r.slot}`)
   );
-  const ages = computeSlotAges(customers, activities, assignmentEvents, now).filter(isWarnZone);
+  const ages = computeSlotAges(customers, activities, assignmentEvents, tasks, now).filter(isWarnZone);
   return scopeSlotAgesToViewer(ages, users, viewer).filter((a) => !pending.has(`${a.customerId}|${a.slot}`));
 }

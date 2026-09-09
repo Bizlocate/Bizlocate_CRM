@@ -14,16 +14,16 @@ import { ACTIVE_WARN_DAYS, POTENTIAL_WARN_DAYS, SlotAge, warnZoneSlotsFor } from
  * pattern RemovalApprovalsBrowser uses for its Area filter.
  */
 export default function InactiveListingsBrowser() {
-  const { customers, activities, assignmentEvents, removalRequests, users, areas, currentUser } = useStore();
+  const { customers, activities, assignmentEvents, removalRequests, users, areas, currentUser, tasks } = useStore();
   const [filterAreaId, setFilterAreaId] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
 
   const scoped = useMemo(
     () =>
       currentUser
-        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests)
+        ? warnZoneSlotsFor(customers, activities, assignmentEvents, users, currentUser, removalRequests, tasks)
         : [],
-    [customers, activities, assignmentEvents, users, currentUser, removalRequests]
+    [customers, activities, assignmentEvents, users, currentUser, removalRequests, tasks]
   );
 
   const showFilters = currentUser?.role !== "SALESPERSON";

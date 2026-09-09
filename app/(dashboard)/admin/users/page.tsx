@@ -6,7 +6,7 @@ import { Role, User } from "@/lib/types";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserPoolLimit, deleteUser, resetUserPassword } = useStore();
+  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserPoolLimit, updateUserAutoAssign, deleteUser, resetUserPassword } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -407,8 +407,8 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Active limit</div><div>Potential limit</div><div>Status</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 0.9fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Name</div><div>Email</div><div>Phone</div><div>Role</div><div>Team</div><div>Active limit</div><div>Potential limit</div><div>Auto-assign</div><div>Status</div><div>Actions</div>
         </div>
         {filteredUsers.length === 0 && (
           <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>
@@ -416,7 +416,7 @@ export default function AdminUsersPage() {
           </div>
         )}
         {filteredUsers.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.3fr 1.7fr 1fr 0.9fr 1fr 0.8fr 0.8fr 0.9fr 0.9fr 1fr", padding: "14px 20px", borderBottom: "1px solid #eef0f2", alignItems: "center", fontSize: 13.5 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ color: "#6b7280" }}>{u.email}</div>
             <div style={{ color: "#6b7280" }}>{u.phone ?? "—"}</div>
@@ -467,6 +467,14 @@ export default function AdminUsersPage() {
                   if (next !== null && (!Number.isInteger(next) || next < 0)) return;
                   if (next !== u.inactivePoolLimit) updateUserPoolLimit(u.id, "INACTIVE", next);
                 }}
+              />
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                checked={u.autoAssignEnabled}
+                onChange={(e) => updateUserAutoAssign(u.id, e.target.checked)}
+                title="Include this member in the auto second-assign round-robin"
               />
             </div>
             <div>
