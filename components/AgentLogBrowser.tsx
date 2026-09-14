@@ -47,11 +47,12 @@ export default function AgentLogBrowser({ agents, customers, areas: areasProp }:
   const [stageId, setStageId] = useState("");
   const [agentId, setAgentId] = useState("");
 
-  // Narrow the Agent dropdown to the selected area's own team once an area
-  // is picked -- an area belongs to one team (area.teamId), same link the
-  // rest of the app uses to scope assignee candidates to an area's team.
-  const selectedAreaTeamId = areaId ? filterAreas.find((a) => a.id === areaId)?.teamId ?? null : null;
-  const areaAgents = selectedAreaTeamId ? agents.filter((a) => a.teamId === selectedAreaTeamId) : agents;
+  // Narrow the Agent dropdown to the selected area's own team(s) once an
+  // area is picked -- an area can belong to multiple teams (area.teamIds),
+  // same link the rest of the app uses to scope assignee candidates to an
+  // area's team(s).
+  const selectedAreaTeamIds = areaId ? filterAreas.find((a) => a.id === areaId)?.teamIds ?? [] : [];
+  const areaAgents = selectedAreaTeamIds.length > 0 ? agents.filter((a) => !!a.teamId && selectedAreaTeamIds.includes(a.teamId)) : agents;
   // If switching area drops the previously-picked agent out of scope, fall
   // back to "All Agents" instead of silently filtering by a hidden id.
   const selectedAgentId = agentId && areaAgents.some((a) => a.id === agentId) ? agentId : "";

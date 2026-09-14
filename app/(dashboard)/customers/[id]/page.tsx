@@ -551,16 +551,16 @@ export default function CustomerDetailPage() {
             ];
             return rows.map(({ slot, value, setValue, current, clearable }) => {
               const otherCurrent = rows.filter((r) => r.slot !== slot).map((r) => r.current);
-              // scoped to the team that owns the customer's area — ADMIN excluded (doesn't
+              // scoped to the team(s) that own the customer's area — ADMIN excluded (doesn't
               // do sales), applies the same way whether an ADMIN or a MANAGER is reassigning.
               // No team on the area yet? No candidates — set it on /admin/area first.
-              const areaTeamId = areas.find((a) => a.id === customer.areaId)?.teamId;
+              const areaTeamIds = areas.find((a) => a.id === customer.areaId)?.teamIds ?? [];
               const scopedOptions = users.filter((u) =>
                 u.active
                 && !otherCurrent.includes(u.id)
                 && u.role !== "ADMIN"
-                && !!areaTeamId
-                && u.teamId === areaTeamId
+                && !!u.teamId
+                && areaTeamIds.includes(u.teamId)
               );
               // keep the current occupant selectable/visible even if out of a manager's scope
               const currentUserObj = current ? users.find((u) => u.id === current) : undefined;

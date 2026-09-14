@@ -729,12 +729,12 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   }
 
   // each assignee dropdown excludes whoever is already picked in the other two slots,
-  // and is scoped to the team that owns the selected area (ADMIN excluded — doesn't do sales).
+  // and is scoped to the team(s) that own the selected area (ADMIN excluded — doesn't do sales).
   // No team on the area yet? No candidates — set it on /admin/area first.
   function assigneeOptions(excluding: string[]) {
-    const teamId = areas.find((a) => a.id === areaId)?.teamId;
-    if (!teamId) return [];
-    return activeUsers.filter((u) => u.role !== "ADMIN" && u.teamId === teamId && !excluding.includes(u.id));
+    const teamIds = areas.find((a) => a.id === areaId)?.teamIds ?? [];
+    if (teamIds.length === 0) return [];
+    return activeUsers.filter((u) => u.role !== "ADMIN" && !!u.teamId && teamIds.includes(u.teamId) && !excluding.includes(u.id));
   }
 
   async function handleSubmit(e: React.FormEvent) {

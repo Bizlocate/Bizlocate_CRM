@@ -6,7 +6,7 @@ import AgentLogBrowser from "@/components/AgentLogBrowser";
 export default function TeamAgentLogsPage() {
   const { currentUser, users, visibleCustomers, areas } = useStore();
   const agents = users.filter((u) => u.role === "SALESPERSON" && u.teamId === currentUser?.teamId);
-  const teamAreas = areas.filter((a) => a.teamId === currentUser?.teamId);
+  const teamAreas = areas.filter((a) => !!currentUser?.teamId && a.teamIds.includes(currentUser.teamId));
 
   return (
     <div style={{ padding: "28px 32px" }}>

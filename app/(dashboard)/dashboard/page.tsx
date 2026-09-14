@@ -193,10 +193,10 @@ export default function DashboardPage() {
 
   const canManage = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   // ADMIN picks from every area; MANAGER only from areas admin has assigned
-  // to their team (Area.teamId) — zero assigned areas means no dropdown at
+  // to their team (Area.teamIds) — zero assigned areas means no dropdown at
   // all, since there's nothing to narrow down to. SP never gets one — they
   // only ever see their own scope regardless of area.
-  const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => a.teamId === currentUser.teamId);
+  const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => !!currentUser.teamId && a.teamIds.includes(currentUser.teamId));
   const customerAreaMap = new Map(visibleCustomers.map((c) => [c.id, c.areaId]));
 
   // Narrows every list this section reads to one area's customers — ""

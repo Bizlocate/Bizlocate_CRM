@@ -25,7 +25,7 @@ export default function RemovalApprovalsBrowser() {
   // Admin picks from every area; a manager's dropdown is scoped to only the
   // areas their own team owns (same area<->team link the assignee-scoping
   // sweep uses), since that's the slice of the company they're responsible for.
-  const areaOptions = currentUser?.role === "MANAGER" ? areas.filter((a) => a.teamId === currentUser.teamId) : areas;
+  const areaOptions = currentUser?.role === "MANAGER" ? areas.filter((a) => !!currentUser.teamId && a.teamIds.includes(currentUser.teamId)) : areas;
 
   function customerName(customerId: string) {
     return customers.find((c) => c.id === customerId)?.name ?? "Unknown customer";

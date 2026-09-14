@@ -53,7 +53,7 @@ export default function InactiveListingsBrowser() {
 
   // Manager's dropdowns are scoped to their own team, same as
   // RemovalApprovalsBrowser's Area filter.
-  const areaOptions = currentUser?.role === "MANAGER" ? areas.filter((a) => a.teamId === currentUser.teamId) : areas;
+  const areaOptions = currentUser?.role === "MANAGER" ? areas.filter((a) => !!currentUser.teamId && a.teamIds.includes(currentUser.teamId)) : areas;
   const memberOptions = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === "MANAGER") return users.filter((u) => u.teamId === currentUser.teamId && u.role === "SALESPERSON");
