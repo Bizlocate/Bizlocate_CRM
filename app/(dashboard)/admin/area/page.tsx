@@ -7,7 +7,7 @@ import { CsvPreview } from "@/lib/types";
 import { removeCsvRow } from "@/lib/parseAreaCsv";
 
 export default function AdminAreaPage() {
-  const { areas, subAreas, teams, addArea, updateArea, updateAreaTeam, updateAreaAutoAssign, deleteArea, addSubArea, updateSubArea, deleteSubArea, previewAreaCsv, confirmAreaCsvImport } = useStore();
+  const { areas, subAreas, teams, addArea, updateArea, addAreaTeam, removeAreaTeam, updateAreaAutoAssign, deleteArea, addSubArea, updateSubArea, deleteSubArea, previewAreaCsv, confirmAreaCsvImport } = useStore();
 
   const [showForm, setShowForm] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
@@ -20,6 +20,7 @@ export default function AdminAreaPage() {
   const [editingSubAreaId, setEditingSubAreaId] = useState<string | null>(null);
   const [editingSubAreaName, setEditingSubAreaName] = useState("");
   const [newSubAreaName, setNewSubAreaName] = useState("");
+  const [newTeamId, setNewTeamId] = useState("");
 
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
@@ -71,6 +72,12 @@ export default function AdminAreaPage() {
     if (!newSubAreaName.trim()) return;
     addSubArea(areaId, newSubAreaName.trim());
     setNewSubAreaName("");
+  }
+
+  function handleAddAreaTeam(areaId: string) {
+    if (!newTeamId) return;
+    addAreaTeam(areaId, newTeamId);
+    setNewTeamId("");
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -194,16 +201,8 @@ export default function AdminAreaPage() {
                   </span>
                 </div>
                 <div style={{ color: "#6b7280" }}>{rows.length}</div>
-                <div>
-                  <select
-                    className="field-input"
-                    style={{ width: "auto" }}
-                    value={a.teamId ?? ""}
-                    onChange={(e) => updateAreaTeam(a.id, e.target.value || null)}
-                  >
-                    <option value="">—</option>
-                    {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                <div style={{ color: "#6b7280" }}>
+                  {a.teamIds.length > 0 ? a.teamIds.map((id) => teams.find((t) => t.id === id)?.name ?? "-").join(", ") : "-"}
                 </div>
                 <div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280" }}>
@@ -215,6 +214,27 @@ export default function AdminAreaPage() {
 
               {expanded && (
                 <div style={{ padding: "0 20px 16px 40px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 6 }}>Teams</div>
+                  {a.teamIds.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab", padding: "6px 0" }}>No teams linked.</div>}
+                  {a.teamIds.map((teamId) => (
+                    <div key={teamId} style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 0", fontSize: 13 }}>
+                      <span style={{ color: "#374151" }}>{teams.find((t) => t.id === teamId)?.name ?? "-"}</span>
+                      <span style={{ color: "#a13a2b", cursor: "pointer" }} onClick={() => removeAreaTeam(a.id, teamId)}>Remove</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, marginBottom: 18 }}>
+                    <select
+                      className="field-input"
+                      style={{ flex: "1 1 240px" }}
+                      value={newTeamId}
+                      onChange={(e) => setNewTeamId(e.target.value)}
+                    >
+                      <option value="">- Select team -</option>
+                      {teams.filter((t) => !a.teamIds.includes(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    <button className="btn btn-outline" type="button" onClick={() => handleAddAreaTeam(a.id)}>+ Add team</button>
+                  </div>
+
                   {rows.map((s) => (
                     <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 0", fontSize: 13 }}>
                       {editingSubAreaId === s.id ? (
