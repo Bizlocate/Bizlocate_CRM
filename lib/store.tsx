@@ -745,10 +745,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   async function loadAreas(): Promise<Area[]> {
     const supabase = createClient();
-    const [{ data }, { data: links }] = await Promise.all([
+    const [{ data }, { data: links, error: linksError }] = await Promise.all([
       supabase.from("areas").select("*").order("name"),
       supabase.from("area_teams").select("*"),
     ]);
+    if (linksError) console.error("Failed to load area_teams (has the area-team migration been run?):", linksError);
     const teamIdsByArea = new Map<string, string[]>();
     for (const link of (links ?? []) as { area_id: string; team_id: string }[]) {
       const list = teamIdsByArea.get(link.area_id) ?? [];
@@ -1242,6 +1243,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (payload: RealtimePostgresChangesPayload<Record<string, any>>) => applyRealtimeChange(entry, payload)
       );
     }
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "area_teams" },
+      () => { loadAreas(); }
+    );
     channel.subscribe();
     return () => {
       supabase.removeChannel(channel);

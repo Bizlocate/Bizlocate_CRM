@@ -2329,6 +2329,7 @@ insert into mandatory_field_settings (field_key, required) values
 -- create policy "area_teams_select" on area_teams for select using (auth.uid() is not null);
 -- create policy "area_teams_insert_admin" on area_teams for insert with check (is_admin());
 -- create policy "area_teams_delete_admin" on area_teams for delete using (is_admin());
+-- alter publication supabase_realtime add table area_teams;
 --
 -- insert into area_teams (area_id, team_id)
 --   select id, team_id from areas where team_id is not null;
