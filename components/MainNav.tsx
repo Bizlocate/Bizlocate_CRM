@@ -13,7 +13,7 @@ export default function MainNav() {
 
   // Shared by both "own assigned customers in default stage" badges below
   // (SP's Customers tab, MANAGER's My Customers tab) -- same stage-slot
-  // logic as myStageId in customers/page.tsx (own assignee slot, whichever
+  // logic as myStageId in components/CustomerListView.tsx (own assignee slot, whichever
   // of the 3 is theirs).
   function countOwnDefaultStage(userId: string): number {
     const defaultStage = stages.find((s) => s.isDefault);
@@ -28,16 +28,10 @@ export default function MainNav() {
     }).length;
   }
 
-  // SP's own badge on the "Customers" tab.
-  const newStageCustomerCount = useMemo(() => {
-    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
-    return countOwnDefaultStage(currentUser.id);
-  }, [customers, currentUser, stages]);
-
-  // Manager's own badge on the "My Customers" tab -- their own assignee
-  // slot, not the team-wide unified list.
-  const myCustomersNewStageCount = useMemo(() => {
-    if (!currentUser || currentUser.role !== "MANAGER") return 0;
+  // Badge count for own assigned customers in their default stage (used by
+  // both "Customers" tab for SALESPERSON and "My Customers" tab for MANAGER).
+  const ownNewStageCount = useMemo(() => {
+    if (!currentUser || currentUser.role === "ADMIN") return 0;
     return countOwnDefaultStage(currentUser.id);
   }, [customers, currentUser, stages]);
 
@@ -92,10 +86,10 @@ export default function MainNav() {
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
-    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: ownNewStageCount },
   ];
   if (currentUser.role === "MANAGER") {
-    tabs.push({ href: "/my-customers", label: "My Customers", active: pathname.startsWith("/my-customers"), badge: myCustomersNewStageCount });
+    tabs.push({ href: "/my-customers", label: "My Customers", active: pathname.startsWith("/my-customers"), badge: ownNewStageCount });
   }
   tabs.push({ href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount });
   if (currentUser.role !== "SALESPERSON") {
