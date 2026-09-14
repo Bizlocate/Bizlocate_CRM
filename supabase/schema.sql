@@ -629,7 +629,7 @@ create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_ad
 create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
 create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());
 
--- area_teams: any authenticated user reads, admin writes (no update — rows are added/removed, never edited)
+-- area_teams: any authenticated user reads, admin writes (no update  -  rows are added/removed, never edited)
 create policy "area_teams_select" on area_teams for select using (auth.uid() is not null);
 create policy "area_teams_insert_admin" on area_teams for insert with check (is_admin());
 create policy "area_teams_delete_admin" on area_teams for delete using (is_admin());
@@ -1028,7 +1028,6 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table areas enable row level security;
 -- alter table sub_areas enable row level security;
-alter table area_teams enable row level security;
 --
 -- create policy "areas_select" on areas for select using (auth.uid() is not null);
 -- create policy "areas_insert_admin" on areas for insert with check (is_admin());
@@ -2313,12 +2312,8 @@ alter table area_teams enable row level security;
 -- -- find the real one with:
 -- -- select conname from pg_constraint where conrelid = '<table>'::regclass and contype = 'f';
 
-
-
-
-
 -- ============================================================
--- Migration: Area <-> Team many-to-many — run once against an
+-- Migration: Area <-> Team many-to-many  -  run once against an
 -- already-provisioned database (everything below already exists in
 -- the main schema above for fresh installs). Order matters: back-fill
 -- area_teams from areas.team_id BEFORE dropping that column.
