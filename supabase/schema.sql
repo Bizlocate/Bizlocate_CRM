@@ -8,8 +8,7 @@
 create table teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  manager_id uuid, -- fk added after profiles exists (circular ref)
-  last_auto_assigned_user_id uuid -- fk added after profiles exists, same as manager_id
+  manager_id uuid -- fk added after profiles exists (circular ref)
 );
 
 create table profiles (
@@ -52,8 +51,7 @@ create table profiles (
 -- $$ language plpgsql security definer set search_path = public;
 
 alter table teams
-  add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null,
-  add constraint teams_last_auto_assigned_user_id_fkey foreign key (last_auto_assigned_user_id) references profiles (id) on delete set null;
+  add constraint teams_manager_id_fkey foreign key (manager_id) references profiles (id) on delete set null;
 
 create table pipeline_stages (
   id uuid primary key default gen_random_uuid(),
@@ -67,8 +65,8 @@ create table pipeline_stages (
 create table areas (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  team_id uuid references teams (id) on delete set null,
-  auto_assign_enabled boolean not null default true
+  auto_assign_enabled boolean not null default true,
+  last_auto_assigned_user_id uuid references profiles (id) on delete set null
 );
 
 create table sub_areas (
@@ -76,6 +74,12 @@ create table sub_areas (
   area_id uuid not null references areas (id) on delete cascade,
   name text not null,
   unique (area_id, name)
+);
+
+create table area_teams (
+  area_id uuid not null references areas (id) on delete cascade,
+  team_id uuid not null references teams (id) on delete cascade,
+  primary key (area_id, team_id)
 );
 
 create table business_tag_industries (
@@ -576,6 +580,7 @@ alter table profiles enable row level security;
 alter table pipeline_stages enable row level security;
 alter table areas enable row level security;
 alter table sub_areas enable row level security;
+alter table area_teams enable row level security;
 alter table customers enable row level security;
 alter table activities enable row level security;
 alter table tasks enable row level security;
@@ -623,6 +628,11 @@ create policy "sub_areas_select" on sub_areas for select using (auth.uid() is no
 create policy "sub_areas_insert_admin" on sub_areas for insert with check (is_admin());
 create policy "sub_areas_update_admin" on sub_areas for update using (is_admin());
 create policy "sub_areas_delete_admin" on sub_areas for delete using (is_admin());
+
+-- area_teams: any authenticated user reads, admin writes (no update — rows are added/removed, never edited)
+create policy "area_teams_select" on area_teams for select using (auth.uid() is not null);
+create policy "area_teams_insert_admin" on area_teams for insert with check (is_admin());
+create policy "area_teams_delete_admin" on area_teams for delete using (is_admin());
 
 alter table business_tag_industries enable row level security;
 alter table business_tag_categories enable row level security;
@@ -1018,6 +1028,7 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table areas enable row level security;
 -- alter table sub_areas enable row level security;
+alter table area_teams enable row level security;
 --
 -- create policy "areas_select" on areas for select using (auth.uid() is not null);
 -- create policy "areas_insert_admin" on areas for insert with check (is_admin());
@@ -2301,3 +2312,33 @@ insert into mandatory_field_settings (field_key, required) values
 -- -- exist", the auto-generated name guess was wrong for that column --
 -- -- find the real one with:
 -- -- select conname from pg_constraint where conrelid = '<table>'::regclass and contype = 'f';
+
+
+
+
+
+-- ============================================================
+-- Migration: Area <-> Team many-to-many — run once against an
+-- already-provisioned database (everything below already exists in
+-- the main schema above for fresh installs). Order matters: back-fill
+-- area_teams from areas.team_id BEFORE dropping that column.
+-- See docs/superpowers/specs/2026-09-14-area-team-many-to-many-design.md
+-- ============================================================
+--
+-- create table area_teams (
+--   area_id uuid not null references areas (id) on delete cascade,
+--   team_id uuid not null references teams (id) on delete cascade,
+--   primary key (area_id, team_id)
+-- );
+-- alter table area_teams enable row level security;
+-- create policy "area_teams_select" on area_teams for select using (auth.uid() is not null);
+-- create policy "area_teams_insert_admin" on area_teams for insert with check (is_admin());
+-- create policy "area_teams_delete_admin" on area_teams for delete using (is_admin());
+--
+-- insert into area_teams (area_id, team_id)
+--   select id, team_id from areas where team_id is not null;
+--
+-- alter table areas add column if not exists last_auto_assigned_user_id uuid references profiles (id) on delete set null;
+--
+-- alter table areas drop column if exists team_id;
+-- alter table teams drop column if exists last_auto_assigned_user_id;
