@@ -1,0 +1,1323 @@
+# Manager "My Customers" Tab Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Give MANAGER a new "My Customers" nav tab showing only the customers they personally occupy an assignee slot on, with the same Active Pool / Potential Pool tabs SALESPERSON already gets on `/customers` — without changing MANAGER's existing unified `/customers` list.
+
+**Architecture:** Extract the list-rendering half of `/customers` (filter card, sortable table, pool tabs, export) out of `app/(dashboard)/customers/page.tsx` into a new shared component `components/CustomerListView.tsx`, parameterized by `scope: "own" | "all"` instead of branching on `currentUser.role` directly. `/customers/page.tsx` keeps the "+ New Customer" button/form and renders `CustomerListView` with `scope` derived from role (unchanged behavior for all 3 roles). A new `app/(dashboard)/my-customers/page.tsx` renders the same component with `scope="own"` forced, gated to MANAGER only. `MainNav.tsx` gets the new tab + badge.
+
+**Tech Stack:** Next.js 15 (App Router) + React 18, plain inline-style React, existing `lib/store.tsx` context (`useStore()`), `.card` / `.btn` / `.btn-primary` / `.btn-outline` / `.field-input` / `.field-label` CSS classes from `app/globals.css`. No new dependencies.
+
+## Global Constraints
+
+- No schema/DB changes — this is UI-only, reading data the store already loads (`visibleCustomers`, `customers`, `stages`).
+- No test framework in this repo — verification is `npx tsc --noEmit` per step plus a manual `npm run dev` pass per task (matches [docs/superpowers/plans/2026-08-31-sales-dashboard.md](2026-08-31-sales-dashboard.md) convention).
+- Follow existing page conventions exactly: inline `style={{...}}` objects, no new CSS classes, `useStore()` for all data access, function-declaration helpers (hoisted) inside client components.
+- Pool toggle permission on the customer detail page (`currentUser.id === user.id` regardless of role, [app/(dashboard)/customers/[id]/page.tsx:464](../../../app/(dashboard)/customers/[id]/page.tsx)) needs no change — already correct for a manager's own slot.
+- The Export button (ADMIN-only, `canExport`) moves from the page-level header into `CustomerListView`'s own "Total Customer" row (top-right of that row) as a side effect of the extraction — it no longer sits next to "+ New Customer" in the page title bar. This is a deliberate, minor layout change called out here so it isn't mistaken for a regression.
+
+---
+
+### Task 1: Extract `CustomerListView` and wire it into `/customers`
+
+**Files:**
+- Create: `components/CustomerListView.tsx`
+- Modify: `app/(dashboard)/customers/page.tsx` (full-file replacement — nearly every line is affected by the extraction)
+
+**Interfaces:**
+- Produces: `export default function CustomerListView({ scope }: { scope: "own" | "all" })` — a self-contained client component (owns its own `useStore()` call, filters, sort, pool tabs, export). Consumed by Task 2 (`/my-customers`) with `scope="own"`.
+- Consumes: `useStore()` (`currentUser`, `visibleCustomers`, `users`, `stages`, `activities`, `removalRequests`, `leadSources`, `areas`, `subAreas`, `propertyTypes`, `purposes`, `businessTagIndustries`, `businessTagCategories`, `businessTagTypes`, `races`, `languages`, `firsttimeBranchTypes`, `targetRaces`, `targetTypes`) — all already on the store's context type ([lib/store.tsx](../../../lib/store.tsx)).
+
+- [ ] **Step 1: Create `components/CustomerListView.tsx`**
+
+```tsx
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
+import { useStore } from "@/lib/store";
+import { STAGE_STYLES, type Customer } from "@/lib/types";
+
+type LookupItem = { id: string; name: string };
+
+function nameOf(list: LookupItem[], id: string | null): string {
+  return list.find((x) => x.id === id)?.name ?? "";
+}
+
+const EXPORT_FIELDS: { key: string; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "phone", label: "Phone" },
+  { key: "stage", label: "Stage" },
+  { key: "assignedTo", label: "Assigned To" },
+  { key: "source", label: "Source" },
+  { key: "area", label: "Area" },
+  { key: "subArea", label: "Subarea" },
+  { key: "propertyType", label: "Property Type" },
+  { key: "purpose", label: "Purpose" },
+  { key: "businessIndustry", label: "Business Industry" },
+  { key: "businessCategory", label: "Business Category" },
+  { key: "businessType", label: "Business Type" },
+  { key: "race", label: "Race" },
+  { key: "language", label: "Language" },
+  { key: "businessName", label: "Business Name" },
+  { key: "firsttimeBranch", label: "Firsttime/Branch" },
+  { key: "targetRace", label: "Target Race" },
+  { key: "targetType", label: "Target Type" },
+  { key: "budget", label: "Budget" },
+  { key: "remark", label: "Remark" },
+];
+
+// scope "own": the viewer's own follow-up queue (SP's `/customers`,
+// manager's `/my-customers`) -- only customers where the viewer occupies
+// an assignee slot, with Active/Potential pool tabs. scope "all": the
+// unified list (ADMIN/MANAGER on `/customers`) -- every visible customer,
+// no pool tabs, all assignees shown.
+export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
+  const router = useRouter();
+  const {
+    currentUser,
+    visibleCustomers,
+    users,
+    stages,
+    activities,
+    removalRequests,
+    leadSources,
+    areas,
+    subAreas,
+    propertyTypes,
+    purposes,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
+    races,
+    languages,
+    firsttimeBranchTypes,
+    targetRaces,
+    targetTypes,
+  } = useStore();
+  const [searchName, setSearchName] = useState("");
+  const [searchBrandName, setSearchBrandName] = useState("");
+  const [searchPhone, setSearchPhone] = useState("");
+  const [searchStageId, setSearchStageId] = useState("");
+  const [searchAssignedTo, setSearchAssignedTo] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterSourceId, setFilterSourceId] = useState("");
+  const [filterAreaId, setFilterAreaId] = useState("");
+  const [filterSubAreaId, setFilterSubAreaId] = useState("");
+  const [filterPropertyTypeId, setFilterPropertyTypeId] = useState("");
+  const [filterBusinessIndustryId, setFilterBusinessIndustryId] = useState("");
+  const [filterBusinessCategoryId, setFilterBusinessCategoryId] = useState("");
+  const [filterBusinessTypeId, setFilterBusinessTypeId] = useState("");
+  const [filterRaceId, setFilterRaceId] = useState("");
+  const [filterFirsttimeBranchId, setFilterFirsttimeBranchId] = useState("");
+  const [filterPurposeId, setFilterPurposeId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [updatedSort, setUpdatedSort] = useState<"asc" | "desc" | null>(null);
+  const [stageSort, setStageSort] = useState<"asc" | "desc" | null>(null);
+
+  const canExport = currentUser?.role === "ADMIN";
+  const showAssignedTo = scope === "all";
+  const isOwnScope = scope === "own";
+
+  function assigneeIds(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string[] {
+    return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
+  }
+
+  const filteredCustomers = useMemo(() => {
+    const name = searchName.trim().toLowerCase();
+    const brandName = searchBrandName.trim().toLowerCase();
+    const phone = searchPhone.trim().toLowerCase();
+    const keyword = searchKeyword.trim().toLowerCase();
+    return visibleCustomers.filter((c) => {
+      // hide from my own list while my own removal request for this customer
+      // is pending -- reappears automatically on reject (status flips off
+      // "PENDING"); admin/manager still see it via the approvals queue.
+      if (removalRequests.some((r) => r.customerId === c.id && r.requestedBy === currentUser?.id && r.status === "PENDING")) return false;
+      // own-scope views (SP's own /customers, manager's /my-customers) only
+      // show customers where the viewer occupies an assignee slot -- for a
+      // manager, visibleCustomers is already team-wide, not just their own.
+      if (isOwnScope && currentUser && !assigneeIds(c).includes(currentUser.id)) return false;
+      if (name && !c.name.toLowerCase().includes(name)) return false;
+      if (brandName && !c.businessName.toLowerCase().includes(brandName)) return false;
+      if (phone && !c.phone.toLowerCase().includes(phone) && !c.optionalPhone.toLowerCase().includes(phone)) return false;
+      if (searchStageId) {
+        if (isOwnScope) {
+          if (myStageId(c) !== searchStageId) return false;
+        } else if (c.stage1Id !== searchStageId && c.stage2Id !== searchStageId && c.stage3Id !== searchStageId) {
+          return false;
+        }
+      }
+      if (showAssignedTo && searchAssignedTo && !assigneeIds(c).includes(searchAssignedTo)) return false;
+      if (filterSourceId && c.sourceId !== filterSourceId) return false;
+      if (filterAreaId && c.areaId !== filterAreaId) return false;
+      if (filterSubAreaId && c.subAreaId !== filterSubAreaId) return false;
+      if (filterPropertyTypeId && c.propertyTypeId !== filterPropertyTypeId) return false;
+      if (filterBusinessIndustryId && c.businessIndustryId !== filterBusinessIndustryId) return false;
+      if (filterBusinessCategoryId && c.businessCategoryId !== filterBusinessCategoryId) return false;
+      if (filterBusinessTypeId && c.businessTypeId !== filterBusinessTypeId) return false;
+      if (filterRaceId && c.raceId !== filterRaceId) return false;
+      if (filterFirsttimeBranchId && c.firsttimeBranchId !== filterFirsttimeBranchId) return false;
+      if (filterPurposeId && c.purposeId !== filterPurposeId) return false;
+      if (isOwnScope && currentUser) {
+        const myPool =
+          c.assignedToUserId === currentUser.id ? c.pool1 :
+          c.assignedToUserId2 === currentUser.id ? c.pool2 :
+          c.assignedToUserId3 === currentUser.id ? c.pool3 :
+          null;
+        if (myPool !== poolTab) return false;
+      }
+      if (keyword) {
+        const hit = activities.some(
+          (a) => a.customerId === c.id && (a.content.toLowerCase().includes(keyword) || a.followUp.toLowerCase().includes(keyword))
+        );
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [
+    visibleCustomers, activities, removalRequests, currentUser, searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
+    filterSourceId, filterAreaId, filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId,
+    filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isOwnScope, currentUser, poolTab,
+  ]);
+
+  const sortedCustomers = useMemo(() => {
+    if (stageSort) {
+      return [...filteredCustomers].sort((a, b) => {
+        const diff = stageOrderOf(a) - stageOrderOf(b);
+        return stageSort === "asc" ? diff : -diff;
+      });
+    }
+    if (updatedSort) {
+      return [...filteredCustomers].sort((a, b) => {
+        const diff = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        return updatedSort === "asc" ? diff : -diff;
+      });
+    }
+    if (!isOwnScope) {
+      return [...filteredCustomers].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    const defaultStage = stages.find((s) => s.isDefault);
+    if (!defaultStage) return filteredCustomers;
+    return [...filteredCustomers].sort((a, b) => {
+      const aNew = myStageId(a) === defaultStage.id ? 0 : 1;
+      const bNew = myStageId(b) === defaultStage.id ? 0 : 1;
+      return aNew - bNew;
+    });
+  }, [filteredCustomers, isOwnScope, stages, currentUser, updatedSort, stageSort]);
+
+  function toggleUpdatedSort() {
+    setStageSort(null);
+    setUpdatedSort((prev) => (prev === "desc" ? "asc" : prev === "asc" ? null : "desc"));
+  }
+
+  function toggleStageSort() {
+    setUpdatedSort(null);
+    // starts at "asc" (pipeline order — New first), not "desc" like the
+    // updated-date toggle, since the point here is pipeline order, not
+    // most-recent-first
+    setStageSort((prev) => (prev === "asc" ? "desc" : prev === "desc" ? null : "asc"));
+  }
+
+  // pipeline-order rank for whichever stage badge is actually shown for
+  // this customer (own slot for own-scope, first populated slot for the
+  // unified list — matches stageBadgeNames/myStageId display logic).
+  // No stage (unassigned customer) sorts last regardless of direction.
+  function stageOrderOf(c: Customer): number {
+    const stageId = isOwnScope
+      ? myStageId(c)
+      : c.assignedToUserId ? c.stage1Id : c.assignedToUserId2 ? c.stage2Id : c.assignedToUserId3 ? c.stage3Id : null;
+    const order = stages.find((s) => s.id === stageId)?.order;
+    return order ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  if (!currentUser) return null;
+
+  function stageNameOf(stageId: string | null) {
+    return stages.find((s) => s.id === stageId)?.name ?? "—";
+  }
+
+  function myStageId(c: Customer): string | null {
+    if (!currentUser) return null;
+    if (c.assignedToUserId === currentUser.id) return c.stage1Id;
+    if (c.assignedToUserId2 === currentUser.id) return c.stage2Id;
+    if (c.assignedToUserId3 === currentUser.id) return c.stage3Id;
+    return null;
+  }
+
+  function stageBadgeNames(c: Customer): string[] {
+    return [
+      { userId: c.assignedToUserId, stageId: c.stage1Id },
+      { userId: c.assignedToUserId2, stageId: c.stage2Id },
+      { userId: c.assignedToUserId3, stageId: c.stage3Id },
+    ]
+      .filter((s) => s.userId)
+      .map((s) => stageNameOf(s.stageId));
+  }
+
+  function formatDate(iso: string): string {
+    return new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  const filterSubAreaOptions = filterAreaId ? subAreas.filter((s) => s.areaId === filterAreaId) : subAreas;
+  const filterCategoryOptions = filterBusinessIndustryId
+    ? businessTagCategories.filter((c) => c.industryId === filterBusinessIndustryId)
+    : businessTagCategories;
+  const filterTypeOptions = filterBusinessCategoryId
+    ? businessTagTypes.filter((t) => t.categoryId === filterBusinessCategoryId)
+    : businessTagTypes;
+
+  function assigneeNames(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string {
+    return assigneeIds(c)
+      .map((id) => users.find((u) => u.id === id)?.name ?? "")
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  const fieldResolvers: Record<string, (c: Customer) => string> = {
+    name: (c) => c.name,
+    phone: (c) => c.phone,
+    stage: (c) => stageBadgeNames(c).join(", "),
+    assignedTo: (c) => assigneeNames(c),
+    source: (c) => nameOf(leadSources, c.sourceId),
+    area: (c) => nameOf(areas, c.areaId),
+    subArea: (c) => nameOf(subAreas, c.subAreaId),
+    propertyType: (c) => nameOf(propertyTypes, c.propertyTypeId),
+    purpose: (c) => nameOf(purposes, c.purposeId),
+    businessIndustry: (c) => nameOf(businessTagIndustries, c.businessIndustryId),
+    businessCategory: (c) => nameOf(businessTagCategories, c.businessCategoryId),
+    businessType: (c) => nameOf(businessTagTypes, c.businessTypeId),
+    race: (c) => nameOf(races, c.raceId),
+    language: (c) => nameOf(languages, c.languageId),
+    businessName: (c) => c.businessName,
+    firsttimeBranch: (c) => nameOf(firsttimeBranchTypes, c.firsttimeBranchId),
+    targetRace: (c) => nameOf(targetRaces, c.targetRaceId),
+    targetType: (c) => nameOf(targetTypes, c.targetTypeId),
+    budget: (c) => (c.budgetMin !== null || c.budgetMax !== null ? `${c.budgetMin ?? "—"} - ${c.budgetMax ?? "—"}` : "—"),
+    remark: (c) => c.remark,
+  };
+
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      const allSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => prev.has(c.id));
+      if (allSelected) return new Set();
+      return new Set(filteredCustomers.map((c) => c.id));
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function runExport(format: "csv" | "xlsx", fieldKeys: string[]) {
+    const rows = visibleCustomers.filter((c) => selectedIds.has(c.id));
+    const data = rows.map((c) => {
+      const row: Record<string, string> = {};
+      for (const key of fieldKeys) {
+        const label = EXPORT_FIELDS.find((f) => f.key === key)?.label ?? key;
+        row[label] = fieldResolvers[key](c);
+      }
+      return row;
+    });
+    const sheet = XLSX.utils.json_to_sheet(data);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    if (format === "csv") {
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customers-export-${dateStr}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, sheet, "Customers");
+      XLSX.writeFile(book, `customers-export-${dateStr}.xlsx`);
+    }
+    setShowExportModal(false);
+  }
+
+  // Created Date, Business Type, Business Name, Tel No, Customer Name, Sub Area, Source, Stage, [Assigned Agent(s)], Purpose, Last Updated
+  const LIST_COLS = [...(isOwnScope ? [] : [100]), 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
+  const gridCols = `${canExport ? "32px " : ""}${LIST_COLS.map((w) => `${w}px`).join(" ")} 30px`;
+  const gridMinWidth = (canExport ? 32 : 0) + LIST_COLS.reduce((a, b) => a + b, 0) + 30;
+  const allFilteredSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => selectedIds.has(c.id));
+
+  return (
+    <>
+      {showExportModal && (
+        <ExportModal onClose={() => setShowExportModal(false)} onExport={runExport} />
+      )}
+
+      {isOwnScope && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {(["ACTIVE", "INACTIVE"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={poolTab === p ? "btn btn-primary" : "btn btn-outline"}
+              onClick={() => setPoolTab(p)}
+            >
+              {p === "ACTIVE" ? "Active Pool" : "Potential Pool"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 20, marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Name</label>
+          <input className="field-input" value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Search name" />
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Brand Name</label>
+          <input className="field-input" value={searchBrandName} onChange={(e) => setSearchBrandName(e.target.value)} placeholder="Search brand name" />
+        </div>
+        <div style={{ flex: "1 1 140px" }}>
+          <label className="field-label">Phone</label>
+          <input className="field-input" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} placeholder="Search phone" />
+        </div>
+        <div style={{ flex: "1 1 140px" }}>
+          <label className="field-label">Stage</label>
+          <select className="field-input" value={searchStageId} onChange={(e) => setSearchStageId(e.target.value)}>
+            <option value="">All</option>
+            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        {showAssignedTo && (
+          <div style={{ flex: "1 1 160px" }}>
+            <label className="field-label">Assigned To</label>
+            <select className="field-input" value={searchAssignedTo} onChange={(e) => setSearchAssignedTo(e.target.value)}>
+              <option value="">All</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ flex: "1 1 200px" }}>
+          <label className="field-label">Keyword (in log)</label>
+          <input className="field-input" value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} placeholder="Search notes, calls, visits" />
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Source</label>
+          <select className="field-input" value={filterSourceId} onChange={(e) => setFilterSourceId(e.target.value)}>
+            <option value="">All</option>
+            {leadSources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Area</label>
+          <select className="field-input" value={filterAreaId} onChange={(e) => { setFilterAreaId(e.target.value); setFilterSubAreaId(""); }}>
+            <option value="">All</option>
+            {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Sub Area</label>
+          <select className="field-input" value={filterSubAreaId} onChange={(e) => setFilterSubAreaId(e.target.value)}>
+            <option value="">All</option>
+            {filterSubAreaOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Property Type</label>
+          <select className="field-input" value={filterPropertyTypeId} onChange={(e) => setFilterPropertyTypeId(e.target.value)}>
+            <option value="">All</option>
+            {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Industry</label>
+          <select className="field-input" value={filterBusinessIndustryId} onChange={(e) => { setFilterBusinessIndustryId(e.target.value); setFilterBusinessCategoryId(""); setFilterBusinessTypeId(""); }}>
+            <option value="">All</option>
+            {businessTagIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Category</label>
+          <select className="field-input" value={filterBusinessCategoryId} onChange={(e) => { setFilterBusinessCategoryId(e.target.value); setFilterBusinessTypeId(""); }}>
+            <option value="">All</option>
+            {filterCategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Business Type</label>
+          <select className="field-input" value={filterBusinessTypeId} onChange={(e) => setFilterBusinessTypeId(e.target.value)}>
+            <option value="">All</option>
+            {filterTypeOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Race</label>
+          <select className="field-input" value={filterRaceId} onChange={(e) => setFilterRaceId(e.target.value)}>
+            <option value="">All</option>
+            {races.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">FirstTime / Branch</label>
+          <select className="field-input" value={filterFirsttimeBranchId} onChange={(e) => setFilterFirsttimeBranchId(e.target.value)}>
+            <option value="">All</option>
+            {firsttimeBranchTypes.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 160px" }}>
+          <label className="field-label">Purpose</label>
+          <select className="field-input" value={filterPurposeId} onChange={(e) => setFilterPurposeId(e.target.value)}>
+            <option value="">All</option>
+            {purposes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <button
+          className="btn btn-outline"
+          type="button"
+          onClick={() => {
+            setSearchName("");
+            setSearchBrandName("");
+            setSearchPhone("");
+            setSearchStageId("");
+            setSearchAssignedTo("");
+            setSearchKeyword("");
+            setFilterSourceId("");
+            setFilterAreaId("");
+            setFilterSubAreaId("");
+            setFilterPropertyTypeId("");
+            setFilterBusinessIndustryId("");
+            setFilterBusinessCategoryId("");
+            setFilterBusinessTypeId("");
+            setFilterRaceId("");
+            setFilterFirsttimeBranchId("");
+            setFilterPurposeId("");
+          }}
+        >
+          Clear
+        </button>
+      </div>
+
+      <div className="card">
+        <div style={{ padding: "14px 20px 0", fontSize: 13.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ color: "#6b7280" }}>Total Customer</span>
+            <span style={{ color: "#6b7280" }}> : </span>
+            <span style={{ fontWeight: 700 }}>{filteredCustomers.length}</span>
+          </div>
+          {canExport && selectedIds.size > 0 && (
+            <button className="btn btn-outline" onClick={() => setShowExportModal(true)}>
+              Export ({selectedIds.size})
+            </button>
+          )}
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ minWidth: gridMinWidth }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: gridCols,
+                padding: "12px 20px",
+                background: "#f7f7f8",
+                borderBottom: "1px solid #e2e4e9",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#6b7280",
+                textTransform: "uppercase",
+                letterSpacing: ".03em",
+              }}
+            >
+              {canExport && (
+                <div>
+                  <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
+                </div>
+              )}
+              {!isOwnScope && <div>Created Date</div>}
+              <div>Business Type</div>
+              <div>Business Name</div>
+              <div>Tel No</div>
+              <div>Customer Name</div>
+              <div>Sub Area</div>
+              <div>Source</div>
+              <div onClick={toggleStageSort} style={{ cursor: "pointer", userSelect: "none" }}>
+                Stage{stageSort === "desc" ? " ↓" : stageSort === "asc" ? " ↑" : ""}
+              </div>
+              {showAssignedTo && <div>Assigned Agent(s)</div>}
+              <div>Purpose</div>
+              <div onClick={toggleUpdatedSort} style={{ cursor: "pointer", userSelect: "none" }}>
+                Last Updated{updatedSort === "desc" ? " ↓" : updatedSort === "asc" ? " ↑" : ""}
+              </div>
+              <div></div>
+            </div>
+            {sortedCustomers.length === 0 && (
+              <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
+            )}
+            {sortedCustomers.map((c) => {
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => router.push(`/customers/${c.id}`)}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: gridCols,
+                    padding: "14px 20px",
+                    borderBottom: "1px solid #eef0f2",
+                    alignItems: "center",
+                    fontSize: 13.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  {canExport && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleOne(c.id)} />
+                    </div>
+                  )}
+                  {!isOwnScope && <div style={{ color: "#6b7280" }}>{formatDate(c.createdAt)}</div>}
+                  <div style={{ color: "#6b7280" }}>{nameOf(businessTagTypes, c.businessTypeId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{c.businessName || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{c.phone}</div>
+                  <div style={{ fontWeight: 500 }}>{c.name}</div>
+                  <div style={{ color: "#6b7280" }}>{nameOf(subAreas, c.subAreaId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{nameOf(leadSources, c.sourceId) || "—"}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {showAssignedTo ? (
+                      stageBadgeNames(c).map((name, i) => {
+                        const style = STAGE_STYLES[name] ?? { bg: "#eef0f4", color: "#4b5566" };
+                        return (
+                          <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: style.bg, color: style.color }}>
+                            {name}
+                          </span>
+                        );
+                      })
+                    ) : (() => {
+                      const name = stageNameOf(myStageId(c));
+                      const style = STAGE_STYLES[name] ?? { bg: "#eef0f4", color: "#4b5566" };
+                      return (
+                        <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: style.bg, color: style.color }}>
+                          {name}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  {showAssignedTo && <div style={{ color: "#6b7280" }}>{assigneeNames(c)}</div>}
+                  <div style={{ color: "#6b7280" }}>{nameOf(purposes, c.purposeId) || "—"}</div>
+                  <div style={{ color: "#6b7280" }}>{formatDate(c.updatedAt)}</div>
+                  <div style={{ color: "#c5c8cf", fontSize: 16, textAlign: "right" }}>›</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ExportModal({
+  onClose,
+  onExport,
+}: {
+  onClose: () => void;
+  onExport: (format: "csv" | "xlsx", fieldKeys: string[]) => void;
+}) {
+  const [format, setFormat] = useState<"csv" | "xlsx">("csv");
+  const [fieldKeys, setFieldKeys] = useState<Set<string>>(new Set(EXPORT_FIELDS.map((f) => f.key)));
+
+  function toggleField(key: string) {
+    setFieldKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="card modal-card" style={{ maxWidth: 480 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Export Customers</div>
+          <button className="btn btn-outline" type="button" onClick={onClose}>×</button>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Format</label>
+          <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+              <input type="radio" checked={format === "csv"} onChange={() => setFormat("csv")} /> CSV
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+              <input type="radio" checked={format === "xlsx"} onChange={() => setFormat("xlsx")} /> Excel (.xlsx)
+            </label>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Fields</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: 4, maxHeight: 260, overflowY: "auto" }}>
+            {EXPORT_FIELDS.map((f) => (
+              <label key={f.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+                <input type="checkbox" checked={fieldKeys.has(f.key)} onChange={() => toggleField(f.key)} /> {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={fieldKeys.size === 0}
+            onClick={() => onExport(format, EXPORT_FIELDS.map((f) => f.key).filter((k) => fieldKeys.has(k)))}
+          >
+            Export
+          </button>
+          <button className="btn btn-outline" type="button" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Replace the entire contents of `app/(dashboard)/customers/page.tsx`**
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useStore } from "@/lib/store";
+import CustomerListView from "@/components/CustomerListView";
+
+export default function CustomersPage() {
+  const { currentUser } = useStore();
+  const [showForm, setShowForm] = useState(false);
+
+  const canCreate = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+
+  if (!currentUser) return null;
+
+  // SALESPERSON's own follow-up queue (own slot only, pool tabs);
+  // ADMIN/MANAGER's unified team/company-wide list (no pool tabs, all
+  // assignees shown). See CustomerListView for what each scope does.
+  const scope: "own" | "all" = currentUser.role === "SALESPERSON" ? "own" : "all";
+
+  return (
+    <div style={{ padding: "28px 32px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Customers</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {canCreate && (
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+              + New Customer
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showForm && canCreate && (
+        <NewCustomerForm onClose={() => setShowForm(false)} />
+      )}
+
+      <CustomerListView scope={scope} />
+    </div>
+  );
+}
+
+function FormRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>{children}</div>;
+}
+
+function FormField({ children }: { children: React.ReactNode }) {
+  return <div style={{ flex: "1 1 0", minWidth: 150 }}>{children}</div>;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, marginTop: 4 }}>{children}</div>;
+}
+
+function NewCustomerForm({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const {
+    customers,
+    users,
+    addCustomer,
+    leadSources,
+    areas,
+    subAreas,
+    propertyTypes,
+    purposes,
+    businessTagIndustries,
+    businessTagCategories,
+    businessTagTypes,
+    races,
+    languages,
+    firsttimeBranchTypes,
+    targetRaces,
+    targetTypes,
+    fieldRequirements,
+  } = useStore();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [optionalPhone, setOptionalPhone] = useState("");
+  const activeUsers = users.filter((u) => u.active);
+  const [assignedToUserId, setAssignedToUserId] = useState("");
+  const [assignedToUserId2, setAssignedToUserId2] = useState("");
+  const [assignedToUserId3, setAssignedToUserId3] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [areaId, setAreaId] = useState("");
+  const [subAreaId, setSubAreaId] = useState("");
+  const [propertyTypeId, setPropertyTypeId] = useState("");
+  const [purposeId, setPurposeId] = useState("");
+  const [businessIndustryId, setBusinessIndustryId] = useState("");
+  const [businessCategoryId, setBusinessCategoryId] = useState("");
+  const [businessTypeId, setBusinessTypeId] = useState("");
+  const [raceId, setRaceId] = useState("");
+  const [languageId, setLanguageId] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [firsttimeBranchId, setFirsttimeBranchId] = useState("");
+  const [targetRaceId, setTargetRaceId] = useState("");
+  const [targetTypeId, setTargetTypeId] = useState("");
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
+  const [remark, setRemark] = useState("");
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const filteredSubAreas = subAreas.filter((s) => s.areaId === areaId);
+  const filteredCategories = businessTagCategories.filter((c) => c.industryId === businessIndustryId);
+  const filteredTypes = businessTagTypes.filter((t) => t.categoryId === businessCategoryId);
+
+  function isFieldRequired(fieldKey: string): boolean {
+    return fieldRequirements.find((f) => f.fieldKey === fieldKey)?.required ?? false;
+  }
+
+  function Asterisk({ fieldKey }: { fieldKey: string }) {
+    return isFieldRequired(fieldKey) ? <span style={{ color: "#a13a2b" }}> *</span> : null;
+  }
+
+  // each assignee dropdown excludes whoever is already picked in the other two slots,
+  // and is scoped to the team(s) that own the selected area (ADMIN excluded — doesn't do sales).
+  // No team on the area yet? No candidates — set it on /admin/area first.
+  function assigneeOptions(excluding: string[]) {
+    const teamIds = areas.find((a) => a.id === areaId)?.teamIds ?? [];
+    if (teamIds.length === 0) return [];
+    return activeUsers.filter((u) => u.role !== "ADMIN" && !!u.teamId && teamIds.includes(u.teamId) && !excluding.includes(u.id));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    const fieldValues: Record<string, string> = {
+      phone,
+      assigned_to: assignedToUserId,
+      source: sourceId,
+      area: areaId,
+      sub_area: subAreaId,
+      property_type: propertyTypeId,
+      purpose: purposeId,
+      business_industry: businessIndustryId,
+      business_category: businessCategoryId,
+      business_type: businessTypeId,
+    };
+    const failing = new Set<string>();
+    for (const [fieldKey, value] of Object.entries(fieldValues)) {
+      if (isFieldRequired(fieldKey) && !value) failing.add(fieldKey);
+    }
+    if (failing.size > 0) {
+      setInvalidFields(failing);
+      return;
+    }
+
+    const enteredPhones = [phone.trim(), optionalPhone.trim()].filter(Boolean);
+    const dupes = customers.filter((c) => enteredPhones.some((p) => c.phone === p || c.optionalPhone === p));
+    if (dupes.length > 0) {
+      const details = dupes
+        .map((c) => `${c.name} — ${c.businessName || "—"} — ${nameOf(businessTagTypes, c.businessTypeId) || "—"}`)
+        .join("\n");
+      const proceed = window.confirm(`This phone number is already used by:\n\n${details}\n\nCreate anyway?`);
+      if (!proceed) return;
+    }
+
+    setFormError("");
+    setSubmitting(true);
+    const result = await addCustomer({
+      name,
+      email: "",
+      phone,
+      assignedToUserId,
+      assignedToUserId2: assignedToUserId2 || null,
+      assignedToUserId3: assignedToUserId3 || null,
+      sourceId: sourceId || null,
+      areaId: areaId || null,
+      subAreaId: subAreaId || null,
+      propertyTypeId: propertyTypeId || null,
+      purposeId: purposeId || null,
+      businessIndustryId: businessIndustryId || null,
+      businessCategoryId: businessCategoryId || null,
+      businessTypeId: businessTypeId || null,
+      raceId: raceId || null,
+      languageId: languageId || null,
+      businessName,
+      firsttimeBranchId: firsttimeBranchId || null,
+      targetRaceId: targetRaceId || null,
+      targetTypeId: targetTypeId || null,
+      budgetMin: budgetMin === "" ? null : Number(budgetMin),
+      budgetMax: budgetMax === "" ? null : Number(budgetMax),
+      optionalPhone,
+      remark,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setFormError(result.error ?? "Could not add customer.");
+      return;
+    }
+    // Land straight on the new customer's profile -- Admin/Manager
+    // creating one almost always wants to assign it right away, not
+    // re-find it in the list. onClose() unmounts this form as part of
+    // navigating away.
+    if (result.customerId) {
+      router.push(`/customers/${result.customerId}`);
+    } else {
+      onClose();
+    }
+  }
+
+  function clearInvalid(fieldKey: string) {
+    setInvalidFields((prev) => {
+      if (!prev.has(fieldKey)) return prev;
+      const next = new Set(prev);
+      next.delete(fieldKey);
+      return next;
+    });
+  }
+
+  function fieldStyle(fieldKey: string): React.CSSProperties {
+    return invalidFields.has(fieldKey) ? { borderColor: "#a13a2b" } : {};
+  }
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <form onSubmit={handleSubmit} className="card modal-card" style={{ maxWidth: 900 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>New Customer</div>
+          <button className="btn btn-outline" type="button" onClick={onClose}>×</button>
+        </div>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Name</label>
+            <input className="field-input" value={name} onChange={(e) => setName(e.target.value)} required />
+          </FormField>
+          <FormField>
+            <label className="field-label">Phone<Asterisk fieldKey="phone" /></label>
+            <input className="field-input" style={fieldStyle("phone")} onFocus={() => clearInvalid("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </FormField>
+          <FormField>
+            <label className="field-label">Optional Phone</label>
+            <input type="tel" className="field-input" value={optionalPhone} onChange={(e) => setOptionalPhone(e.target.value)} />
+          </FormField>
+        </FormRow>
+
+        <SectionLabel>Business Profile</SectionLabel>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Source<Asterisk fieldKey="source" /></label>
+            <select className="field-input" style={fieldStyle("source")} onFocus={() => clearInvalid("source")} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+              <option value="">—</option>
+              {leadSources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Area<Asterisk fieldKey="area" /></label>
+            <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); setAssignedToUserId(""); setAssignedToUserId2(""); setAssignedToUserId3(""); }}>
+              <option value="">—</option>
+              {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Subarea<Asterisk fieldKey="sub_area" /></label>
+            <select className="field-input" style={fieldStyle("sub_area")} onFocus={() => clearInvalid("sub_area")} value={subAreaId} onChange={(e) => setSubAreaId(e.target.value)} disabled={!areaId}>
+              <option value="">—</option>
+              {filteredSubAreas.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </FormField>
+        </FormRow>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Business Industry<Asterisk fieldKey="business_industry" /></label>
+            <select className="field-input" style={fieldStyle("business_industry")} onFocus={() => clearInvalid("business_industry")} value={businessIndustryId} onChange={(e) => { setBusinessIndustryId(e.target.value); setBusinessCategoryId(""); setBusinessTypeId(""); }}>
+              <option value="">—</option>
+              {businessTagIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Business Category<Asterisk fieldKey="business_category" /></label>
+            <select className="field-input" style={fieldStyle("business_category")} onFocus={() => clearInvalid("business_category")} value={businessCategoryId} onChange={(e) => { setBusinessCategoryId(e.target.value); setBusinessTypeId(""); }} disabled={!businessIndustryId}>
+              <option value="">—</option>
+              {filteredCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Business Type<Asterisk fieldKey="business_type" /></label>
+            <select className="field-input" style={fieldStyle("business_type")} onFocus={() => clearInvalid("business_type")} value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)} disabled={!businessCategoryId}>
+              <option value="">—</option>
+              {filteredTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </FormField>
+        </FormRow>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Property Type<Asterisk fieldKey="property_type" /></label>
+            <select className="field-input" style={fieldStyle("property_type")} onFocus={() => clearInvalid("property_type")} value={propertyTypeId} onChange={(e) => setPropertyTypeId(e.target.value)}>
+              <option value="">—</option>
+              {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Purpose<Asterisk fieldKey="purpose" /></label>
+            <select className="field-input" style={fieldStyle("purpose")} onFocus={() => clearInvalid("purpose")} value={purposeId} onChange={(e) => setPurposeId(e.target.value)}>
+              <option value="">—</option>
+              {purposes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Race</label>
+            <select className="field-input" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
+              <option value="">—</option>
+              {races.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Language</label>
+            <select className="field-input" value={languageId} onChange={(e) => setLanguageId(e.target.value)}>
+              <option value="">—</option>
+              {languages.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </FormField>
+        </FormRow>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Business Name</label>
+            <input className="field-input" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+          </FormField>
+          <FormField>
+            <label className="field-label">Firsttime / Branch</label>
+            <select className="field-input" value={firsttimeBranchId} onChange={(e) => setFirsttimeBranchId(e.target.value)}>
+              <option value="">—</option>
+              {firsttimeBranchTypes.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Target Race</label>
+            <select className="field-input" value={targetRaceId} onChange={(e) => setTargetRaceId(e.target.value)}>
+              <option value="">—</option>
+              {targetRaces.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Target Type</label>
+            <select className="field-input" value={targetTypeId} onChange={(e) => setTargetTypeId(e.target.value)}>
+              <option value="">—</option>
+              {targetTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Budget Min</label>
+            <input type="number" className="field-input" value={budgetMin} onChange={(e) => setBudgetMin(e.target.value)} />
+          </FormField>
+          <FormField>
+            <label className="field-label">Budget Max</label>
+            <input type="number" className="field-input" value={budgetMax} onChange={(e) => setBudgetMax(e.target.value)} />
+          </FormField>
+        </FormRow>
+
+        <SectionLabel>Assigned To</SectionLabel>
+
+        <FormRow>
+          <FormField>
+            <label className="field-label">Assigned To 1<Asterisk fieldKey="assigned_to" /></label>
+            <select
+              className="field-input"
+              style={fieldStyle("assigned_to")}
+              onFocus={() => clearInvalid("assigned_to")}
+              value={assignedToUserId}
+              onChange={(e) => setAssignedToUserId(e.target.value)}
+            >
+              <option value="">—</option>
+              {assigneeOptions([assignedToUserId2, assignedToUserId3]).map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Assigned To 2</label>
+            <select className="field-input" value={assignedToUserId2} onChange={(e) => setAssignedToUserId2(e.target.value)}>
+              <option value="">—</option>
+              {assigneeOptions([assignedToUserId, assignedToUserId3]).map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField>
+            <label className="field-label">Assigned To 3</label>
+            <select className="field-input" value={assignedToUserId3} onChange={(e) => setAssignedToUserId3(e.target.value)}>
+              <option value="">—</option>
+              {assigneeOptions([assignedToUserId, assignedToUserId2]).map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </FormField>
+        </FormRow>
+
+        <FormRow>
+          <div style={{ flex: "1 1 100%" }}>
+            <label className="field-label">Remark</label>
+            <input className="field-input" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Note for the assigned salesperson" />
+          </div>
+        </FormRow>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create"}</button>
+          <button className="btn btn-outline" type="button" onClick={onClose}>Cancel</button>
+        </div>
+        {formError && <div className="error-text" style={{ marginTop: 10 }}>{formError}</div>}
+      </form>
+    </div>
+  );
+}
+```
+
+This is missing two imports `NewCustomerForm` needs that the trimmed header no longer has: `useRouter` and the `nameOf` helper it calls for the duplicate-phone warning. Add them at the top of the file — the final import block is:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useStore } from "@/lib/store";
+import CustomerListView from "@/components/CustomerListView";
+
+type LookupItem = { id: string; name: string };
+
+function nameOf(list: LookupItem[], id: string | null): string {
+  return list.find((x) => x.id === id)?.name ?? "";
+}
+```
+
+(replacing the plain `import { useState } from "react";` / `import { useStore } from "@/lib/store";` / `import CustomerListView from "@/components/CustomerListView";` block at the top of the Step 2 file with this one, and keeping everything else in Step 2 unchanged).
+
+- [ ] **Step 3: Typecheck**
+
+Run: `npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 4: Manual test**
+
+`npm run dev`, then in the browser:
+- As ADMIN: `/customers` shows the unified list exactly as before — Created Date column present, Assigned Agent(s) column present, no pool tabs, checkbox column + "Export (N)" button appear next to "Total Customer : N" (not in the page header) once you select rows, "+ New Customer" still in the page header. Create a customer, confirm redirect to its detail page.
+- As MANAGER: `/customers` shows the unified team list, no pool tabs, no export controls (ADMIN-only), "+ New Customer" still works.
+- As SALESPERSON: `/customers` shows only own-assigned customers, Active Pool / Potential Pool tabs present and filter correctly, no Created Date column, no Assigned Agent(s) column, own single stage badge shown, default sort is new-stage-first.
+- All three roles: every search/filter field still narrows the list; Stage/Last Updated column sort toggles still work; clicking a row still navigates to `/customers/<id>`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/CustomerListView.tsx "app/(dashboard)/customers/page.tsx"
+git commit -m "Extract CustomerListView (scope: own/all) from /customers page
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: `/my-customers` page (MANAGER only)
+
+**Files:**
+- Create: `app/(dashboard)/my-customers/page.tsx`
+
+**Interfaces:**
+- Consumes: `CustomerListView` from Task 1 (`scope="own"`), `useStore()` (`currentUser`, `initialized`).
+
+- [ ] **Step 1: Create `app/(dashboard)/my-customers/page.tsx`**
+
+Single page, no layout.tsx needed (unlike `/admin/*` or `/team/*`, this route has no sub-pages) — the role guard lives inline, same pattern `team/layout.tsx` uses just inlined into the page component itself.
+
+```tsx
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useStore } from "@/lib/store";
+import CustomerListView from "@/components/CustomerListView";
+
+export default function MyCustomersPage() {
+  const router = useRouter();
+  const { currentUser, initialized } = useStore();
+
+  useEffect(() => {
+    if (initialized && currentUser && currentUser.role !== "MANAGER") router.replace("/dashboard");
+  }, [initialized, currentUser, router]);
+
+  if (!initialized || !currentUser || currentUser.role !== "MANAGER") return null;
+
+  return (
+    <div style={{ padding: "28px 32px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>My Customers</div>
+      </div>
+
+      <CustomerListView scope="own" />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Typecheck**
+
+Run: `npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 3: Manual test**
+
+`npm run dev`:
+- As MANAGER, navigate directly to `http://localhost:3000/my-customers`: page renders, title "My Customers", Active Pool / Potential Pool tabs visible, list shows only customers where this manager occupies an assignee slot (if none are assigned yet, this may be empty — cross-check against `/customers` to confirm which of this manager's team customers include them as an assignee).
+- As SALESPERSON, navigate directly to `/my-customers`: redirected to `/dashboard`.
+- As ADMIN, navigate directly to `/my-customers`: redirected to `/dashboard`.
+- On `/my-customers`, click a row: navigates to `/customers/<id>` (existing detail page, unchanged).
+- Toggle a pool tab: list filters by the manager's own slot's pool status, same as it does for a salesperson on `/customers`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(dashboard)/my-customers/page.tsx"
+git commit -m "Add /my-customers page (MANAGER-only own pool view)
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: "My Customers" nav tab + badge
+
+**Files:**
+- Modify: `components/MainNav.tsx`
+
+**Interfaces:**
+- Consumes: `/my-customers` route from Task 2.
+
+- [ ] **Step 1: Add the shared own-default-stage counter and the manager's badge**
+
+Find:
+```tsx
+  // SP's own badge: how many of their customers sit in the default ("New")
+  // stage -- same stage-slot logic as myStageId in customers/page.tsx (own
+  // assignee slot, whichever of the 3 is theirs).
+  const newStageCustomerCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+    const defaultStage = stages.find((s) => s.isDefault);
+    if (!defaultStage) return 0;
+    return customers.filter((c) => {
+      const stageId =
+        c.assignedToUserId === currentUser.id ? c.stage1Id :
+        c.assignedToUserId2 === currentUser.id ? c.stage2Id :
+        c.assignedToUserId3 === currentUser.id ? c.stage3Id :
+        null;
+      return stageId === defaultStage.id;
+    }).length;
+  }, [customers, currentUser, stages]);
+```
+Replace with:
+```tsx
+  // Shared by both "own assigned customers in default stage" badges below
+  // (SP's Customers tab, MANAGER's My Customers tab) -- same stage-slot
+  // logic as myStageId in customers/page.tsx (own assignee slot, whichever
+  // of the 3 is theirs).
+  function countOwnDefaultStage(userId: string): number {
+    const defaultStage = stages.find((s) => s.isDefault);
+    if (!defaultStage) return 0;
+    return customers.filter((c) => {
+      const stageId =
+        c.assignedToUserId === userId ? c.stage1Id :
+        c.assignedToUserId2 === userId ? c.stage2Id :
+        c.assignedToUserId3 === userId ? c.stage3Id :
+        null;
+      return stageId === defaultStage.id;
+    }).length;
+  }
+
+  // SP's own badge on the "Customers" tab.
+  const newStageCustomerCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+    return countOwnDefaultStage(currentUser.id);
+  }, [customers, currentUser, stages]);
+
+  // Manager's own badge on the "My Customers" tab -- their own assignee
+  // slot, not the team-wide unified list.
+  const myCustomersNewStageCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "MANAGER") return 0;
+    return countOwnDefaultStage(currentUser.id);
+  }, [customers, currentUser, stages]);
+```
+
+- [ ] **Step 2: Insert the tab between "Customers" and "To Do"**
+
+Find:
+```tsx
+  const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
+    { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
+    { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
+  ];
+```
+Replace with:
+```tsx
+  const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
+    { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
+  ];
+  if (currentUser.role === "MANAGER") {
+    tabs.push({ href: "/my-customers", label: "My Customers", active: pathname.startsWith("/my-customers"), badge: myCustomersNewStageCount });
+  }
+  tabs.push({ href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount });
+```
+
+- [ ] **Step 3: Typecheck**
+
+Run: `npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 4: Manual test**
+
+`npm run dev`:
+- As MANAGER: nav bar shows tabs in order Dashboard, Customers, **My Customers**, To Do, Agent Log, Inactive Listings, Remove Approvals, Blast Requests, Blast Claims, Blasting. "My Customers" badge shows the manager's own new-stage customer count (0 → no badge shown, matches existing `!!tab.badge` behavior). Click it, navigates to `/my-customers` and highlights as active.
+- As SALESPERSON: no "My Customers" tab anywhere in the nav.
+- As ADMIN: no "My Customers" tab anywhere in the nav.
+- As MANAGER, put one of your own-assigned customers into the default ("New") stage (or confirm one already is): the "My Customers" badge count matches the number of your own-assigned customers in that stage, and matches what `/my-customers` itself lists under that stage.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/MainNav.tsx
+git commit -m "Add My Customers nav tab + badge for MANAGER
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Self-Review Notes
+
+- **Spec coverage:** Nav tab name/position (Task 3, Step 2) — after Customers, before To Do. Route + MANAGER-only guard (Task 2). Own-slot filtering + pool tabs + hidden Assigned To column + own stage badge + new-stage-first sort (Task 1's `CustomerListView`, `scope="own"`, used by both `/customers` for SALESPERSON and `/my-customers` for MANAGER). No create/export on `/my-customers` (Task 2 renders only `CustomerListView`, no form/export wiring). Pool toggle permission needs no change (called out in Global Constraints, verified against existing code). Badge formula (Task 3, Step 1, `countOwnDefaultStage`). `/customers` MANAGER behavior unchanged (Task 1, `scope="all"` path is a straight rename of the pre-existing `!isSalesperson` branch, no logic change). ADMIN gets no tab (Task 3 only pushes for `role === "MANAGER"`).
+- **Type consistency:** `CustomerListView({ scope: "own" | "all" })` (Task 1) is called identically in Task 1's `customers/page.tsx` (`scope={scope}`, computed `"own" | "all"`) and Task 2's `my-customers/page.tsx` (`scope="own"` literal) — matches. `countOwnDefaultStage(userId: string): number` (Task 3) called with `currentUser.id` (`string`) in both badges — matches.
+- **No placeholders:** every step carries complete, real code (no TBD/TODO); the Task 1 Step 2 import-block note is a genuine correction (the trimmed page still needs `useRouter` and `nameOf` for `NewCustomerForm`), not a deferred detail.
+- **Scope check:** single feature, three tightly-scoped tasks, no decomposition needed.
