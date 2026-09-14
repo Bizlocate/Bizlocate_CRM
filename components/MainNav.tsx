@@ -11,21 +11,28 @@ export default function MainNav() {
   const { currentUser, removalRequests, customerDeleteRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests, stages } = useStore();
   const pathname = usePathname();
 
-  // SP's own badge: how many of their customers sit in the default ("New")
-  // stage -- same stage-slot logic as myStageId in customers/page.tsx (own
-  // assignee slot, whichever of the 3 is theirs).
-  const newStageCustomerCount = useMemo(() => {
-    if (!currentUser || currentUser.role !== "SALESPERSON") return 0;
+  // Shared by both "own assigned customers in default stage" badges below
+  // (SP's Customers tab, MANAGER's My Customers tab) -- same stage-slot
+  // logic as myStageId in components/CustomerListView.tsx (own assignee slot, whichever
+  // of the 3 is theirs).
+  function countOwnDefaultStage(userId: string): number {
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return 0;
     return customers.filter((c) => {
       const stageId =
-        c.assignedToUserId === currentUser.id ? c.stage1Id :
-        c.assignedToUserId2 === currentUser.id ? c.stage2Id :
-        c.assignedToUserId3 === currentUser.id ? c.stage3Id :
+        c.assignedToUserId === userId ? c.stage1Id :
+        c.assignedToUserId2 === userId ? c.stage2Id :
+        c.assignedToUserId3 === userId ? c.stage3Id :
         null;
       return stageId === defaultStage.id;
     }).length;
+  }
+
+  // Badge count for own assigned customers in their default stage (used by
+  // both "Customers" tab for SALESPERSON and "My Customers" tab for MANAGER).
+  const ownNewStageCount = useMemo(() => {
+    if (!currentUser || currentUser.role === "ADMIN") return 0;
+    return countOwnDefaultStage(currentUser.id);
   }, [customers, currentUser, stages]);
 
   // tasks is already RLS-scoped to "mine" (private per creator), so this is
@@ -79,9 +86,12 @@ export default function MainNav() {
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
-    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: newStageCustomerCount },
-    { href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: ownNewStageCount },
   ];
+  if (currentUser.role === "MANAGER") {
+    tabs.push({ href: "/my-customers", label: "My Customers", active: pathname.startsWith("/my-customers"), badge: ownNewStageCount });
+  }
+  tabs.push({ href: "/tasks", label: "To Do", active: pathname.startsWith("/tasks"), badge: openTaskCount });
   if (currentUser.role !== "SALESPERSON") {
     const agentLogHref = currentUser.role === "ADMIN" ? "/admin/agent-logs" : "/team/agent-logs";
     tabs.push({ href: agentLogHref, label: "Agent Log", active: pathname.startsWith(agentLogHref) });
