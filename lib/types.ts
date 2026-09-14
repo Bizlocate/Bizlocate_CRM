@@ -20,14 +20,14 @@ export interface Team {
   id: string;
   name: string;
   managerId: string | null;
-  lastAutoAssignedUserId: string | null;
 }
 
 export interface Area {
   id: string;
   name: string;
-  teamId: string | null;
+  teamIds: string[];
   autoAssignEnabled: boolean;
+  lastAutoAssignedUserId: string | null;
 }
 
 export interface SubArea {

@@ -55,12 +55,12 @@ function mapProfile(row: { id: string; name: string; email: string; phone: strin
   return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit, autoAssignEnabled: row.auto_assign_enabled ?? true };
 }
 
-function mapTeam(row: { id: string; name: string; manager_id: string | null; last_auto_assigned_user_id: string | null }): Team {
-  return { id: row.id, name: row.name, managerId: row.manager_id, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
+function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
+  return { id: row.id, name: row.name, managerId: row.manager_id };
 }
 
-function mapArea(row: { id: string; name: string; team_id: string | null; auto_assign_enabled: boolean }): Area {
-  return { id: row.id, name: row.name, teamId: row.team_id, autoAssignEnabled: row.auto_assign_enabled ?? true };
+function mapArea(row: { id: string; name: string; auto_assign_enabled: boolean; last_auto_assigned_user_id: string | null }, teamIds: string[]): Area {
+  return { id: row.id, name: row.name, teamIds, autoAssignEnabled: row.auto_assign_enabled ?? true, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
@@ -573,7 +573,8 @@ interface Store {
 
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
-  updateAreaTeam: (id: string, teamId: string | null) => void;
+  addAreaTeam: (areaId: string, teamId: string) => void;
+  removeAreaTeam: (areaId: string, teamId: string) => void;
   updateAreaAutoAssign: (id: string, enabled: boolean) => void;
   deleteArea: (id: string) => void;
   addSubArea: (areaId: string, name: string) => void;
@@ -710,6 +711,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     usersRef.current = users;
   }, [users]);
 
+  // Realtime payloads for the "areas" table carry only areas-row columns,
+  // not the area_teams join -- preserve the area's current teamIds (looked
+  // up live, same reasoning as usersRef above) rather than dropping them.
+  const areasRef = useRef(areas);
+  useEffect(() => {
+    areasRef.current = areas;
+  }, [areas]);
+
   // Set by login() (a fresh login) or adopted from the DB on auto-restore
   // (an existing session continuing, e.g. reload/new tab -- never
   // overwritten there). The session-guard effect below compares this
@@ -736,8 +745,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   async function loadAreas(): Promise<Area[]> {
     const supabase = createClient();
-    const { data } = await supabase.from("areas").select("*").order("name");
-    const mapped = (data ?? []).map(mapArea);
+    const [{ data }, { data: links }] = await Promise.all([
+      supabase.from("areas").select("*").order("name"),
+      supabase.from("area_teams").select("*"),
+    ]);
+    const teamIdsByArea = new Map<string, string[]>();
+    for (const link of (links ?? []) as { area_id: string; team_id: string }[]) {
+      const list = teamIdsByArea.get(link.area_id) ?? [];
+      list.push(link.team_id);
+      teamIdsByArea.set(link.area_id, list);
+    }
+    const mapped = (data ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
     setAreas(mapped);
     return mapped;
   }
@@ -1051,29 +1069,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ponytail: compute-on-load sweep, not real-time — same accepted
   // imprecision as the pool sweep. Upgrade to a cron/edge function sweep
   // if sub-day precision ever matters.
-  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], teamsList: Team[], usersList: User[], stagesList: Stage[], activitiesList: Activity[], isAdmin: boolean) {
+  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], usersList: User[], stagesList: Stage[], activitiesList: Activity[], isAdmin: boolean) {
     if (!isAdmin) return;
     const defaultStage = stagesList.find((s) => s.isDefault) ?? stagesList[0];
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const supabase = createClient();
-    // The `teamsList`/`customersList` params are a frozen snapshot, but a
-    // single sweep call can assign multiple customers off the same team in
-    // one pass (this is a batch catch-up sweep, not a one-at-a-time
-    // trigger). Track this call's own round-robin pointer and each
-    // candidate's in-progress assignment count locally so the second
-    // customer processed in the same sweep sees the first one's pick,
-    // instead of both re-reading the same stale pointer/pool-count and
-    // colliding on the same winner.
-    const pointerByTeam = new Map<string, string | null>();
+    // The `customersList` param is a frozen snapshot, but a single sweep
+    // call can assign multiple customers off the same area in one pass
+    // (this is a batch catch-up sweep, not a one-at-a-time trigger). Track
+    // this call's own round-robin pointer and each candidate's in-progress
+    // assignment count locally so the second customer processed in the
+    // same sweep sees the first one's pick, instead of both re-reading the
+    // same stale pointer/pool-count and colliding on the same winner.
+    const pointerByArea = new Map<string, string | null>();
     const extraAssignedCount = new Map<string, number>();
     for (const c of customersList) {
       if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
       const area = areasList.find((a) => a.id === c.areaId);
-      if (!area?.teamId || !area.autoAssignEnabled) continue;
-      const team = teamsList.find((t) => t.id === area.teamId);
-      if (!team) continue;
+      if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
       const slot1Stage = c.stage1Id ? stagesList.find((s) => s.id === c.stage1Id) : undefined;
       if (slot1Stage?.excludeFromAutoAssign) {
         const lastOwnActivity = activitiesList
@@ -1086,10 +1101,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
       const candidates = usersList
-        .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && u.teamId === team.id && !excluded.includes(u.id))
+        .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       if (candidates.length === 0) continue;
-      const currentPointer = pointerByTeam.has(team.id) ? pointerByTeam.get(team.id)! : team.lastAutoAssignedUserId;
+      const currentPointer = pointerByArea.has(area.id) ? pointerByArea.get(area.id)! : area.lastAutoAssignedUserId;
       const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
       const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
       let winner: User | undefined;
@@ -1109,14 +1124,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (!winner) continue;
       const winnerId = winner.id;
-      pointerByTeam.set(team.id, winnerId);
+      pointerByArea.set(area.id, winnerId);
       extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
       setCustomers((prev) =>
         prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null, stage2Id: defaultStage?.id ?? null } : row))
       );
       supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null, stage_2: defaultStage?.id ?? null }).eq("id", c.id).then(() => {});
-      setTeams((prev) => prev.map((t) => (t.id === team.id ? { ...t, lastAutoAssignedUserId: winnerId } : t)));
-      supabase.from("teams").update({ last_auto_assigned_user_id: winnerId }).eq("id", team.id).then(() => {});
+      setAreas((prev) => prev.map((a) => (a.id === area.id ? { ...a, lastAutoAssignedUserId: winnerId } : a)));
+      supabase.from("areas").update({ last_auto_assigned_user_id: winnerId }).eq("id", area.id).then(() => {});
       logAssignmentEvent(c.id, winnerId, 2);
     }
   }
@@ -1175,7 +1190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
           sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
-          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
+          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
@@ -1189,7 +1204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const entries: RealtimeTableEntry[] = [
       { table: "profiles", setState: (fn) => setUsers(fn), mapRow: mapProfile, keyOf: (x) => x.id },
       { table: "teams", setState: (fn) => setTeams(fn), mapRow: mapTeam, keyOf: (x) => x.id },
-      { table: "areas", setState: (fn) => setAreas(fn), mapRow: mapArea, keyOf: (x) => x.id },
+      { table: "areas", setState: (fn) => setAreas(fn), mapRow: (row) => mapArea(row, areasRef.current.find((a) => a.id === row.id)?.teamIds ?? []), keyOf: (x) => x.id },
       { table: "sub_areas", setState: (fn) => setSubAreas(fn), mapRow: mapSubArea, keyOf: (x) => x.id },
       { table: "business_tag_industries", setState: (fn) => setBusinessTagIndustries(fn), mapRow: mapBusinessTagIndustry, keyOf: (x) => x.id },
       { table: "business_tag_categories", setState: (fn) => setBusinessTagCategories(fn), mapRow: mapBusinessTagCategory, keyOf: (x) => x.id },
@@ -1315,7 +1330,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
-    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadResults[0], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
+    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
   }
@@ -1487,7 +1502,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setAreas((prev) => [...prev, mapArea(data)]);
+        if (!error && data) setAreas((prev) => [...prev, mapArea(data, [])]);
       });
   }
 
@@ -1497,18 +1512,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("areas").update({ name }).eq("id", id).then(() => {});
   }
 
-  function updateAreaTeam(id: string, teamId: string | null) {
-    const target = areas.find((a) => a.id === id);
-    if (!target) return;
-    const prevTeamId = target.teamId;
-    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, teamId } : a)));
+  function addAreaTeam(areaId: string, teamId: string) {
+    const target = areas.find((a) => a.id === areaId);
+    if (!target || target.teamIds.includes(teamId)) return;
+    setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: [...a.teamIds, teamId] } : a)));
     const supabase = createClient();
     supabase
-      .from("areas")
-      .update({ team_id: teamId })
-      .eq("id", id)
+      .from("area_teams")
+      .insert({ area_id: areaId, team_id: teamId })
       .then(({ error }) => {
-        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, teamId: prevTeamId } : a)));
+        if (error) setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: a.teamIds.filter((id) => id !== teamId) } : a)));
+      });
+  }
+
+  function removeAreaTeam(areaId: string, teamId: string) {
+    const target = areas.find((a) => a.id === areaId);
+    if (!target) return;
+    const prevTeamIds = target.teamIds;
+    setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: a.teamIds.filter((id) => id !== teamId) } : a)));
+    const supabase = createClient();
+    supabase
+      .from("area_teams")
+      .delete()
+      .eq("area_id", areaId)
+      .eq("team_id", teamId)
+      .then(({ error }) => {
+        if (error) setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: prevTeamIds } : a)));
       });
   }
 
@@ -2815,7 +2844,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteTeam,
     addArea,
     updateArea,
-    updateAreaTeam,
+    addAreaTeam,
+    removeAreaTeam,
     updateAreaAutoAssign,
     deleteArea,
     addSubArea,
