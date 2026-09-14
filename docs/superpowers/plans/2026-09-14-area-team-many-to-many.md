@@ -750,9 +750,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Modify: `app/(dashboard)/customers/page.tsx`
 - Modify: `app/(dashboard)/dashboard/page.tsx`
 - Modify: `app/(dashboard)/team/agent-logs/page.tsx`
+- Modify: `lib/parseAreaCsv.check.ts`
 
 **Interfaces:**
 - Consumes: `Area.teamIds: string[]` (Task 2). No new interfaces produced — every change here is a self-contained one-line filter/lookup swap, each file already compiles independently of the others, so this is one task covering all seven mechanical edits rather than seven separate task gates.
+
+**Plan amendment (discovered during Task 2):** `lib/parseAreaCsv.check.ts` — a standalone self-check script (`node --experimental-strip-types lib/parseAreaCsv.check.ts`, not imported by app code, but covered by `tsconfig.json`'s `**/*.ts` include so `npm run build`/`tsc --noEmit` still type-checks it) — constructs an `Area` literal using the old `teamId: null` shape. Not in the original seven-file inventory; added here as Step 8 below.
 
 - [ ] **Step 1: `components/AgentLogBrowser.tsx`**
 
@@ -917,7 +920,21 @@ Replace with (the `agents` line compares two `User.teamId`s, both still single-v
   const teamAreas = areas.filter((a) => !!currentUser?.teamId && a.teamIds.includes(currentUser.teamId));
 ```
 
-- [ ] **Step 8: Type-check**
+- [ ] **Step 8: `lib/parseAreaCsv.check.ts`**
+
+Find (line ~35):
+
+```ts
+const existingAreas: Area[] = [{ id: "a1", name: "SETAPAK", teamId: null, autoAssignEnabled: true }];
+```
+
+Replace with (matches the new `Area` shape — `teamIds: string[]` instead of `teamId`, plus the new required `lastAutoAssignedUserId` field):
+
+```ts
+const existingAreas: Area[] = [{ id: "a1", name: "SETAPAK", teamIds: [], autoAssignEnabled: true, lastAutoAssignedUserId: null }];
+```
+
+- [ ] **Step 9: Type-check**
 
 Run:
 
@@ -927,10 +944,10 @@ npm run build
 
 Expected: build succeeds, zero TypeScript errors anywhere in the project.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add components/AgentLogBrowser.tsx components/RemovalApprovalsBrowser.tsx components/InactiveListingsBrowser.tsx "app/(dashboard)/customers/[id]/page.tsx" app/(dashboard)/customers/page.tsx app/(dashboard)/dashboard/page.tsx app/(dashboard)/team/agent-logs/page.tsx
+git add components/AgentLogBrowser.tsx components/RemovalApprovalsBrowser.tsx components/InactiveListingsBrowser.tsx "app/(dashboard)/customers/[id]/page.tsx" app/(dashboard)/customers/page.tsx app/(dashboard)/dashboard/page.tsx app/(dashboard)/team/agent-logs/page.tsx lib/parseAreaCsv.check.ts
 git commit -m "Update remaining Area.teamId call sites to Area.teamIds
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
