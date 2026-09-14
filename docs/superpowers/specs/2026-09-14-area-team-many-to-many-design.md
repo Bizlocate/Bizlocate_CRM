@@ -76,6 +76,36 @@ currently resolves one team from `area.teamId` and pulls candidates with
 - An area with zero linked teams behaves exactly like today's
   `area.teamId === null` — never triggers auto-assignment.
 
+## Other call sites reading `Area.teamId`
+
+`Area.teamId` (singular) is read in seven more places beyond
+`sweepAutoSecondAssign` and the admin area page — all "scope to the area's
+team(s)" checks that become an `includes()` against `teamIds` instead of
+an `===` against `teamId`:
+
+- [components/AgentLogBrowser.tsx:51-54](../../../components/AgentLogBrowser.tsx#L51-L54) —
+  narrows the Agent dropdown to the selected area's team once an area is
+  picked.
+- [components/RemovalApprovalsBrowser.tsx:28](../../../components/RemovalApprovalsBrowser.tsx#L28) —
+  a MANAGER's Area filter dropdown is scoped to areas their team owns.
+- [components/InactiveListingsBrowser.tsx:56](../../../components/InactiveListingsBrowser.tsx#L56) —
+  same MANAGER area-scoping pattern.
+- [app/(dashboard)/customers/[id]/page.tsx:557-563](../../../app/(dashboard)/customers/%5Bid%5D/page.tsx#L557-L563) —
+  reassign-slot candidate dropdowns scoped to the customer's area's team.
+- [app/(dashboard)/customers/page.tsx:735-737](../../../app/(dashboard)/customers/page.tsx#L735-L737) —
+  same candidate-scoping for the new-customer form's assignee dropdowns.
+- [app/(dashboard)/dashboard/page.tsx:199](../../../app/(dashboard)/dashboard/page.tsx#L199) —
+  a MANAGER's area filter on the dashboard.
+- [app/(dashboard)/team/agent-logs/page.tsx:9](../../../app/(dashboard)/team/agent-logs/page.tsx#L9) —
+  scopes the Agent Log's area list to a MANAGER's team.
+
+Each becomes: wherever the old code compared `area.teamId === someTeamId`
+(guarding on `someTeamId` being non-null first), the new code checks
+`!!someTeamId && area.teamIds.includes(someTeamId)`. Same resulting
+candidate/filter set for an area still linked to exactly one team;
+an area linked to two teams now correctly matches both teams' scope
+instead of arbitrarily matching only one.
+
 ## Admin UI (`app/(dashboard)/admin/area/page.tsx`)
 
 Team column stops being a single `<select>`. On row expand (same
@@ -166,3 +196,8 @@ Manual verification only (repo convention, no test framework):
 - Confirm an area with no linked team never triggers auto-assignment.
 - Confirm `admin/teams` add/remove member no longer has any side effect
   on area↔team links (it never touched `areas` — sanity check post-change).
+- Link an area to two teams. As a MANAGER on each of those teams, confirm
+  the area now shows up in that manager's Area filter on the dashboard,
+  Agent Log, and Removal Approvals pages, and that both teams' active
+  salespeople appear as assignee candidates for a customer in that area
+  (new-customer form and reassign dropdowns).
