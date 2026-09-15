@@ -41,9 +41,8 @@ function yearMonthToDate(yearMonth: string): Date {
   return new Date(y, m - 1, 1);
 }
 
-// Each of the 4 sections below (团队表现 / Pipeline & 趋势 / 运营报表 / Sales Performance Tracker)
-// owns its own area+month filter so picking one doesn't move another —
-// this is the shared control pair they each render in their header.
+// Each section below owns its own filters (area and/or team, plus month)
+// so picking one doesn't move another — rendered in that section's header.
 function AreaFilter({ value, onChange, areas }: { value: string; onChange: (v: string) => void; areas: { id: string; name: string }[] }) {
   if (areas.length === 0) return null;
   return (
@@ -51,6 +50,20 @@ function AreaFilter({ value, onChange, areas }: { value: string; onChange: (v: s
       <option value="">All areas</option>
       {areas.map((a) => (
         <option key={a.id} value={a.id}>{a.name}</option>
+      ))}
+    </select>
+  );
+}
+
+// Same shape as AreaFilter — narrows a section to one team (by member's
+// profiles.team_id), independent of that section's area filter (if any).
+function TeamFilter({ value, onChange, teams }: { value: string; onChange: (v: string) => void; teams: { id: string; name: string }[] }) {
+  if (teams.length === 0) return null;
+  return (
+    <select className="field-input" style={{ width: 160 }} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">All teams</option>
+      {teams.map((t) => (
+        <option key={t.id} value={t.id}>{t.name}</option>
       ))}
     </select>
   );
@@ -165,18 +178,22 @@ export default function DashboardPage() {
     assignmentEvents,
     stageEvents,
   } = useStore();
-  // Each section below owns its own area+month (independent filters, per
-  // section — picking one doesn't move another).
-  const [teamAreaId, setTeamAreaId] = useState("");
+  // Each section below owns its own filters (independent — picking one
+  // doesn't move another).
+  const [perfTeamId, setPerfTeamId] = useState("");
   const [teamMonth, setTeamMonth] = useState(currentYearMonth);
-  const [pipelineAreaId, setPipelineAreaId] = useState("");
+  const [pipelineTeamId, setPipelineTeamId] = useState("");
   const [pipelineMonth, setPipelineMonth] = useState(currentYearMonth);
   // Member filter — ADMIN/MANAGER only, "Pipeline & 趋势" only.
   const [memberId, setMemberId] = useState("");
   const [opsAreaId, setOpsAreaId] = useState("");
+  const [opsTeamId, setOpsTeamId] = useState("");
   const [opsMonth, setOpsMonth] = useState(currentYearMonth);
   const [sourceYear, setSourceYear] = useState(() => new Date().getFullYear());
+  const [sourceYearAreaId, setSourceYearAreaId] = useState("");
+  const [sourceYearTeamId, setSourceYearTeamId] = useState("");
   const [spAreaId, setSpAreaId] = useState("");
+  const [spTeamId, setSpTeamId] = useState("");
   const [spMonth, setSpMonth] = useState(currentYearMonth);
   // Which trend-chart bar (by yearMonth) is pinned open, showing its exact
   // value above the bar — click/tap toggles, independent per chart.
@@ -197,6 +214,8 @@ export default function DashboardPage() {
   // all, since there's nothing to narrow down to. SP never gets one — they
   // only ever see their own scope regardless of area.
   const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => !!currentUser.teamId && a.teamIds.includes(currentUser.teamId));
+  // Same ADMIN-sees-all / MANAGER-sees-own-team-only split as availableAreas.
+  const availableTeams = currentUser.role === "ADMIN" ? teams : teams.filter((t) => t.id === currentUser.teamId);
   const customerAreaMap = new Map(visibleCustomers.map((c) => [c.id, c.areaId]));
 
   // Narrows every list this section reads to one area's customers — ""
@@ -215,12 +234,39 @@ export default function DashboardPage() {
     };
   }
 
+  // Narrows an already scopeByArea'd slice further to one team, by whether
+  // any of a customer's assignee slots belongs to that team — "" means no
+  // further narrowing. Composes with scopeByArea (AND, not OR) so a section
+  // can filter by area and team at once.
+  function scopeByTeam(scoped: ReturnType<typeof scopeByArea>, teamId: string) {
+    if (!teamId) return scoped;
+    const memberIds = new Set(membersInTeam(teamId).map((u) => u.id));
+    const inTeam = new Set(
+      scoped.customers
+        .filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].some((id) => id !== null && memberIds.has(id)))
+        .map((c) => c.id)
+    );
+    const inScope = (customerId: string) => inTeam.has(customerId);
+    return {
+      customers: scoped.customers.filter((c) => inTeam.has(c.id)),
+      dealClosures: scoped.dealClosures.filter((d) => inScope(d.customerId)),
+      leaderboardDealClosures: scoped.leaderboardDealClosures.filter((d) => inScope(d.customerId)),
+      activities: scoped.activities.filter((a) => inScope(a.customerId)),
+      assignmentEvents: scoped.assignmentEvents.filter((e) => inScope(e.customerId)),
+      stageEvents: scoped.stageEvents.filter((e) => inScope(e.customerId)),
+      removalRequests: scoped.removalRequests.filter((r) => inScope(r.customerId)),
+    };
+  }
+
   // Reused by 团队表现 and the three ops reports below — active, in-scope,
   // never ADMIN (admins don't carry deals or get assigned customers).
   const teamMembers = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN");
+  function membersInTeam(teamId: string) {
+    return teamId ? teamMembers.filter((u) => u.teamId === teamId) : teamMembers;
+  }
 
-  const team = scopeByArea(teamAreaId);
-  const leaderboardRows = leaderboard(teamMembers, team.leaderboardDealClosures, salesTargets, team.activities, teamMonth);
+  const perfMembers = membersInTeam(perfTeamId);
+  const leaderboardRows = leaderboard(perfMembers, dealClosures, salesTargets, activities, teamMonth);
   const teamWonTotal = leaderboardRows.reduce((sum, r) => sum + r.won, 0);
   const teamTargetTotal = leaderboardRows.reduce((sum, r) => sum + (r.target ?? 0), 0);
   const teamAttainmentPct = teamTargetTotal > 0 ? Math.round((teamWonTotal / teamTargetTotal) * 100) : null;
@@ -235,12 +281,12 @@ export default function DashboardPage() {
   const myActivityCount = activities.filter((a) => a.authorUserId === currentUser.id && a.createdAt.slice(0, 7) === thisMonth).length;
   const myPace = pacePct(new Date(), thisMonth);
 
-  // Pipeline & 趋势 filters down further to one member on top of the area
-  // filter — "" (All members) leaves the area-level scope untouched. Its
+  // Pipeline & 趋势 filters down further to one member on top of the team
+  // filter — "" (All members) leaves the team-level scope untouched. Its
   // month picks which month the 6-month trend windows end at.
   const memberOptions = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN").sort((a, b) => a.name.localeCompare(b.name));
-  const pipeline = scopeByArea(pipelineAreaId);
-  const pipelineScopedIds = memberId ? new Set([memberId]) : scopedIds;
+  const pipeline = scopeByTeam(scopeByArea(""), pipelineTeamId);
+  const pipelineScopedIds = memberId ? new Set([memberId]) : pipelineTeamId ? new Set(membersInTeam(pipelineTeamId).map((u) => u.id)) : scopedIds;
   const pipelineCustomers = memberId
     ? pipeline.customers.filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].includes(memberId))
     : pipeline.customers;
@@ -251,13 +297,15 @@ export default function DashboardPage() {
   const trend = monthlyTrend(pipelineCustomers, pipelineDealClosures, 6, yearMonthToDate(pipelineMonth));
   const maxTrendWon = Math.max(1, ...trend.map((p) => p.won));
 
-  const ops = scopeByArea(opsAreaId);
+  const ops = scopeByTeam(scopeByArea(opsAreaId), opsTeamId);
+  const opsMembers = membersInTeam(opsTeamId);
   const sourceRows = leadsBySource(ops.customers, leadSources, opsMonth);
-  const sourceYearRows = leadsBySourceByYear(ops.customers, leadSources, sourceYear);
+  const sourceYearScoped = scopeByTeam(scopeByArea(sourceYearAreaId), sourceYearTeamId);
+  const sourceYearRows = leadsBySourceByYear(sourceYearScoped.customers, leadSources, sourceYear);
   const sourceYearMonthTotals = Array.from({ length: 12 }, (_, i) => sourceYearRows.reduce((sum, r) => sum + r.monthlyCounts[i], 0));
   const sourceYearGrandTotal = sourceYearMonthTotals.reduce((sum, n) => sum + n, 0);
-  const assignRows = assignmentCounts(teamMembers, ops.assignmentEvents, opsMonth);
-  const removedRows = removalCounts(teamMembers, ops.removalRequests, opsMonth);
+  const assignRows = assignmentCounts(opsMembers, ops.assignmentEvents, opsMonth);
+  const removedRows = removalCounts(opsMembers, ops.removalRequests, opsMonth);
   const reasonRows = removalReasonBreakdown(ops.removalRequests, removalReasons, opsMonth);
   const removalSourceRows = removalSourceBreakdown(ops.removalRequests, ops.customers, leadSources, opsMonth);
   const removalCohortRows = removalCohortBreakdown(ops.removalRequests, ops.customers, opsMonth);
@@ -265,12 +313,13 @@ export default function DashboardPage() {
 
   // Sales Performance Tracker — visible to everyone, not just canManage
   // (teamMembers is just [self] for a SALESPERSON, so this naturally shows
-  // their own numbers only; the area filter itself stays canManage-only
-  // since a SALESPERSON has no area of their own to narrow by). See
-  // dashboardMetrics.ts for why these only have data from whenever
-  // stage_events was migrated in, not before.
-  const sp = scopeByArea(spAreaId);
-  const apptDurationRows = assignToAppointmentDuration(teamMembers, sp.customers, sp.assignmentEvents, sp.stageEvents, stages);
+  // their own numbers only; the area/team filters themselves stay
+  // canManage-only since a SALESPERSON has no area/team of their own to
+  // narrow by). See dashboardMetrics.ts for why these only have data from
+  // whenever stage_events was migrated in, not before.
+  const sp = scopeByTeam(scopeByArea(spAreaId), spTeamId);
+  const spMembers = membersInTeam(spTeamId);
+  const apptDurationRows = assignToAppointmentDuration(spMembers, sp.customers, sp.assignmentEvents, sp.stageEvents, stages);
   const closedBySourceRows = closedDurationBySource(sp.dealClosures, sp.customers, sp.assignmentEvents, leadSources, spMonth);
   const createdToClosedRows = createdToClosedBySource(sp.dealClosures, sp.customers, leadSources, spMonth);
 
@@ -285,7 +334,7 @@ export default function DashboardPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>团队表现</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <AreaFilter value={teamAreaId} onChange={setTeamAreaId} areas={availableAreas} />
+              <TeamFilter value={perfTeamId} onChange={setPerfTeamId} teams={availableTeams} />
               <input type="month" className="field-input" style={{ width: 150 }} value={teamMonth} onChange={(e) => setTeamMonth(e.target.value)} />
             </div>
           </div>
@@ -388,7 +437,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Pipeline & 趋势</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canManage && <AreaFilter value={pipelineAreaId} onChange={setPipelineAreaId} areas={availableAreas} />}
+          {canManage && <TeamFilter value={pipelineTeamId} onChange={setPipelineTeamId} teams={availableTeams} />}
           {canManage && (
             <select className="field-input" style={{ width: 200 }} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
               <option value="">All members</option>
@@ -488,6 +537,7 @@ export default function DashboardPage() {
             <div style={{ fontSize: 15, fontWeight: 700 }}>运营报表</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <AreaFilter value={opsAreaId} onChange={setOpsAreaId} areas={availableAreas} />
+              <TeamFilter value={opsTeamId} onChange={setOpsTeamId} teams={availableTeams} />
               <input type="month" className="field-input" style={{ width: 150 }} value={opsMonth} onChange={(e) => setOpsMonth(e.target.value)} />
             </div>
           </div>
@@ -572,13 +622,17 @@ export default function DashboardPage() {
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>New Leads by Source — Yearly</div>
-            <input
-              type="number"
-              className="field-input"
-              style={{ width: 100 }}
-              value={sourceYear}
-              onChange={(e) => setSourceYear(Number(e.target.value) || sourceYear)}
-            />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <AreaFilter value={sourceYearAreaId} onChange={setSourceYearAreaId} areas={availableAreas} />
+              <TeamFilter value={sourceYearTeamId} onChange={setSourceYearTeamId} teams={availableTeams} />
+              <input
+                type="number"
+                className="field-input"
+                style={{ width: 100 }}
+                value={sourceYear}
+                onChange={(e) => setSourceYear(Number(e.target.value) || sourceYear)}
+              />
+            </div>
           </div>
           <div className="card" style={{ padding: "14px 16px", marginBottom: 24, overflowX: "auto" }}>
             {sourceYearRows.length === 0 ? (
@@ -624,6 +678,7 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {canManage && <AreaFilter value={spAreaId} onChange={setSpAreaId} areas={availableAreas} />}
+          {canManage && <TeamFilter value={spTeamId} onChange={setSpTeamId} teams={availableTeams} />}
           <input type="month" className="field-input" style={{ width: 150 }} value={spMonth} onChange={(e) => setSpMonth(e.target.value)} />
         </div>
       </div>
