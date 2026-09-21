@@ -31,9 +31,12 @@ React or browser-client dependency).
 3. Schedule: once a day (`@daily`). The 7-day/14-day thresholds this feature works with
    don't need sub-day precision, and this matches Netlify's simplest, cheapest scheduled
    function tier.
-4. No new alerting/observability. A failed run is visible in Netlify's own function logs
-   (`console.error` on any thrown error) — nothing further (email, Slack, a DB error log)
-   is built now; add it later if a silent failure actually becomes a problem in practice.
+4. No new alerting/observability. A failed run is visible in Netlify's own function logs —
+   the function throws on any failed table read (surfacing the run as failed in Netlify)
+   and logs + skips any individual action whose write fails, rather than relying on an
+   exception that Supabase's client doesn't actually raise. Nothing further (email, Slack,
+   a DB error log) is built now; add it later if a silent failure actually becomes a
+   problem in practice.
 5. No endpoint-level secret/auth check. The function only ever writes using the
    service-role key it holds server-side (never exposed to any client); it's never called
    with untrusted input. The sweep is already idempotent (skips any customer whose slot 2

@@ -37,6 +37,10 @@ function user(overrides: Partial<User> & { id: string; name: string }): User {
   return { email: "", phone: null, ic: null, role: "SALESPERSON", teamId: null, active: true, activePoolLimit: null, inactivePoolLimit: null, autoAssignEnabled: true, ...overrides };
 }
 
+function stage(overrides: Partial<Stage> & { id: string }): Stage {
+  return { name: "Stage", order: 1, isDefault: false, requiresAmount: false, excludeFromAutoAssign: false, ...overrides };
+}
+
 function isoDaysAgo(days: number): string {
   return new Date(NOW - days * DAY_MS).toISOString();
 }
@@ -198,6 +202,18 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
   const c = customer({ id: "orphan-1", areaId: "area-5", assignedToUserId: "owner-5", createdAt: isoDaysAgo(10) });
   const actions = computeAutoSecondAssignPlan([c], [a], [], [], [], NOW);
   assert.strictEqual(actions.length, 0);
+}
+
+// --- computeAutoSecondAssignPlan: an action's stageId is set to the default stage's id
+// (not just trivially null, as every case above with stages: [] exercised). ---
+{
+  const a = area({ id: "area-6", teamIds: ["team-6"], autoAssignResumedAt: isoDaysAgo(365) });
+  const u1 = user({ id: "sp-7", name: "Alice", teamId: "team-6" });
+  const s = stage({ id: "stage-default", isDefault: true });
+  const c = customer({ id: "cust-6", areaId: "area-6", assignedToUserId: "owner-6", createdAt: isoDaysAgo(10) });
+  const actions = computeAutoSecondAssignPlan([c], [a], [u1], [s], [], NOW);
+  assert.strictEqual(actions.length, 1);
+  assert.strictEqual(actions[0].stageId, "stage-default");
 }
 
 console.log("autoSecondAssign.check.ts: all assertions passed");
