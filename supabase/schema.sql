@@ -66,6 +66,7 @@ create table areas (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   auto_assign_enabled boolean not null default true,
+  auto_assign_resumed_at timestamptz not null default now(),
   last_auto_assigned_user_id uuid references profiles (id) on delete set null
 );
 
@@ -2338,3 +2339,17 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table areas drop column if exists team_id;
 -- alter table teams drop column if exists last_auto_assigned_user_id;
+
+-- ============================================================
+-- Migration: Auto second-assign eligibility fix — legacy customers
+-- (created_by IS NULL) are permanently excluded from auto 2nd-assign
+-- (no schema change, customers.created_by already exists — this is a
+-- code-only change), and areas gain auto_assign_resumed_at so a customer
+-- whose 7/14-day window elapsed while the area's auto-assign was off is
+-- never auto-caught-up once the area reopens. Run once against an
+-- already-provisioned database (everything below already exists in the
+-- main schema above for fresh installs).
+-- See docs/superpowers/specs/2026-09-21-auto-second-assign-eligibility-fix-design.md
+-- ============================================================
+--
+-- alter table areas add column if not exists auto_assign_resumed_at timestamptz not null default now();
