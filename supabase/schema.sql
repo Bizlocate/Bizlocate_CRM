@@ -408,7 +408,7 @@ create or replace function protect_customer_assignment() returns trigger as $$
 declare
   is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
 begin
-  if auth.uid() is not null and not is_admin() and (
+  if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin() and (
     (
       new.assigned_to is distinct from old.assigned_to
       and not (
@@ -457,7 +457,7 @@ create trigger customers_protect_assignment
 -- an admin
 create or replace function protect_pool_columns() returns trigger as $$
 begin
-  if auth.uid() is not null and not is_admin()
+  if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
     and new.pool_1 is distinct from old.pool_1
     and auth.uid() is distinct from old.assigned_to
     and not (
@@ -467,7 +467,7 @@ begin
   then
     raise exception 'only the assignee or an admin can change this pool status';
   end if;
-  if auth.uid() is not null and not is_admin()
+  if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
     and new.pool_2 is distinct from old.pool_2
     and auth.uid() is distinct from old.assigned_to_2
     and not (
@@ -477,7 +477,7 @@ begin
   then
     raise exception 'only the assignee or an admin can change this pool status';
   end if;
-  if auth.uid() is not null and not is_admin()
+  if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
     and new.pool_3 is distinct from old.pool_3
     and auth.uid() is distinct from old.assigned_to_3
     and not (
@@ -2434,6 +2434,104 @@ insert into mandatory_field_settings (field_key, required) values
 --     raise exception 'only the assignee or an admin can change this pool status';
 --   end if;
 --   if auth.uid() is not null and not is_admin()
+--     and new.pool_3 is distinct from old.pool_3
+--     and auth.uid() is distinct from old.assigned_to_3
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: harden the service-role bypass on the customer assignment/pool
+-- protection triggers. The prior migration above let any connection with no
+-- authenticated user (auth.uid() is null) past these triggers, meaning to
+-- catch the auto-second-assign background sweep's service-role writes --
+-- but auth.uid() is also null for an anonymous/unauthenticated connection,
+-- which RLS on customers already blocks independently (is_admin() and
+-- is_customer_assignee() both evaluate false with no auth.uid()), so there
+-- was no live hole -- this just makes the trigger a real second layer of
+-- defense instead of one that happens to agree with RLS. Checks the JWT's
+-- role claim directly instead: auth.jwt() ->> 'role' = 'service_role' only
+-- matches the service-role key, never an anon-key connection. Run once
+-- against an already-provisioned database (everything below already exists
+-- in the main schema above for fresh installs).
+-- See docs/superpowers/specs/2026-09-21-auto-second-assign-background-sweep-design.md
+-- ============================================================
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- declare
+--   is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+-- begin
+--   if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin() and (
+--     (
+--       new.assigned_to is distinct from old.assigned_to
+--       and not (
+--         (new.assigned_to is null and old.assigned_to = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (
+--         (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (
+--         (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_pool_columns() returns trigger as $$
+-- begin
+--   if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
+--     and new.pool_1 is distinct from old.pool_1
+--     and auth.uid() is distinct from old.assigned_to
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
+--     and new.pool_2 is distinct from old.pool_2
+--     and auth.uid() is distinct from old.assigned_to_2
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if (auth.jwt() ->> 'role') is distinct from 'service_role' and not is_admin()
 --     and new.pool_3 is distinct from old.pool_3
 --     and auth.uid() is distinct from old.assigned_to_3
 --     and not (
