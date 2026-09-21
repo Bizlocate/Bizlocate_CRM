@@ -7,6 +7,7 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
+import { isSecondAssignDue, secondAssignDueAt } from "./autoSecondAssign";
 import {
   Activity,
   ActivityType,
@@ -1075,8 +1076,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], usersList: User[], stagesList: Stage[], activitiesList: Activity[], isAdmin: boolean) {
     if (!isAdmin) return;
     const defaultStage = stagesList.find((s) => s.isDefault) ?? stagesList[0];
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const supabase = createClient();
     // The `customersList` param is a frozen snapshot, but a single sweep
@@ -1090,18 +1089,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const extraAssignedCount = new Map<string, number>();
     for (const c of customersList) {
       if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
+      if (!c.createdBy) continue; // legacy/imported customer, never eligible
       const area = areasList.find((a) => a.id === c.areaId);
       if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
       const slot1Stage = c.stage1Id ? stagesList.find((s) => s.id === c.stage1Id) : undefined;
-      if (slot1Stage?.excludeFromAutoAssign) {
-        const lastOwnActivity = activitiesList
-          .filter((act) => act.customerId === c.id && act.authorUserId === c.assignedToUserId)
-          .reduce((max, act) => Math.max(max, new Date(act.createdAt).getTime()), 0);
-        const lastTouched = Math.max(new Date(c.pool1Since ?? c.createdAt).getTime(), lastOwnActivity);
-        if (now - lastTouched < FOURTEEN_DAYS_MS) continue;
-      } else {
-        if (now - new Date(c.createdAt).getTime() < SEVEN_DAYS_MS) continue;
-      }
+      const dueAt = secondAssignDueAt(c, activitiesList, slot1Stage);
+      if (!isSecondAssignDue(dueAt, area.autoAssignResumedAt, now)) continue;
       const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
       const candidates = usersList
         .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
