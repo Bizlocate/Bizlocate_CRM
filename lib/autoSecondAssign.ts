@@ -1,4 +1,4 @@
-import type { Activity, Customer, Stage } from "./types";
+import type { Activity, Area, Customer, Stage, User } from "./types";
 
 export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -63,4 +63,72 @@ export function isSecondAssignDue(
   // everything.
   if (dueAtAsOfResume < resumedAtMs) return false;
   return dueAt <= now;
+}
+
+export interface SecondAssignAction {
+  customerId: string;
+  areaId: string;
+  winnerId: string;
+  stageId: string | null;
+}
+
+/**
+ * The full slot-2 auto-assign decision for one sweep pass: which customers
+ * are due, who wins each one via round-robin, honoring each candidate's
+ * activePoolLimit. Pure — returns the plan as data, does not write
+ * anything. A single call can produce multiple actions for the same area;
+ * pointerByArea/extraAssignedCount track this call's own in-progress
+ * picks so the second customer processed for an area sees the first one's
+ * winner, instead of both reading the same stale round-robin pointer and
+ * colliding on the same person.
+ */
+export function computeAutoSecondAssignPlan(
+  customers: Customer[],
+  areas: Area[],
+  users: User[],
+  stages: Stage[],
+  activities: Activity[],
+  now: number
+): SecondAssignAction[] {
+  const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
+  const actions: SecondAssignAction[] = [];
+  const pointerByArea = new Map<string, string | null>();
+  const extraAssignedCount = new Map<string, number>();
+  for (const c of customers) {
+    if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
+    if (!c.createdBy) continue; // legacy/imported customer, never eligible
+    const area = areas.find((a) => a.id === c.areaId);
+    if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
+    const slot1Stage = c.stage1Id ? stages.find((s) => s.id === c.stage1Id) : undefined;
+    if (!isSecondAssignDue(c, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
+    const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
+    const candidates = users
+      .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    if (candidates.length === 0) continue;
+    const currentPointer = pointerByArea.has(area.id) ? pointerByArea.get(area.id)! : area.lastAutoAssignedUserId;
+    const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
+    const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
+    let winner: User | undefined;
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[(startIndex + i) % candidates.length];
+      const limit = candidate.activePoolLimit;
+      if (limit !== null && limit !== undefined) {
+        const activeCount = customers.filter((other) =>
+          (other.assignedToUserId === candidate.id && other.pool1 === "ACTIVE") ||
+          (other.assignedToUserId2 === candidate.id && other.pool2 === "ACTIVE") ||
+          (other.assignedToUserId3 === candidate.id && other.pool3 === "ACTIVE")
+        ).length + (extraAssignedCount.get(candidate.id) ?? 0);
+        if (activeCount >= limit) continue;
+      }
+      winner = candidate;
+      break;
+    }
+    if (!winner) continue;
+    const winnerId = winner.id;
+    pointerByArea.set(area.id, winnerId);
+    extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
+    actions.push({ customerId: c.id, areaId: area.id, winnerId, stageId: defaultStage?.id ?? null });
+  }
+  return actions;
 }
