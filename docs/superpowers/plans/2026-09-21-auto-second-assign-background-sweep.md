@@ -962,3 +962,394 @@ Summarize what was verified (module loads cleanly, function actually assigns slo
 - [ ] **Step 7: Remind the user of the one manual platform step this plan cannot do**
 
 This plan cannot deploy the site or configure Netlify itself. After this branch is merged and deployed, tell the user to confirm in the Netlify dashboard (Functions tab) that `sweep-auto-assign` appears as a scheduled function with schedule `@daily`, and that a first automatic run appears in its logs within 24 hours.
+
+---
+
+### Task 6: Fix — let service-role writes past the assignment/pool protection triggers
+
+**Discovered during Task 5's manual verification, not anticipated in the original design:**
+`sweep-auto-assign.mts` uses `createAdminClient()` (service-role key), which bypasses RLS
+entirely, but does **not** bypass row-level `BEFORE UPDATE` triggers. Two triggers on
+`customers` — `customers_protect_assignment` and `customers_protect_pool` — explicitly
+check `is_admin()` (`exists (select 1 from profiles where id = auth.uid() and role =
+'ADMIN')`). A service-role connection has no authenticated user at all, so `auth.uid()`
+is `null`, `is_admin()` is always `false`, and the trigger raises `only an admin can
+reassign a customer` — rejecting the write. Supabase's JS client does not throw on a
+Postgres error by default (it returns `{ data: null, error }`), and `sweep-auto-assign.mts`
+never checks that field, so the whole failure was silent: `assigned_to_2`/`pool_2`/
+`pool_2_since`/`stage_2` never got written, while the separate `areas` update and
+`assignment_events` insert (neither guarded by a similar trigger) succeeded — confirmed
+live against Supabase during Task 5's fixture run.
+
+**Decision (confirmed with the requester):** both triggers should treat a connection with
+no authenticated user (`auth.uid() is null`) as authorized — same trust boundary the
+service-role key already has for everything else in this app (it already bypasses RLS
+wholesale; this closes the one place a trigger re-implemented an authorization check RLS
+already doesn't apply to). A real browser session's behavior is completely unchanged:
+those calls always have a non-null `auth.uid()`, so `auth.uid() is not null and not
+is_admin() and (...)` evaluates identically to today's `not is_admin() and (...)` for
+every existing caller. `protect_customer_remark_column` (name/phone/remark) is not in
+this sweep's write path and is intentionally left untouched — out of scope.
+
+**Files:**
+- Modify: `supabase/schema.sql`
+
+**Interfaces:**
+- Produces: updated `protect_customer_assignment()` and `protect_pool_columns()`
+  Postgres functions (same names, same trigger bindings — only their bodies change).
+
+- [ ] **Step 1: Update `protect_customer_assignment()` in the main schema block**
+
+Find (search for `create or replace function protect_customer_assignment() returns trigger as $$`, the first/main occurrence near the top of the file, around line 407):
+
+```sql
+create or replace function protect_customer_assignment() returns trigger as $$
+declare
+  is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+begin
+  if not is_admin() and (
+    (
+      new.assigned_to is distinct from old.assigned_to
+      and not (
+        (new.assigned_to is null and old.assigned_to = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+    or (
+      new.assigned_to_2 is distinct from old.assigned_to_2
+      and not (
+        (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+    or (
+      new.assigned_to_3 is distinct from old.assigned_to_3
+      and not (
+        (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+  ) then
+    raise exception 'only an admin can reassign a customer';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_assignment
+  before update on customers
+  for each row execute function protect_customer_assignment();
+```
+
+Replace with (only the `if` line on the 4th line changes — `not is_admin()` becomes
+`auth.uid() is not null and not is_admin()` — every other line is byte-for-byte identical):
+
+```sql
+create or replace function protect_customer_assignment() returns trigger as $$
+declare
+  is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+begin
+  if auth.uid() is not null and not is_admin() and (
+    (
+      new.assigned_to is distinct from old.assigned_to
+      and not (
+        (new.assigned_to is null and old.assigned_to = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+    or (
+      new.assigned_to_2 is distinct from old.assigned_to_2
+      and not (
+        (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+    or (
+      new.assigned_to_3 is distinct from old.assigned_to_3
+      and not (
+        (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+        or (
+          is_mgr
+          and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+          and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+        )
+      )
+    )
+  ) then
+    raise exception 'only an admin can reassign a customer';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_assignment
+  before update on customers
+  for each row execute function protect_customer_assignment();
+```
+
+- [ ] **Step 2: Update `protect_pool_columns()` in the main schema block**
+
+Find (search for `create or replace function protect_pool_columns() returns trigger as $$`, the first/main occurrence, around line 458):
+
+```sql
+create or replace function protect_pool_columns() returns trigger as $$
+begin
+  if not is_admin()
+    and new.pool_1 is distinct from old.pool_1
+    and auth.uid() is distinct from old.assigned_to
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if not is_admin()
+    and new.pool_2 is distinct from old.pool_2
+    and auth.uid() is distinct from old.assigned_to_2
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if not is_admin()
+    and new.pool_3 is distinct from old.pool_3
+    and auth.uid() is distinct from old.assigned_to_3
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_pool
+  before update on customers
+  for each row execute function protect_pool_columns();
+```
+
+Replace with (each of the three `if` blocks gains `auth.uid() is not null and` right
+after `if`; nothing else changes):
+
+```sql
+create or replace function protect_pool_columns() returns trigger as $$
+begin
+  if auth.uid() is not null and not is_admin()
+    and new.pool_1 is distinct from old.pool_1
+    and auth.uid() is distinct from old.assigned_to
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if auth.uid() is not null and not is_admin()
+    and new.pool_2 is distinct from old.pool_2
+    and auth.uid() is distinct from old.assigned_to_2
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  if auth.uid() is not null and not is_admin()
+    and new.pool_3 is distinct from old.pool_3
+    and auth.uid() is distinct from old.assigned_to_3
+    and not (
+      exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+      and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+    )
+  then
+    raise exception 'only the assignee or an admin can change this pool status';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger customers_protect_pool
+  before update on customers
+  for each row execute function protect_pool_columns();
+```
+
+- [ ] **Step 3: Append the already-provisioned-database migration note**
+
+At the very end of `supabase/schema.sql` (after the existing "Auto second-assign
+eligibility fix" migration block, which currently ends with `-- alter table areas add
+column if not exists auto_assign_resumed_at timestamptz not null default now();`),
+append:
+
+```sql
+
+-- ============================================================
+-- Migration: let service-role connections (auth.uid() is null) past the
+-- customer assignment/pool protection triggers, so the auto-second-assign
+-- background sweep (netlify/functions/sweep-auto-assign.mts, using the
+-- service-role client) can actually write assigned_to_2/pool_2. A real
+-- browser session's auth.uid() is never null, so this does not change
+-- behavior for any existing admin/manager/salesperson caller. Run once
+-- against an already-provisioned database (everything below already
+-- exists in the main schema above for fresh installs).
+-- See docs/superpowers/specs/2026-09-21-auto-second-assign-background-sweep-design.md
+-- ============================================================
+--
+-- create or replace function protect_customer_assignment() returns trigger as $$
+-- declare
+--   is_mgr boolean := exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+-- begin
+--   if auth.uid() is not null and not is_admin() and (
+--     (
+--       new.assigned_to is distinct from old.assigned_to
+--       and not (
+--         (new.assigned_to is null and old.assigned_to = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to is null or old.assigned_to in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to is null or new.assigned_to in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_2 is distinct from old.assigned_to_2
+--       and not (
+--         (new.assigned_to_2 is null and old.assigned_to_2 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_2 is null or old.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_2 is null or new.assigned_to_2 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--     or (
+--       new.assigned_to_3 is distinct from old.assigned_to_3
+--       and not (
+--         (new.assigned_to_3 is null and old.assigned_to_3 = auth.uid())
+--         or (
+--           is_mgr
+--           and (old.assigned_to_3 is null or old.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--           and (new.assigned_to_3 is null or new.assigned_to_3 in (select id from profiles where team_id = my_team_id()))
+--         )
+--       )
+--     )
+--   ) then
+--     raise exception 'only an admin can reassign a customer';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function protect_pool_columns() returns trigger as $$
+-- begin
+--   if auth.uid() is not null and not is_admin()
+--     and new.pool_1 is distinct from old.pool_1
+--     and auth.uid() is distinct from old.assigned_to
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if auth.uid() is not null and not is_admin()
+--     and new.pool_2 is distinct from old.pool_2
+--     and auth.uid() is distinct from old.assigned_to_2
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_2 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   if auth.uid() is not null and not is_admin()
+--     and new.pool_3 is distinct from old.pool_3
+--     and auth.uid() is distinct from old.assigned_to_3
+--     and not (
+--       exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--       and old.assigned_to_3 in (select id from profiles where team_id = my_team_id())
+--     )
+--   then
+--     raise exception 'only the assignee or an admin can change this pool status';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/schema.sql
+git commit -m "$(cat <<'EOF'
+Schema: let service-role connections past customer assignment/pool triggers
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+- [ ] **Step 5: Flag the manual migration to the user**
+
+Exactly like Task 5 in the eligibility-fix plan before it: this is a `create or replace
+function` change to a live database, never auto-applied. State clearly to the user, in
+the final summary, that they must run Step 1 and Step 2's two `create or replace
+function` statements (uncommented, exactly as written in the main schema block, not the
+commented migration copy) in the Supabase SQL editor before the background sweep can
+actually write `assigned_to_2`. Until they do, the sweep will keep silently no-op'ing on
+every customer write (area pointer and `assignment_events` will still update, which — if
+untreated — quietly produces `assignment_events` rows that don't match reality; this is
+exactly why Task 7 re-verifies end to end after the migration is confirmed run, not just
+trusts that the SQL is correct).
+
+---
+
+### Task 7: Redo the manual end-to-end verification, now against the real fix
+
+**Files:** none (verification only)
+
+- [ ] **Step 1: Confirm Task 6's migration ran**
+
+Same as Task 5 Step 1 — ask the user to confirm the two `create or replace function`
+statements have been run in Supabase before proceeding. Do not run DDL against
+production yourself.
+
+- [ ] **Step 2: Repeat Task 5's Steps 1-5 exactly**
+
+Same throwaway-fixture method: create a QA-TEST-DELETE-ME area + customer, confirm the
+`assigned_to_2` baseline is `null`, invoke `sweep-auto-assign.mts` for real, and this
+time confirm **all three** writes actually landed: `customers.assigned_to_2` (not just
+`areas.last_auto_assigned_user_id` and `assignment_events`, which already worked before
+this fix). Clean up every row created afterward, confirm zero `QA-TEST-DELETE-ME%` rows
+remain.
+
+- [ ] **Step 3: Report results**
+
+Summarize what was verified in chat: that the trigger fix actually closes the gap Task 5
+found, with `assigned_to_2`/`pool_2`/`pool_2_since`/`stage_2` all now correctly written
+alongside the area pointer and the assignment_events row. No code changes expected from
+this task unless a check fails.
