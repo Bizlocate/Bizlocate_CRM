@@ -28,7 +28,7 @@ function customer(overrides: Partial<Customer> & { id: string }): Customer {
     businessIndustryId: null, businessCategoryId: null, businessTypeId: null,
     raceId: null, languageId: null, businessName: "",
     firsttimeBranchId: null, targetRaceId: null, targetTypeId: null, budgetMin: null, budgetMax: null,
-    optionalPhone: "", remark: "",
+    optionalPhone: "", remark: "", createdBy: null,
     createdAt: new Date(NOW - 100 * DAY_MS).toISOString(),
     updatedAt: new Date(NOW - 100 * DAY_MS).toISOString(),
     ...overrides,

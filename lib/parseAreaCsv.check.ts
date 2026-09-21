@@ -32,7 +32,7 @@ assert.equal(noHeaderArea.rejected[0].reason, "missing area");
 assert.equal(noHeaderArea.approvedAreas.length, 0);
 
 // Already-in-DB pairs are rejected as duplicates, existing area is reused (isNew: false).
-const existingAreas: Area[] = [{ id: "a1", name: "SETAPAK", teamIds: [], autoAssignEnabled: true, lastAutoAssignedUserId: null }];
+const existingAreas: Area[] = [{ id: "a1", name: "SETAPAK", teamIds: [], autoAssignEnabled: true, autoAssignResumedAt: "2026-01-01T00:00:00Z", lastAutoAssignedUserId: null }];
 const existingSubAreas: SubArea[] = [{ id: "s1", areaId: "a1", name: "Desa Melawati" }];
 const reupload = parseAreaCsv("Area,Sub-Area\nSETAPAK,Desa Melawati\n,New One", existingAreas, existingSubAreas);
 assert.equal(reupload.rejected.length, 1);

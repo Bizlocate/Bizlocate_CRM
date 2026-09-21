@@ -15,7 +15,7 @@ function customer(overrides: Partial<Customer> & { id: string; createdAt: string
     businessIndustryId: null, businessCategoryId: null, businessTypeId: null,
     raceId: null, languageId: null, businessName: "",
     firsttimeBranchId: null, targetRaceId: null, targetTypeId: null, budgetMin: null, budgetMax: null,
-    optionalPhone: "", remark: "",
+    optionalPhone: "", remark: "", createdBy: null,
     updatedAt: overrides.createdAt,
     ...overrides,
   };

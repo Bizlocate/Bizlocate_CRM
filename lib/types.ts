@@ -27,6 +27,7 @@ export interface Area {
   name: string;
   teamIds: string[];
   autoAssignEnabled: boolean;
+  autoAssignResumedAt: string;
   lastAutoAssignedUserId: string | null;
 }
 
@@ -242,6 +243,7 @@ export interface Customer {
   budgetMax: number | null;
   optionalPhone: string;
   remark: string;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }

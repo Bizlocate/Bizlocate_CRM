@@ -59,8 +59,8 @@ function mapTeam(row: { id: string; name: string; manager_id: string | null }): 
   return { id: row.id, name: row.name, managerId: row.manager_id };
 }
 
-function mapArea(row: { id: string; name: string; auto_assign_enabled: boolean; last_auto_assigned_user_id: string | null }, teamIds: string[]): Area {
-  return { id: row.id, name: row.name, teamIds, autoAssignEnabled: row.auto_assign_enabled ?? true, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
+function mapArea(row: { id: string; name: string; auto_assign_enabled: boolean; auto_assign_resumed_at: string; last_auto_assigned_user_id: string | null }, teamIds: string[]): Area {
+  return { id: row.id, name: row.name, teamIds, autoAssignEnabled: row.auto_assign_enabled ?? true, autoAssignResumedAt: row.auto_assign_resumed_at, lastAutoAssignedUserId: row.last_auto_assigned_user_id };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {
@@ -162,6 +162,7 @@ function mapCustomer(row: {
   budget_min: number | null;
   budget_max: number | null;
   remark: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }): Customer {
@@ -200,6 +201,7 @@ function mapCustomer(row: {
     budgetMax: row.budget_max,
     optionalPhone: row.optional_phone ?? "",
     remark: row.remark ?? "",
+    createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
