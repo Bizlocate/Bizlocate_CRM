@@ -1546,14 +1546,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const target = areas.find((a) => a.id === id);
     if (!target) return;
     const prevEnabled = target.autoAssignEnabled;
-    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: enabled } : a)));
+    const prevResumedAt = target.autoAssignResumedAt;
+    const resuming = enabled && !prevEnabled;
+    const nowIso = new Date().toISOString();
+    setAreas((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: enabled, ...(resuming ? { autoAssignResumedAt: nowIso } : {}) } : a))
+    );
     const supabase = createClient();
     supabase
       .from("areas")
-      .update({ auto_assign_enabled: enabled })
+      .update({ auto_assign_enabled: enabled, ...(resuming ? { auto_assign_resumed_at: nowIso } : {}) })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled } : a)));
+        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled, autoAssignResumedAt: prevResumedAt } : a)));
       });
   }
 
