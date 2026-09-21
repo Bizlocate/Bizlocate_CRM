@@ -33,6 +33,8 @@ function isoDaysAgo(days: number): string {
   return new Date(NOW - days * DAY_MS).toISOString();
 }
 
+const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign: true };
+
 // --- secondAssignDueAt: plain 7-day path (no excludeFromAutoAssign stage) ---
 {
   const c = customer({ id: "c1", createdAt: isoDaysAgo(10) });
@@ -42,53 +44,95 @@ function isoDaysAgo(days: number): string {
 
 // --- secondAssignDueAt: 14-day-idle path, no activity logged -> falls back to pool1Since ---
 {
-  const stage: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign: true };
   const c = customer({ id: "c2", createdAt: isoDaysAgo(30), pool1Since: isoDaysAgo(20), assignedToUserId: "sp-1" });
-  const dueAt = secondAssignDueAt(c, [], stage);
+  const dueAt = secondAssignDueAt(c, [], IDLE_STAGE);
   assert.strictEqual(dueAt, new Date(c.pool1Since!).getTime() + FOURTEEN_DAYS_MS);
 }
 
 // --- secondAssignDueAt: 14-day-idle path, activity resets the clock forward ---
 {
-  const stage: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign: true };
   const c = customer({ id: "c3", createdAt: isoDaysAgo(30), pool1Since: isoDaysAgo(20), assignedToUserId: "sp-1" });
   const acts = [activity({ id: "a1", customerId: "c3", authorUserId: "sp-1", createdAt: isoDaysAgo(5) })];
-  const dueAt = secondAssignDueAt(c, acts, stage);
+  const dueAt = secondAssignDueAt(c, acts, IDLE_STAGE);
   assert.strictEqual(dueAt, new Date(acts[0].createdAt).getTime() + FOURTEEN_DAYS_MS);
 }
 
 // --- secondAssignDueAt: activity from someone else (not the slot-1 assignee) doesn't count ---
 {
-  const stage: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign: true };
   const c = customer({ id: "c4", createdAt: isoDaysAgo(30), pool1Since: isoDaysAgo(20), assignedToUserId: "sp-1" });
   const acts = [activity({ id: "a2", customerId: "c4", authorUserId: "someone-else", createdAt: isoDaysAgo(1) })];
-  const dueAt = secondAssignDueAt(c, acts, stage);
+  const dueAt = secondAssignDueAt(c, acts, IDLE_STAGE);
   assert.strictEqual(dueAt, new Date(c.pool1Since!).getTime() + FOURTEEN_DAYS_MS);
 }
 
-// --- isSecondAssignDue: not yet due ---
+// --- secondAssignDueAt: 14-day-idle path, TWO own activities -> picks the later (max) one, not just "an" activity ---
 {
-  const dueAt = NOW + 1 * DAY_MS;
-  assert.strictEqual(isSecondAssignDue(dueAt, new Date(NOW - 365 * DAY_MS).toISOString(), NOW), false);
+  const c = customer({ id: "c5", createdAt: isoDaysAgo(30), pool1Since: isoDaysAgo(20), assignedToUserId: "sp-1" });
+  // Deliberately out of chronological order (later one first) so a bug that
+  // just takes the last array element instead of Math.max would be caught.
+  const acts = [
+    activity({ id: "a3", customerId: "c5", authorUserId: "sp-1", createdAt: isoDaysAgo(3) }),
+    activity({ id: "a4", customerId: "c5", authorUserId: "sp-1", createdAt: isoDaysAgo(15) }),
+  ];
+  const dueAt = secondAssignDueAt(c, acts, IDLE_STAGE);
+  assert.strictEqual(dueAt, new Date(isoDaysAgo(3)).getTime() + FOURTEEN_DAYS_MS);
+}
+
+// --- isSecondAssignDue: not yet due (plain 7-day path) ---
+{
+  const c = customer({ id: "d1", createdAt: isoDaysAgo(6) }); // dueAt = NOW + 1 day
+  assert.strictEqual(isSecondAssignDue(c, [], undefined, isoDaysAgo(365), NOW), false);
 }
 
 // --- isSecondAssignDue: due, and area has been on well before the due date -> eligible ---
 {
-  const dueAt = NOW - 1 * DAY_MS;
-  assert.strictEqual(isSecondAssignDue(dueAt, new Date(NOW - 365 * DAY_MS).toISOString(), NOW), true);
+  const c = customer({ id: "d2", createdAt: isoDaysAgo(8) }); // dueAt = NOW - 1 day
+  assert.strictEqual(isSecondAssignDue(c, [], undefined, isoDaysAgo(365), NOW), true);
 }
 
 // --- isSecondAssignDue: due date fell before the area's last resume -> permanently missed ---
 {
-  const dueAt = NOW - 90 * DAY_MS; // became due 3 months ago
-  const areaResumedAt = new Date(NOW - 1 * DAY_MS).toISOString(); // area only reopened yesterday
-  assert.strictEqual(isSecondAssignDue(dueAt, areaResumedAt, NOW), false);
+  const c = customer({ id: "d3", createdAt: isoDaysAgo(97) }); // dueAt = NOW - 90 days
+  const areaResumedAt = isoDaysAgo(1); // area only reopened yesterday
+  assert.strictEqual(isSecondAssignDue(c, [], undefined, areaResumedAt, NOW), false);
 }
 
 // --- isSecondAssignDue: due date exactly at the area's resume moment -> eligible (boundary, not excluded) ---
 {
-  const resumedAt = new Date(NOW - 50 * DAY_MS).toISOString();
-  assert.strictEqual(isSecondAssignDue(new Date(resumedAt).getTime(), resumedAt, NOW), true);
+  const resumedAt = isoDaysAgo(50);
+  const c = customer({ id: "d4", createdAt: isoDaysAgo(57) }); // dueAt = resumedAt exactly
+  assert.strictEqual(isSecondAssignDue(c, [], undefined, resumedAt, NOW), true);
+}
+
+// --- isSecondAssignDue: pre-migration fallback. areaResumedAt is undefined (column doesn't
+// exist in DB yet) -> NaN comparison is always false -> falls through to normal due-date
+// check (matches pre-fix behavior), rather than permanently skipping everything. ---
+{
+  const c = customer({ id: "d5", createdAt: isoDaysAgo(10) }); // overdue on the plain 7-day path
+  const areaResumedAt = undefined as unknown as string;
+  assert.strictEqual(isSecondAssignDue(c, [], undefined, areaResumedAt, NOW), true);
+}
+
+// --- isSecondAssignDue: 14-day-idle path, missed its window before the area reopened ->
+// a NEW activity logged AFTER the area reopens must NOT resurrect it (regression test for
+// the "recomputed lastTouched dodges the missed-window check" bug). ---
+{
+  const c = customer({ id: "e1", createdAt: isoDaysAgo(40), pool1Since: isoDaysAgo(30), assignedToUserId: "sp-1" });
+  const areaResumedAt = isoDaysAgo(10); // area reopened 10 days ago
+  // As of resume: dueAt = pool1Since(-30d) + 14d = -16d, which is before resume(-10d) -> already missed.
+  const postReopenActivity = [activity({ id: "a5", customerId: "e1", authorUserId: "sp-1", createdAt: isoDaysAgo(2) })];
+  assert.strictEqual(isSecondAssignDue(c, postReopenActivity, IDLE_STAGE, areaResumedAt, NOW), false);
+}
+
+// --- isSecondAssignDue: 14-day-idle path, NOT yet overdue at the moment the area reopened
+// (still within its window through the toggle) -> evaluated normally afterward, once its
+// due date actually arrives. ---
+{
+  const c = customer({ id: "e2", createdAt: isoDaysAgo(20), pool1Since: isoDaysAgo(15), assignedToUserId: "sp-1" });
+  const areaResumedAt = isoDaysAgo(10); // area reopened 10 days ago
+  // As of resume: dueAt = pool1Since(-15d) + 14d = -1d, which is AFTER resume(-10d) -> not missed.
+  // Live dueAt (no further activity) is the same -1d, which is now <= NOW -> due.
+  assert.strictEqual(isSecondAssignDue(c, [], IDLE_STAGE, areaResumedAt, NOW), true);
 }
 
 console.log("autoSecondAssign.check.ts: all assertions passed");

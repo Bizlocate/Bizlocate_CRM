@@ -26,14 +26,41 @@ export function secondAssignDueAt(
 }
 
 /**
- * Whether a customer due at `dueAt` should actually be auto-assigned right
- * now. A due date that falls before the area's auto-assign was last turned
- * on means it became due while the area was off — that window is
- * permanently missed (needs a manual assign instead of ever being caught
- * up automatically), not just "not yet".
+ * Whether a customer is due for slot-2 auto-assignment right now, honoring
+ * the area's last reopen line as a PERMANENT cutoff.
+ *
+ * The "missed the window" decision is made against a snapshot due date —
+ * `dueAtAsOfResume`, computed using only activities that happened at or
+ * before the area's resume moment — not the live due date. This matters
+ * for the 14-day-idle path (Appointment/Nego stages): its due date moves
+ * forward whenever the slot-1 assignee logs a new activity, so without the
+ * snapshot, a customer that had already missed its window could become
+ * "eligible again" simply because someone touched it after the area
+ * reopened. That must never happen — once a customer misses its window, it
+ * stays permanently skipped (manual-assign only), exactly like the plain
+ * 7-day path (whose due date never moves post-creation, so this snapshot is
+ * always a no-op for it: dueAtAsOfResume === dueAt).
+ *
+ * A customer that was NOT yet overdue at the moment the area reopened
+ * (either still within its window through the toggle, or one that only
+ * became due after reopening) is evaluated normally against its live due
+ * date on every subsequent sweep.
  */
-export function isSecondAssignDue(dueAt: number, areaResumedAt: string, now: number): boolean {
+export function isSecondAssignDue(
+  customer: Pick<Customer, "id" | "createdAt" | "pool1Since" | "assignedToUserId">,
+  activities: Pick<Activity, "customerId" | "authorUserId" | "createdAt">[],
+  slot1Stage: Pick<Stage, "excludeFromAutoAssign"> | undefined,
+  areaResumedAt: string,
+  now: number
+): boolean {
   const resumedAtMs = new Date(areaResumedAt).getTime();
-  if (dueAt < resumedAtMs) return false;
+  const activitiesAsOfResume = activities.filter((a) => new Date(a.createdAt).getTime() <= resumedAtMs);
+  const dueAtAsOfResume = secondAssignDueAt(customer, activitiesAsOfResume, slot1Stage);
+  const dueAt = secondAssignDueAt(customer, activities, slot1Stage);
+  // resumedAtMs is NaN when the area column doesn't exist yet (pre-migration) —
+  // NaN comparisons are always false, so this correctly falls through to "not
+  // missed" (evaluated below via the live due date) rather than skipping
+  // everything.
+  if (dueAtAsOfResume < resumedAtMs) return false;
   return dueAt <= now;
 }

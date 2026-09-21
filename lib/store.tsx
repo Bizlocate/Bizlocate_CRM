@@ -7,7 +7,7 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
-import { isSecondAssignDue, secondAssignDueAt } from "./autoSecondAssign";
+import { isSecondAssignDue } from "./autoSecondAssign";
 import {
   Activity,
   ActivityType,
@@ -1093,8 +1093,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const area = areasList.find((a) => a.id === c.areaId);
       if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
       const slot1Stage = c.stage1Id ? stagesList.find((s) => s.id === c.stage1Id) : undefined;
-      const dueAt = secondAssignDueAt(c, activitiesList, slot1Stage);
-      if (!isSecondAssignDue(dueAt, area.autoAssignResumedAt, now)) continue;
+      if (!isSecondAssignDue(c, activitiesList, slot1Stage, area.autoAssignResumedAt, now)) continue;
       const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
       const candidates = usersList
         .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
@@ -1553,13 +1552,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: enabled, ...(resuming ? { autoAssignResumedAt: nowIso } : {}) } : a))
     );
     const supabase = createClient();
+    // Two independent calls, not one: auto_assign_resumed_at's migration may not
+    // have run yet in prod, and an unknown column would reject the WHOLE update
+    // (including auto_assign_enabled) if sent together. Enabled-flag write must
+    // succeed/fail on its own so toggling an area back on isn't blocked by that.
     supabase
       .from("areas")
-      .update({ auto_assign_enabled: enabled, ...(resuming ? { auto_assign_resumed_at: nowIso } : {}) })
+      .update({ auto_assign_enabled: enabled })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled, autoAssignResumedAt: prevResumedAt } : a)));
+        if (error) {
+          console.error("updateAreaAutoAssign: failed to update auto_assign_enabled", error);
+          setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled } : a)));
+        }
       });
+    if (resuming) {
+      supabase
+        .from("areas")
+        .update({ auto_assign_resumed_at: nowIso })
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("updateAreaAutoAssign: failed to update auto_assign_resumed_at", error);
+            setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignResumedAt: prevResumedAt } : a)));
+          }
+        });
+    }
   }
 
   function deleteArea(id: string) {

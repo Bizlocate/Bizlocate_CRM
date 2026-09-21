@@ -54,6 +54,13 @@ mark but not yet swept) becomes permanently manual-only the next time the
 sweep runs, rather than being caught up automatically. This is the intended
 fix, not a bug — flagged here so it isn't a surprise on rollout day.
 
+A newly created area (or one re-imported via the Area CSV import) draws its
+own resume line at creation/import time by this same `default now()`
+mechanism — so a customer later moved into that area whose natural due date
+predates the area's own creation will also be treated as having missed its
+window, consistent with the feature's intent (worth stating explicitly since
+it wasn't called out until this note).
+
 `lib/types.ts`: `Area` gains `autoAssignResumedAt: string`.
 
 ## Logic changes
