@@ -7,7 +7,6 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
-import { isSecondAssignDue } from "./autoSecondAssign";
 import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapProfile, mapStage } from "./mappers";
 import {
   Activity,
@@ -938,82 +937,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Auto second-assignment: once a customer's slot 1 has been assigned, if
-  // slot 2 is still empty, round-robin the next active SALESPERSON from the
-  // team that owns the customer's area into slot 2 — after 7 days normally,
-  // or after 14 idle days (no activity log) if the customer's slot-1 stage
-  // is flagged to skip auto-assign. Skipped entirely if the area's
-  // auto-assign switch is off. Deliberately does NOT call
-  // reassignCustomer/assignmentError —
-  // both read `customers` from closure, which is still stale at the exact
-  // point in the initial-load effect (and in login()) where this sweep
-  // runs, before React has re-rendered with the freshly-loaded data.
-  // Operates only on the snapshot arrays passed in and functional setState
-  // updaters, same discipline sweepStalePool already follows.
-  // Admin-only: teams' RLS only allows ADMIN to update
-  // last_auto_assigned_user_id, so a non-admin session never attempts
-  // this (mirrors sweepStalePool's own isAdmin branch).
-  // ponytail: compute-on-load sweep, not real-time — same accepted
-  // imprecision as the pool sweep. Upgrade to a cron/edge function sweep
-  // if sub-day precision ever matters.
-  function sweepAutoSecondAssign(customersList: Customer[], areasList: Area[], usersList: User[], stagesList: Stage[], activitiesList: Activity[], isAdmin: boolean) {
-    if (!isAdmin) return;
-    const defaultStage = stagesList.find((s) => s.isDefault) ?? stagesList[0];
-    const now = Date.now();
-    const supabase = createClient();
-    // The `customersList` param is a frozen snapshot, but a single sweep
-    // call can assign multiple customers off the same area in one pass
-    // (this is a batch catch-up sweep, not a one-at-a-time trigger). Track
-    // this call's own round-robin pointer and each candidate's in-progress
-    // assignment count locally so the second customer processed in the
-    // same sweep sees the first one's pick, instead of both re-reading the
-    // same stale pointer/pool-count and colliding on the same winner.
-    const pointerByArea = new Map<string, string | null>();
-    const extraAssignedCount = new Map<string, number>();
-    for (const c of customersList) {
-      if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
-      if (!c.createdBy) continue; // legacy/imported customer, never eligible
-      const area = areasList.find((a) => a.id === c.areaId);
-      if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
-      const slot1Stage = c.stage1Id ? stagesList.find((s) => s.id === c.stage1Id) : undefined;
-      if (!isSecondAssignDue(c, activitiesList, slot1Stage, area.autoAssignResumedAt, now)) continue;
-      const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
-      const candidates = usersList
-        .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
-        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      if (candidates.length === 0) continue;
-      const currentPointer = pointerByArea.has(area.id) ? pointerByArea.get(area.id)! : area.lastAutoAssignedUserId;
-      const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
-      const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
-      let winner: User | undefined;
-      for (let i = 0; i < candidates.length; i++) {
-        const candidate = candidates[(startIndex + i) % candidates.length];
-        const limit = candidate.activePoolLimit;
-        if (limit !== null && limit !== undefined) {
-          const activeCount = customersList.filter((other) =>
-            (other.assignedToUserId === candidate.id && other.pool1 === "ACTIVE") ||
-            (other.assignedToUserId2 === candidate.id && other.pool2 === "ACTIVE") ||
-            (other.assignedToUserId3 === candidate.id && other.pool3 === "ACTIVE")
-          ).length + (extraAssignedCount.get(candidate.id) ?? 0);
-          if (activeCount >= limit) continue;
-        }
-        winner = candidate;
-        break;
-      }
-      if (!winner) continue;
-      const winnerId = winner.id;
-      pointerByArea.set(area.id, winnerId);
-      extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
-      setCustomers((prev) =>
-        prev.map((row) => (row.id === c.id ? { ...row, assignedToUserId2: winnerId, pool2: "ACTIVE", pool2Since: null, stage2Id: defaultStage?.id ?? null } : row))
-      );
-      supabase.from("customers").update({ assigned_to_2: winnerId, pool_2: "ACTIVE", pool_2_since: null, stage_2: defaultStage?.id ?? null }).eq("id", c.id).then(() => {});
-      setAreas((prev) => prev.map((a) => (a.id === area.id ? { ...a, lastAutoAssignedUserId: winnerId } : a)));
-      supabase.from("areas").update({ last_auto_assigned_user_id: winnerId }).eq("id", area.id).then(() => {});
-      logAssignmentEvent(c.id, winnerId, 2);
-    }
-  }
-
   async function loadTasks(): Promise<Task[]> {
     const supabase = createClient();
     const { data } = await supabase.from("tasks").select("*").order("created_at");
@@ -1068,7 +991,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
           sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
-          sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
@@ -1213,7 +1135,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
     sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
-    sweepAutoSecondAssign(loadedCustomers, loadResults[2], loadedUsers, loadResults[16], loadedActivities, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
   }
