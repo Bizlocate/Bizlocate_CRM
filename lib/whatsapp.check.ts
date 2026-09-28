@@ -24,6 +24,7 @@ const message = buildAssignmentMessage({
   raceName: "Malay",
   languageName: "Malay",
   budgetMin: 50000,
+  remark: "Call after 3pm",
 });
 assert.equal(
   message,
@@ -38,8 +39,14 @@ assert.equal(
     "Race: Malay",
     "Language: Malay",
     "Budget: RM50000",
+    "Remark: Call after 3pm",
   ].join("\n")
 );
+
+// Empty / null remark falls back to the dash.
+const noRemark = { customerName: "", customerPhone: "", sourceName: "", areaName: "", subAreaName: "", businessTypeName: "", raceName: "", languageName: "", budgetMin: null };
+assert.ok(buildAssignmentMessage({ ...noRemark, remark: null }).endsWith("Remark: —"));
+assert.ok(buildAssignmentMessage({ ...noRemark, remark: "  " }).endsWith("Remark: —"));
 
 const link = buildWhatsAppLink("012-345 6789", message);
 assert.equal(link, `https://wa.me/60123456789?text=${encodeURIComponent(message)}`);

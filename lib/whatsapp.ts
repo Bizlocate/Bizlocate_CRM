@@ -15,6 +15,7 @@ export function buildAssignmentMessage(input: {
   raceName: string;
   languageName: string;
   budgetMin: number | null;
+  remark: string | null;
 }): string {
   return [
     "New customer assigned to you:",
@@ -27,6 +28,7 @@ export function buildAssignmentMessage(input: {
     `Race: ${input.raceName}`,
     `Language: ${input.languageName}`,
     `Budget: ${input.budgetMin !== null ? `RM${input.budgetMin}` : "—"}`,
+    `Remark: ${input.remark?.trim() || "—"}`,
   ].join("\n");
 }
 

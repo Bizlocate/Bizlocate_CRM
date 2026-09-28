@@ -183,6 +183,7 @@ export default function CustomerDetailPage() {
     raceName: races.find((r) => r.id === customer.raceId)?.name ?? "—",
     languageName: languages.find((l) => l.id === customer.languageId)?.name ?? "—",
     budgetMin: customer.budgetMin,
+    remark: customer.remark,
   });
   const whatsAppTargets = canSendWhatsApp
     ? assignedUsers
