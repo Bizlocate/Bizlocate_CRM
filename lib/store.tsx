@@ -240,6 +240,7 @@ function mapRemovalRequest(row: {
   slot: number;
   requested_by: string;
   reason_id: string;
+  note: string | null;
   status: string;
   resolved_by: string | null;
   resolved_at: string | null;
@@ -251,6 +252,7 @@ function mapRemovalRequest(row: {
     slot: row.slot as 1 | 2 | 3,
     requestedBy: row.requested_by,
     reasonId: row.reason_id,
+    note: row.note,
     status: row.status as RemovalRequestStatus,
     resolvedBy: row.resolved_by,
     resolvedAt: row.resolved_at,
@@ -533,7 +535,7 @@ interface Store {
   addActivity: (customerId: string, type: ActivityType, content: string, followUp: string) => void;
   updateActivity: (activityId: string, content: string) => void;
   logActivityAndStage: (customerId: string, slot: 1 | 2 | 3, stageId: string, type: ActivityType, content: string, followUp: string, closedAmount?: number) => void;
-  requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string) => { ok: boolean; error?: string };
+  requestClientRemoval: (customerId: string, slot: 1 | 2 | 3, reasonId: string, note: string) => { ok: boolean; error?: string };
   resolveClientRemoval: (requestId: string, approve: boolean) => void;
   requestCustomerDelete: (customerId: string) => { ok: boolean; error?: string };
   rejectCustomerDeleteRequest: (requestId: string) => void;
@@ -2302,8 +2304,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // does not touch the slot itself; only inserts a PENDING request an
   // ADMIN/MANAGER must approve (see resolveClientRemoval). Blocks a
   // second request while one is already pending for the same slot.
-  function requestClientRemoval(customerId: string, slot: 1 | 2 | 3, reasonId: string): { ok: boolean; error?: string } {
+  function requestClientRemoval(customerId: string, slot: 1 | 2 | 3, reasonId: string, note: string): { ok: boolean; error?: string } {
     if (!currentUser) return { ok: false, error: "Not signed in." };
+    if (!note.trim()) return { ok: false, error: "A note is required." };
     const alreadyPending = removalRequests.some(
       (r) => r.customerId === customerId && r.slot === slot && r.status === "PENDING"
     );
@@ -2311,7 +2314,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     supabase
       .from("removal_requests")
-      .insert({ customer_id: customerId, slot, requested_by: currentUser.id, reason_id: reasonId, status: "PENDING" })
+      .insert({ customer_id: customerId, slot, requested_by: currentUser.id, reason_id: reasonId, note: note.trim(), status: "PENDING" })
       .select()
       .single()
       .then(({ data, error }) => {
@@ -2348,7 +2351,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // another) to still tie the manager to the row
         const removedUser = users.find((u) => u.id === request.requestedBy);
         const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
-        logAssignmentRemoval(request.customerId, request.slot, removedUser?.name ?? "Unknown", reasonName);
+        const logNote = [reasonName, request.note].filter(Boolean).join(": ");
+        logAssignmentRemoval(request.customerId, request.slot, removedUser?.name ?? "Unknown", logNote || undefined);
         deleteAssigneeActivities(request.customerId, request.requestedBy);
         reassignCustomer(request.customerId, request.slot, null);
       }

@@ -239,6 +239,7 @@ create table removal_requests (
   slot smallint not null check (slot in (1, 2, 3)),
   requested_by uuid not null references profiles (id) on delete cascade,
   reason_id uuid not null references removal_reasons (id),
+  note text,
   status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
   resolved_by uuid references profiles (id) on delete set null,
   resolved_at timestamptz,
@@ -499,12 +500,11 @@ create function protect_customer_remark_column() returns trigger as $$
 begin
   if (
     new.remark is distinct from old.remark
-    or new.name is distinct from old.name
     or new.phone is distinct from old.phone
   ) and not (
     is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
   ) then
-    raise exception 'only an admin or manager can change the name, phone, or remark';
+    raise exception 'only an admin or manager can change the phone or remark';
   end if;
   return new;
 end;
@@ -2544,3 +2544,34 @@ insert into mandatory_field_settings (field_key, required) values
 --   return new;
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: Let assigned salespeople rename a customer (phone and
+-- remark stay admin/manager-only) — run once against an
+-- already-provisioned database (already reflected in the main schema
+-- above for fresh installs). The rename is logged to
+-- customer_change_log by the app, same as any other profile edit.
+-- ============================================================
+--
+-- create or replace function protect_customer_remark_column() returns trigger as $$
+-- begin
+--   if (
+--     new.remark is distinct from old.remark
+--     or new.phone is distinct from old.phone
+--   ) and not (
+--     is_admin() or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
+--   ) then
+--     raise exception 'only an admin or manager can change the phone or remark';
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- Migration: Removal request note — run once against an
+-- already-provisioned database (already reflected in the main schema
+-- above for fresh installs). Nullable so pre-existing requests are
+-- untouched; the app requires a note on every new request.
+-- ============================================================
+--
+-- alter table removal_requests add column if not exists note text;

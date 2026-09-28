@@ -49,7 +49,7 @@ function task(overrides: Partial<Task> & { id: string; customerId: string; userI
 
 function removalRequest(overrides: Partial<RemovalRequest> & { id: string; customerId: string; slot: 1 | 2 | 3 }): RemovalRequest {
   return {
-    requestedBy: "u1", reasonId: "r1", status: "PENDING",
+    requestedBy: "u1", reasonId: "r1", note: null, status: "PENDING",
     resolvedBy: null, resolvedAt: null, createdAt: new Date(NOW).toISOString(),
     ...overrides,
   };

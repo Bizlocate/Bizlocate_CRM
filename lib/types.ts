@@ -368,6 +368,7 @@ export interface RemovalRequest {
   slot: 1 | 2 | 3;
   requestedBy: string;
   reasonId: string;
+  note: string | null;
   status: RemovalRequestStatus;
   resolvedBy: string | null;
   resolvedAt: string | null;

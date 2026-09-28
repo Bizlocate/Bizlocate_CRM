@@ -123,6 +123,7 @@ export default function CustomerDetailPage() {
   const [closedAmountDraft, setClosedAmountDraft] = useState("");
   const [showRemoveReasonModal, setShowRemoveReasonModal] = useState(false);
   const [removeReasonId, setRemoveReasonId] = useState("");
+  const [removeNote, setRemoveNote] = useState("");
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [editActivityDraft, setEditActivityDraft] = useState("");
   const [remarkingActivityId, setRemarkingActivityId] = useState<string | null>(null);
@@ -223,7 +224,7 @@ export default function CustomerDetailPage() {
     if (remarkDirty) updateCustomerRemark(customer!.id, remarkDraft);
     const identityPatch: { name?: string; phone?: string } = {};
     if (nameDirty && nameDraft.trim()) identityPatch.name = nameDraft.trim();
-    if (phoneDirty) identityPatch.phone = phoneDraft.trim();
+    if (phoneDirty && canEditIdentity) identityPatch.phone = phoneDraft.trim();
     if (Object.keys(identityPatch).length > 0) updateCustomerIdentity(customer!.id, identityPatch);
   }
 
@@ -336,6 +337,7 @@ export default function CustomerDetailPage() {
     if (myAssignedSlot) {
       if (!logStageId) return;
       if (logStageId === "__REMOVE_CLIENT__") {
+        setRemoveNote(activityContent.trim());
         setShowRemoveReasonModal(true);
         return;
       }
@@ -367,14 +369,16 @@ export default function CustomerDetailPage() {
   }
 
   function handleConfirmRemoveReason() {
-    if (!removeReasonId || !myAssignedSlot) return;
-    const result = requestClientRemoval(customer!.id, myAssignedSlot, removeReasonId);
+    if (!removeReasonId || !removeNote.trim() || !myAssignedSlot) return;
+    const result = requestClientRemoval(customer!.id, myAssignedSlot, removeReasonId, removeNote);
     if (!result.ok) {
       alert(result.error ?? "Could not submit the removal request.");
       return;
     }
     setLogStageId("");
     setRemoveReasonId("");
+    setRemoveNote("");
+    setActivityContent("");
     setShowRemoveReasonModal(false);
   }
 
@@ -436,7 +440,7 @@ export default function CustomerDetailPage() {
       </a>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
-          {canEditIdentity ? (
+          {canEditProfile ? (
             <input
               className="field-input"
               style={{ fontSize: 22, fontWeight: 700, padding: "2px 8px", width: "auto", minWidth: 220 }}
@@ -789,8 +793,15 @@ export default function CustomerDetailPage() {
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
+                <textarea
+                  className="field-input"
+                  style={{ marginTop: 10, resize: "vertical", minHeight: 70 }}
+                  placeholder="Note (required) — why is this client being removed?"
+                  value={removeNote}
+                  onChange={(e) => setRemoveNote(e.target.value)}
+                />
                 <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                  <button className="btn btn-primary" type="button" disabled={!removeReasonId} onClick={handleConfirmRemoveReason}>Confirm</button>
+                  <button className="btn btn-primary" type="button" disabled={!removeReasonId || !removeNote.trim()} onClick={handleConfirmRemoveReason}>Confirm</button>
                   <button className="btn btn-outline" type="button" onClick={() => setShowRemoveReasonModal(false)}>Cancel</button>
                 </div>
               </div>
@@ -809,6 +820,17 @@ export default function CustomerDetailPage() {
                   {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
                 </span>
               </div>
+              {currentRole !== "SALESPERSON" && group.slot && (() => {
+                const req = removalRequests.find(
+                  (r) => r.customerId === customer.id && r.slot === group.slot && r.requestedBy === group.key && r.status === "PENDING"
+                );
+                return req ? (
+                  <div style={{ padding: "10px 16px", borderBottom: "1px solid #eef0f2", background: "#fff8e6", fontSize: 13 }}>
+                    <span style={{ fontWeight: 700 }}>Removal requested — {removalReasons.find((x) => x.id === req.reasonId)?.name ?? "Unknown reason"}</span>
+                    {req.note && <div style={{ marginTop: 3, whiteSpace: "pre-wrap" }}>{req.note}</div>}
+                  </div>
+                ) : null;
+              })()}
               {group.entries.length === 0 ? (
                 <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No activity logged yet.</div>
               ) : (

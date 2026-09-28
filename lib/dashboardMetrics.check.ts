@@ -73,7 +73,7 @@ function removalReason(overrides: { id: string; name: string }): RemovalReason {
 function removalRequest(
   overrides: Partial<RemovalRequest> & { id: string; customerId: string; requestedBy: string; reasonId: string }
 ): RemovalRequest {
-  return { slot: 1, status: "PENDING", resolvedBy: null, resolvedAt: null, createdAt: "2026-01-01T00:00:00Z", ...overrides };
+  return { slot: 1, note: null, status: "PENDING", resolvedBy: null, resolvedAt: null, createdAt: "2026-01-01T00:00:00Z", ...overrides };
 }
 
 function assignmentEvent(overrides: Partial<AssignmentEvent> & { id: string; customerId: string; userId: string; createdAt: string }): AssignmentEvent {

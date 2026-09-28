@@ -69,6 +69,7 @@ export default function RemovalApprovalsBrowser() {
             <Link href={`/customers/${r.customerId}`} style={{ color: "inherit" }}>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>{userName(r.requestedBy)} — {customerName(r.customerId)}</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#3d4250", marginTop: 3 }}>{reasonName(r.reasonId)}</div>
+              {r.note && <div style={{ fontSize: 13, color: "#3d4250", marginTop: 3, whiteSpace: "pre-wrap" }}>{r.note}</div>}
               <div style={{ fontSize: 12, color: "#9aa0ab", marginTop: 3 }}>{formatDate(r.createdAt)}</div>
             </Link>
             <div style={{ display: "flex", gap: 8 }}>
