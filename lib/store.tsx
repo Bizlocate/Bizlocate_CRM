@@ -2318,7 +2318,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setRemovalRequests((prev) => [mapRemovalRequest(data), ...prev]);
+        if (error || !data) {
+          // Don't swallow: a failed insert used to look like success to the salesperson.
+          console.error("requestClientRemoval failed", error);
+          alert(`Removal request was NOT submitted: ${error?.message ?? "unknown error"}. Please try again or tell your manager.`);
+          return;
+        }
+        setRemovalRequests((prev) => [mapRemovalRequest(data), ...prev]);
       });
     return { ok: true };
   }
