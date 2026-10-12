@@ -435,7 +435,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div style={{ padding: "28px 32px" }}>
-      <a href="#" onClick={(e) => { e.preventDefault(); router.push("/customers"); }} style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
+      <a href="#" onClick={(e) => { e.preventDefault(); if (window.history.length > 1) router.back(); else router.push("/customers"); }} style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
         ← Back to Customers
       </a>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 10 }}>

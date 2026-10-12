@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { useStore } from "@/lib/store";
@@ -35,6 +35,27 @@ const EXPORT_FIELDS: { key: string; label: string }[] = [
   { key: "remark", label: "Remark" },
 ];
 
+const PAGE_SIZE = 30;
+
+// useState that survives unmount (list -> customer detail -> back) for the
+// life of the tab, so returning lands on the same filters/sort/page.
+// ponytail: module memory, resets on full reload; sessionStorage if that matters.
+const listMemory: Record<string, unknown> = {};
+function useRemembered<T>(scope: string, key: string, init: T) {
+  const k = `${scope}:${key}`;
+  const [v, setV] = useState<T>(() => (k in listMemory ? (listMemory[k] as T) : init));
+  const set = useCallback(
+    (n: T | ((p: T) => T)) =>
+      setV((p) => {
+        const nv = typeof n === "function" ? (n as (p: T) => T)(p) : n;
+        listMemory[k] = nv;
+        return nv;
+      }),
+    [k]
+  );
+  return [v, set] as const;
+}
+
 // scope "own": the viewer's own follow-up queue (SP's `/customers`,
 // manager's `/my-customers`) -- only customers where the viewer occupies
 // an assignee slot, with Active/Potential pool tabs. scope "all": the
@@ -63,27 +84,27 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
     targetRaces,
     targetTypes,
   } = useStore();
-  const [searchName, setSearchName] = useState("");
-  const [searchBrandName, setSearchBrandName] = useState("");
-  const [searchPhone, setSearchPhone] = useState("");
-  const [searchStageId, setSearchStageId] = useState("");
-  const [searchAssignedTo, setSearchAssignedTo] = useState("");
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [filterSourceId, setFilterSourceId] = useState("");
-  const [filterAreaId, setFilterAreaId] = useState("");
-  const [filterSubAreaId, setFilterSubAreaId] = useState("");
-  const [filterPropertyTypeId, setFilterPropertyTypeId] = useState("");
-  const [filterBusinessIndustryId, setFilterBusinessIndustryId] = useState("");
-  const [filterBusinessCategoryId, setFilterBusinessCategoryId] = useState("");
-  const [filterBusinessTypeId, setFilterBusinessTypeId] = useState("");
-  const [filterRaceId, setFilterRaceId] = useState("");
-  const [filterFirsttimeBranchId, setFilterFirsttimeBranchId] = useState("");
-  const [filterPurposeId, setFilterPurposeId] = useState("");
+  const [searchName, setSearchName] = useRemembered(scope, "searchName", "");
+  const [searchBrandName, setSearchBrandName] = useRemembered(scope, "searchBrandName", "");
+  const [searchPhone, setSearchPhone] = useRemembered(scope, "searchPhone", "");
+  const [searchStageId, setSearchStageId] = useRemembered(scope, "searchStageId", "");
+  const [searchAssignedTo, setSearchAssignedTo] = useRemembered(scope, "searchAssignedTo", "");
+  const [searchKeyword, setSearchKeyword] = useRemembered(scope, "searchKeyword", "");
+  const [filterSourceId, setFilterSourceId] = useRemembered(scope, "filterSourceId", "");
+  const [filterAreaId, setFilterAreaId] = useRemembered(scope, "filterAreaId", "");
+  const [filterSubAreaId, setFilterSubAreaId] = useRemembered(scope, "filterSubAreaId", "");
+  const [filterPropertyTypeId, setFilterPropertyTypeId] = useRemembered(scope, "filterPropertyTypeId", "");
+  const [filterBusinessIndustryId, setFilterBusinessIndustryId] = useRemembered(scope, "filterBusinessIndustryId", "");
+  const [filterBusinessCategoryId, setFilterBusinessCategoryId] = useRemembered(scope, "filterBusinessCategoryId", "");
+  const [filterBusinessTypeId, setFilterBusinessTypeId] = useRemembered(scope, "filterBusinessTypeId", "");
+  const [filterRaceId, setFilterRaceId] = useRemembered(scope, "filterRaceId", "");
+  const [filterFirsttimeBranchId, setFilterFirsttimeBranchId] = useRemembered(scope, "filterFirsttimeBranchId", "");
+  const [filterPurposeId, setFilterPurposeId] = useRemembered(scope, "filterPurposeId", "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
-  const [poolTab, setPoolTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
-  const [updatedSort, setUpdatedSort] = useState<"asc" | "desc" | null>(null);
-  const [stageSort, setStageSort] = useState<"asc" | "desc" | null>(null);
+  const [poolTab, setPoolTab] = useRemembered<"ACTIVE" | "INACTIVE">(scope, "poolTab", "ACTIVE");
+  const [updatedSort, setUpdatedSort] = useRemembered<"asc" | "desc" | null>(scope, "updatedSort", null);
+  const [stageSort, setStageSort] = useRemembered<"asc" | "desc" | null>(scope, "stageSort", null);
 
   const canExport = currentUser?.role === "ADMIN";
   const showAssignedTo = scope === "all";
@@ -174,6 +195,19 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
       return aNew - bNew;
     });
   }, [filteredCustomers, isOwnScope, stages, currentUser, updatedSort, stageSort]);
+
+  // page is only valid for the filter/sort combo it was set under; any change
+  // falls back to page 1 (no effect needed, so restore-on-return survives)
+  const viewKey = JSON.stringify([
+    searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, filterSourceId, filterAreaId,
+    filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId, filterBusinessTypeId,
+    filterRaceId, filterFirsttimeBranchId, filterPurposeId, poolTab, updatedSort, stageSort,
+  ]);
+  const [pageState, setPageState] = useRemembered(scope, "page", { page: 1, key: viewKey });
+  const totalPages = Math.max(1, Math.ceil(sortedCustomers.length / PAGE_SIZE));
+  const page = Math.min(pageState.key === viewKey ? pageState.page : 1, totalPages);
+  const pagedCustomers = sortedCustomers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const goPage = (p: number) => setPageState({ page: p, key: viewKey });
 
   function toggleUpdatedSort() {
     setStageSort(null);
@@ -522,7 +556,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
             {sortedCustomers.length === 0 && (
               <div style={{ padding: "20px", fontSize: 13.5, color: "#9aa0ab" }}>No customers match.</div>
             )}
-            {sortedCustomers.map((c) => {
+            {pagedCustomers.map((c) => {
               return (
                 <div
                   key={c.id}
@@ -578,6 +612,13 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
             })}
           </div>
         </div>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: 16, fontSize: 13.5 }}>
+            <button className="btn btn-outline" type="button" disabled={page <= 1} onClick={() => goPage(page - 1)}>Previous</button>
+            <span>Page {page} of {totalPages}</span>
+            <button className="btn btn-outline" type="button" disabled={page >= totalPages} onClick={() => goPage(page + 1)}>Next</button>
+          </div>
+        )}
       </div>
     </>
   );
