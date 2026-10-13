@@ -1,4 +1,4 @@
-import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types";
+import type { Activity, Area, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types";
 
 export function yearMonthOf(iso: string): string {
   return iso.slice(0, 7);
@@ -135,19 +135,34 @@ export interface NamedCount {
   count: number;
 }
 
-// Customers created in yearMonth, grouped by lead source. `customers` is
-// caller-scoped (area/team already filtered in) — no source recorded lands
-// in a "No source" bucket rather than being dropped.
-export function leadsBySource(customers: Customer[], leadSources: LeadSource[], yearMonth: string): NamedCount[] {
-  const counts = new Map<string | null, number>();
+export interface SourceAreaCount extends NamedCount {
+  areaId: string | null;
+  areaName: string;
+}
+
+function areaNameOf(areas: Area[], areaId: string | null): string {
+  return areaId ? areas.find((a) => a.id === areaId)?.name ?? "Unknown area" : "No area";
+}
+
+// Customers created in yearMonth, grouped by lead source AND area (one row
+// per pair). `customers` is caller-scoped (area/team already filtered in) —
+// no source lands in a "No source" bucket and no area in "No area" rather
+// than being dropped.
+export function leadsBySource(customers: Customer[], leadSources: LeadSource[], areas: Area[], yearMonth: string): SourceAreaCount[] {
+  const counts = new Map<string, { sourceId: string | null; areaId: string | null; count: number }>();
   for (const c of customers) {
     if (yearMonthOf(c.createdAt) !== yearMonth) continue;
-    counts.set(c.sourceId, (counts.get(c.sourceId) ?? 0) + 1);
+    const key = `${c.sourceId ?? ""}|${c.areaId ?? ""}`;
+    const row = counts.get(key) ?? { sourceId: c.sourceId, areaId: c.areaId, count: 0 };
+    row.count += 1;
+    counts.set(key, row);
   }
-  const rows: NamedCount[] = [...counts.entries()].map(([id, count]) => ({
-    id,
-    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
-    count,
+  const rows: SourceAreaCount[] = [...counts.values()].map((r) => ({
+    id: r.sourceId,
+    name: r.sourceId ? leadSources.find((s) => s.id === r.sourceId)?.name ?? "Unknown source" : "No source",
+    count: r.count,
+    areaId: r.areaId,
+    areaName: areaNameOf(areas, r.areaId),
   }));
   return rows.sort((a, b) => b.count - a.count);
 }
@@ -159,27 +174,33 @@ export interface SourceYearRow {
   total: number;
 }
 
-// Same grouping rule as leadsBySource (no sourceId -> "No source" bucket),
-// bucketed by month-of-year across the whole `year` instead of one
-// yearMonth -- the source-by-month comparison table on the dashboard reads
-// this to let an admin/manager flip the year and see the year's shape, or
-// compare against a prior year by changing it. Only sources with at least
-// one lead somewhere in the year are included.
-export function leadsBySourceByYear(customers: Customer[], leadSources: LeadSource[], year: number): SourceYearRow[] {
-  const counts = new Map<string | null, number[]>();
+export interface SourceAreaYearRow extends SourceYearRow {
+  areaId: string | null;
+  areaName: string;
+}
+
+// Same (source, area) grouping as leadsBySource, bucketed by month-of-year
+// across the whole `year` — the source-by-month comparison table on the
+// dashboard reads this. Only pairs with at least one lead in the year are
+// included.
+export function leadsBySourceByYear(customers: Customer[], leadSources: LeadSource[], areas: Area[], year: number): SourceAreaYearRow[] {
+  const counts = new Map<string, { sourceId: string | null; areaId: string | null; monthlyCounts: number[] }>();
   const yearPrefix = String(year);
   for (const c of customers) {
     if (c.createdAt.slice(0, 4) !== yearPrefix) continue;
     const monthIndex = Number(c.createdAt.slice(5, 7)) - 1;
-    const row = counts.get(c.sourceId) ?? new Array(12).fill(0);
-    row[monthIndex] += 1;
-    counts.set(c.sourceId, row);
+    const key = `${c.sourceId ?? ""}|${c.areaId ?? ""}`;
+    const row = counts.get(key) ?? { sourceId: c.sourceId, areaId: c.areaId, monthlyCounts: new Array(12).fill(0) };
+    row.monthlyCounts[monthIndex] += 1;
+    counts.set(key, row);
   }
-  const rows: SourceYearRow[] = [...counts.entries()].map(([id, monthlyCounts]) => ({
-    id,
-    name: id ? leadSources.find((s) => s.id === id)?.name ?? "Unknown source" : "No source",
-    monthlyCounts,
-    total: monthlyCounts.reduce((sum, n) => sum + n, 0),
+  const rows: SourceAreaYearRow[] = [...counts.values()].map((r) => ({
+    id: r.sourceId,
+    name: r.sourceId ? leadSources.find((s) => s.id === r.sourceId)?.name ?? "Unknown source" : "No source",
+    monthlyCounts: r.monthlyCounts,
+    total: r.monthlyCounts.reduce((sum, n) => sum + n, 0),
+    areaId: r.areaId,
+    areaName: areaNameOf(areas, r.areaId),
   }));
   return rows.sort((a, b) => b.total - a.total);
 }

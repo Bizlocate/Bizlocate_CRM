@@ -23,7 +23,7 @@ import {
   stageFunnel,
   wonAmountInMonth,
 } from "./dashboardMetrics.ts";
-import type { Activity, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types.ts";
+import type { Activity, Area, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string }): Customer {
   return {
@@ -181,39 +181,50 @@ assert.deepEqual([...scopedUserIds(allUsers, manager)].sort(), ["mgr1", "u3"].so
 const sales = user({ id: "u5", name: "Sales", role: "SALESPERSON" });
 assert.deepEqual([...scopedUserIds(allUsers, sales)], ["u5"]);
 
-// --- leadsBySource: grouped by sourceId, null -> "No source" ---
+// --- leadsBySource: one row per (source, area); null source -> "No source", null area -> "No area" ---
 const sources = [leadSource({ id: "s1", name: "Facebook" }), leadSource({ id: "s2", name: "Referral" })];
+const areaList: Area[] = [
+  { id: "a1", name: "SETAPAK", teamIds: [], autoAssignEnabled: true, autoAssignResumedAt: "2026-01-01T00:00:00Z", lastAutoAssignedUserId: null },
+  { id: "a2", name: "TTDI", teamIds: [], autoAssignEnabled: true, autoAssignResumedAt: "2026-01-01T00:00:00Z", lastAutoAssignedUserId: null },
+];
 const sourceCustomers = [
-  customer({ id: "c1", sourceId: "s1", createdAt: "2026-08-05T00:00:00Z" }),
-  customer({ id: "c2", sourceId: "s1", createdAt: "2026-08-06T00:00:00Z" }),
-  customer({ id: "c3", sourceId: "s2", createdAt: "2026-08-07T00:00:00Z" }),
-  customer({ id: "c4", sourceId: null, createdAt: "2026-08-08T00:00:00Z" }),
-  customer({ id: "c5", sourceId: "s1", createdAt: "2026-07-05T00:00:00Z" }), // outside month, excluded
+  customer({ id: "c1", sourceId: "s1", areaId: "a1", createdAt: "2026-08-05T00:00:00Z" }),
+  customer({ id: "c2", sourceId: "s1", areaId: "a1", createdAt: "2026-08-06T00:00:00Z" }),
+  customer({ id: "c2b", sourceId: "s1", areaId: "a2", createdAt: "2026-08-06T00:00:00Z" }),
+  customer({ id: "c3", sourceId: "s2", areaId: null, createdAt: "2026-08-07T00:00:00Z" }),
+  customer({ id: "c4", sourceId: null, areaId: "a2", createdAt: "2026-08-08T00:00:00Z" }),
+  customer({ id: "c5", sourceId: "s1", areaId: "a1", createdAt: "2026-07-05T00:00:00Z" }), // outside month, excluded
 ];
-const bySource = leadsBySource(sourceCustomers, sources, "2026-08");
-assert.deepEqual(bySource.map((r) => r.name), ["Facebook", "Referral", "No source"], "sorted desc by count");
-assert.equal(bySource.find((r) => r.name === "Facebook")!.count, 2);
-assert.equal(bySource.find((r) => r.name === "No source")!.count, 1);
-assert.equal(leadsBySource(sourceCustomers, sources, "2026-05").length, 0, "no leads that month -> empty, not a crash");
+const bySource = leadsBySource(sourceCustomers, sources, areaList, "2026-08");
+assert.equal(bySource.length, 4, "Facebook/SETAPAK, Facebook/TTDI, Referral/No area, No source/TTDI");
+assert.deepEqual([bySource[0].name, bySource[0].areaName, bySource[0].count], ["Facebook", "SETAPAK", 2], "sorted desc by count");
+const fbTtdi = bySource.find((r) => r.name === "Facebook" && r.areaName === "TTDI")!;
+assert.equal(fbTtdi.count, 1);
+assert.equal(bySource.find((r) => r.name === "Referral")!.areaName, "No area");
+assert.equal(bySource.find((r) => r.name === "No source")!.areaName, "TTDI");
+assert.equal(leadsBySource(sourceCustomers, sources, areaList, "2026-05").length, 0, "no leads that month -> empty, not a crash");
 
-// --- leadsBySourceByYear: same grouping, bucketed by month across a whole year ---
+// --- leadsBySourceByYear: one row per (source, area), bucketed by month across a whole year ---
 const yearCustomers = [
-  customer({ id: "y1", sourceId: "s1", createdAt: "2026-01-05T00:00:00Z" }),
-  customer({ id: "y2", sourceId: "s1", createdAt: "2026-03-06T00:00:00Z" }),
-  customer({ id: "y3", sourceId: "s1", createdAt: "2026-03-07T00:00:00Z" }),
-  customer({ id: "y4", sourceId: "s2", createdAt: "2026-12-01T00:00:00Z" }),
-  customer({ id: "y5", sourceId: null, createdAt: "2026-06-15T00:00:00Z" }),
-  customer({ id: "y6", sourceId: "s1", createdAt: "2025-03-06T00:00:00Z" }), // wrong year, excluded
+  customer({ id: "y1", sourceId: "s1", areaId: "a1", createdAt: "2026-01-05T00:00:00Z" }),
+  customer({ id: "y2", sourceId: "s1", areaId: "a1", createdAt: "2026-03-06T00:00:00Z" }),
+  customer({ id: "y3", sourceId: "s1", areaId: "a1", createdAt: "2026-03-07T00:00:00Z" }),
+  customer({ id: "y3b", sourceId: "s1", areaId: "a2", createdAt: "2026-03-08T00:00:00Z" }),
+  customer({ id: "y4", sourceId: "s2", areaId: null, createdAt: "2026-12-01T00:00:00Z" }),
+  customer({ id: "y5", sourceId: null, areaId: "a1", createdAt: "2026-06-15T00:00:00Z" }),
+  customer({ id: "y6", sourceId: "s1", areaId: "a1", createdAt: "2025-03-06T00:00:00Z" }), // wrong year, excluded
 ];
-const byYear = leadsBySourceByYear(yearCustomers, sources, 2026);
-assert.deepEqual(byYear.map((r) => r.name), ["Facebook", "Referral", "No source"], "sorted desc by total");
-const facebookRow = byYear.find((r) => r.name === "Facebook")!;
-assert.equal(facebookRow.monthlyCounts.length, 12);
-assert.equal(facebookRow.monthlyCounts[0], 1, "January");
-assert.equal(facebookRow.monthlyCounts[2], 2, "March");
-assert.equal(facebookRow.total, 3);
+const byYear = leadsBySourceByYear(yearCustomers, sources, areaList, 2026);
+assert.equal(byYear.length, 4, "Facebook/SETAPAK, Facebook/TTDI, Referral/No area, No source/SETAPAK");
+assert.deepEqual([byYear[0].name, byYear[0].areaName], ["Facebook", "SETAPAK"], "sorted desc by total");
+const fbSetapak = byYear.find((r) => r.name === "Facebook" && r.areaName === "SETAPAK")!;
+assert.equal(fbSetapak.monthlyCounts.length, 12);
+assert.equal(fbSetapak.monthlyCounts[0], 1, "January");
+assert.equal(fbSetapak.monthlyCounts[2], 2, "March");
+assert.equal(fbSetapak.total, 3);
+assert.equal(byYear.find((r) => r.name === "Facebook" && r.areaName === "TTDI")!.monthlyCounts[2], 1, "other area is its own row");
 assert.equal(byYear.find((r) => r.name === "Referral")!.monthlyCounts[11], 1, "December");
-assert.equal(leadsBySourceByYear(yearCustomers, sources, 2020).length, 0, "no leads that year -> empty, not a crash");
+assert.equal(leadsBySourceByYear(yearCustomers, sources, areaList, 2020).length, 0, "no leads that year -> empty, not a crash");
 
 // --- assignmentCounts: one row per event, not deduped per customer ---
 const assignEvents = [
