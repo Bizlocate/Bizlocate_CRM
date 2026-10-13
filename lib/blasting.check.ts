@@ -1,8 +1,8 @@
 // Self-check for blasting. Run with:
 //   node --experimental-strip-types lib/blasting.check.ts
 import assert from "node:assert";
-import { matchesBlastCriteria } from "./blasting.ts";
-import type { Customer } from "./types.ts";
+import { matchesBlastCriteria, hasOpenBlastItem } from "./blasting.ts";
+import type { BlastItem, BlastRequest, Customer } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string; createdAt: string }): Customer {
   return {
@@ -52,6 +52,34 @@ const noRangeCriteria = { businessNameKeyword: null, areaId: null, subAreaId: nu
   // Neither set -> matches everything, same as before this feature existed.
   assert.strictEqual(matchesBlastCriteria(before, noRangeCriteria), true);
   assert.strictEqual(matchesBlastCriteria(after, noRangeCriteria), true);
+}
+
+// --- hasOpenBlastItem: approved request + unlocked + not expired, for the right user + customer ---
+{
+  const req = (overrides: Partial<BlastRequest> = {}): BlastRequest => ({
+    id: "r1", requestedBy: "mgr", salespersonId: "sp1",
+    businessNameKeyword: null, areaId: null, subAreaId: null,
+    businessIndustryId: null, businessCategoryId: null, businessTypeId: null,
+    createdFrom: null, createdTo: null,
+    status: "APPROVED", approvedTotal: 10, lockedExpiryDays: 7,
+    resolvedBy: "admin", resolvedAt: "2026-01-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  });
+  const item = (overrides: Partial<BlastItem> = {}): BlastItem => ({
+    id: "i1", blastRequestId: "r1", customerId: "c1", batchIndex: 1,
+    unlockedAt: "2026-01-02T00:00:00Z", status: "PENDING", remark: null, doneAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  });
+
+  assert.strictEqual(hasOpenBlastItem([item()], [req()], "sp1", "c1"), true, "unlocked pending item -> access");
+  assert.strictEqual(hasOpenBlastItem([item({ status: "DONE" })], [req()], "sp1", "c1"), true, "DONE item still accessible until batch expires");
+  assert.strictEqual(hasOpenBlastItem([item({ unlockedAt: null })], [req()], "sp1", "c1"), false, "locked batch -> no access");
+  assert.strictEqual(hasOpenBlastItem([item({ status: "EXPIRED" })], [req()], "sp1", "c1"), false, "expired item -> no access");
+  assert.strictEqual(hasOpenBlastItem([item()], [req({ status: "REJECTED" })], "sp1", "c1"), false, "request not APPROVED -> no access");
+  assert.strictEqual(hasOpenBlastItem([item()], [req({ status: "EXPIRED" })], "sp1", "c1"), false, "request EXPIRED -> no access");
+  assert.strictEqual(hasOpenBlastItem([item()], [req()], "sp2", "c1"), false, "other salesperson -> no access");
+  assert.strictEqual(hasOpenBlastItem([item()], [req()], "sp1", "c2"), false, "other customer -> no access");
 }
 
 console.log("blasting.check.ts: all assertions passed");

@@ -128,3 +128,13 @@ export function visibleBlastItemsFor(items: BlastItem[], requests: BlastRequest[
   );
   return items.filter((i) => ownRequestIds.has(i.blastRequestId) && i.unlockedAt && i.status !== "EXPIRED");
 }
+
+/**
+ * True when `userId` currently holds an unlocked, unexpired item for
+ * `customerId` on one of their own APPROVED requests. This is the
+ * client-side mirror of the `has_open_blast_item(customer_id)` SQL helper
+ * that gates customers/customer_change_log RLS -- keep the two in sync.
+ */
+export function hasOpenBlastItem(items: BlastItem[], requests: BlastRequest[], userId: string, customerId: string): boolean {
+  return visibleBlastItemsFor(items, requests, userId).some((i) => i.customerId === customerId);
+}
