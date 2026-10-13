@@ -2650,20 +2650,22 @@ insert into mandatory_field_settings (field_key, required) values
 -- current teams policy:
 --   select id, name from teams order by name;
 --   select policyname, qual from pg_policies where tablename = 'teams' and policyname = 'teams_select';
--- Expected: a team named exactly 'SK Team'; teams_select qual =
+-- Expected: exactly one team whose name starts with 'SK Team' (in prod:
+-- 'SK Team (SETAPAK/Jln Ipoh Sentul)'); teams_select qual =
 --   is_admin() OR id = my_team_id()
--- If the name differs, edit 'SK Team' below to match before running.
+-- If your team name differs, edit the 'SK Team%' pattern below first.
 -- ============================================================
 --
 -- alter table customers add column if not exists created_by_team_id uuid references teams (id) on delete set null;
 --
 -- do $$
--- declare sk uuid;
+-- declare sk uuid; n int;
 -- begin
---   select id into sk from teams where name = 'SK Team';
---   if sk is null then
---     raise exception 'Team "SK Team" not found - check STEP 0 and fix the name in this script';
+--   select count(*) into n from teams where name like 'SK Team%';
+--   if n <> 1 then
+--     raise exception 'Expected exactly 1 team starting with "SK Team", found %', n;
 --   end if;
+--   select id into sk from teams where name like 'SK Team%';
 --   update customers set created_by_team_id = sk where created_by_team_id is null;
 -- end $$;
 --
