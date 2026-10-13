@@ -659,7 +659,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {sourceYearRows.map((r) => (
-                    <tr key={r.id ?? "none"} style={{ borderTop: "1px solid #eef0f2" }}>
+                    <tr key={`${r.id ?? "none"}|${r.areaId ?? "none"}`} style={{ borderTop: "1px solid #eef0f2" }}>
                       <td style={{ padding: "6px 10px", fontWeight: 500 }}>{r.name}</td>
                       <td style={{ padding: "6px 10px", color: "#6b7280" }}>{r.areaName}</td>
                       {r.monthlyCounts.map((count, i) => (
