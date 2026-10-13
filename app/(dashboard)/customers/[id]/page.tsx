@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { hasOpenBlastItem } from "@/lib/blasting";
 import { ACTIVITY_STYLES, Activity, ActivityType, PROFILE_FIELD_LABELS, STAGE_STYLES } from "@/lib/types";
 import { buildAssignmentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 
@@ -61,6 +62,9 @@ export default function CustomerDetailPage() {
   const {
     currentUser,
     visibleCustomers,
+    customers,
+    blastItems,
+    blastRequests,
     users,
     stages,
     activities,
@@ -99,7 +103,12 @@ export default function CustomerDetailPage() {
     targetTypes,
   } = useStore();
 
-  const customer = visibleCustomers.find((c) => c.id === id);
+  const ownCustomer = visibleCustomers.find((c) => c.id === id);
+  // A customer reachable only through an approved, unlocked blast item: the
+  // viewer can read it and edit its profile, but holds no assignee slot, so
+  // logging activity / tasks stay off (RLS enforces that server-side too).
+  const blastAccess = !ownCustomer && !!currentUser && hasOpenBlastItem(blastItems, blastRequests, currentUser.id, id);
+  const customer = ownCustomer ?? (blastAccess ? customers.find((c) => c.id === id) : undefined);
 
   useEffect(() => {
     if (currentUser && !customer) router.replace("/customers");
@@ -199,7 +208,7 @@ export default function CustomerDetailPage() {
     (r) => r.customerId === customer.id && r.requestedBy === currentUser.id && r.status === "PENDING"
   );
   const canEditProfile =
-    currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || (assignedUsers.some(({ user }) => user.id === currentUser.id) && !myPendingRemoval);
+    currentUser.role === "ADMIN" || currentUser.role === "MANAGER" || blastAccess || (assignedUsers.some(({ user }) => user.id === currentUser.id) && !myPendingRemoval);
   const canEditRemark = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const canEditIdentity = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
   const filteredSubAreas = subAreas.filter((s) => s.areaId === profileDraft.areaId);
@@ -274,7 +283,8 @@ export default function CustomerDetailPage() {
   // admin doesn't do followups, so no log-entry form for them (history still visible below)
   const canLogActivity = currentUser.role !== "ADMIN"
     && (currentUser.role !== "MANAGER" || assignedUsers.some(({ user }) => user.id === currentUser.id))
-    && !myPendingRemoval;
+    && !myPendingRemoval
+    && !blastAccess;
 
   function roleLabel(role: string) {
     return role === "SALESPERSON" ? "Sales Person" : role === "MANAGER" ? "Manager" : "Admin";
@@ -937,6 +947,7 @@ export default function CustomerDetailPage() {
 
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Tasks</div>
+          {!blastAccess && (
           <form onSubmit={handleAddTask} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <input
               className="field-input"
@@ -955,6 +966,7 @@ export default function CustomerDetailPage() {
             />
             <button className="btn btn-primary" type="submit">+ Add</button>
           </form>
+          )}
           <div className="card">
             {customerTasks.length === 0 && (
               <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>No tasks yet.</div>
