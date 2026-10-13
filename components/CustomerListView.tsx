@@ -67,6 +67,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
     currentUser,
     visibleCustomers,
     users,
+    teams,
     stages,
     activities,
     removalRequests,
@@ -100,6 +101,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
   const [filterRaceId, setFilterRaceId] = useRemembered(scope, "filterRaceId", "");
   const [filterFirsttimeBranchId, setFilterFirsttimeBranchId] = useRemembered(scope, "filterFirsttimeBranchId", "");
   const [filterPurposeId, setFilterPurposeId] = useRemembered(scope, "filterPurposeId", "");
+  const [filterCreatedByTeamId, setFilterCreatedByTeamId] = useRemembered(scope, "filterCreatedByTeamId", "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
   const [poolTab, setPoolTab] = useRemembered<"ACTIVE" | "INACTIVE">(scope, "poolTab", "ACTIVE");
@@ -149,6 +151,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
       if (filterRaceId && c.raceId !== filterRaceId) return false;
       if (filterFirsttimeBranchId && c.firsttimeBranchId !== filterFirsttimeBranchId) return false;
       if (filterPurposeId && c.purposeId !== filterPurposeId) return false;
+      if (filterCreatedByTeamId && c.createdByTeamId !== filterCreatedByTeamId) return false;
       if (isOwnScope && currentUser) {
         const myPool =
           c.assignedToUserId === currentUser.id ? c.pool1 :
@@ -168,7 +171,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
   }, [
     visibleCustomers, activities, removalRequests, currentUser, searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, showAssignedTo,
     filterSourceId, filterAreaId, filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId,
-    filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, isOwnScope, currentUser, poolTab,
+    filterBusinessTypeId, filterRaceId, filterFirsttimeBranchId, filterPurposeId, filterCreatedByTeamId, isOwnScope, currentUser, poolTab,
   ]);
 
   const sortedCustomers = useMemo(() => {
@@ -201,7 +204,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
   const viewKey = JSON.stringify([
     searchName, searchBrandName, searchPhone, searchStageId, searchAssignedTo, searchKeyword, filterSourceId, filterAreaId,
     filterSubAreaId, filterPropertyTypeId, filterBusinessIndustryId, filterBusinessCategoryId, filterBusinessTypeId,
-    filterRaceId, filterFirsttimeBranchId, filterPurposeId, poolTab, updatedSort, stageSort,
+    filterRaceId, filterFirsttimeBranchId, filterPurposeId, filterCreatedByTeamId, poolTab, updatedSort, stageSort,
   ]);
   const [pageState, setPageState] = useRemembered(scope, "page", { page: 1, key: viewKey });
   const totalPages = Math.max(1, Math.ceil(sortedCustomers.length / PAGE_SIZE));
@@ -346,8 +349,8 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
     setShowExportModal(false);
   }
 
-  // Created Date, Business Type, Business Name, Tel No, Customer Name, Sub Area, Source, Stage, [Assigned Agent(s)], Purpose, Last Updated
-  const LIST_COLS = [...(isOwnScope ? [] : [100]), 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
+  // [Created Date, Created By], Business Type, Business Name, Tel No, Customer Name, Sub Area, Source, Stage, [Assigned Agent(s)], Purpose, Last Updated
+  const LIST_COLS = [...(isOwnScope ? [] : [100, 120]), 130, 150, 110, 150, 140, 100, 100, ...(showAssignedTo ? [170] : []), 100, 100];
   const gridCols = `${canExport ? "32px " : ""}${LIST_COLS.map((w) => `${w}px`).join(" ")} 30px`;
   const gridMinWidth = (canExport ? 32 : 0) + LIST_COLS.reduce((a, b) => a + b, 0) + 30;
   const allFilteredSelected = filteredCustomers.length > 0 && filteredCustomers.every((c) => selectedIds.has(c.id));
@@ -420,6 +423,17 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
             {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
+        {scope === "all" && (
+          <div style={{ flex: "1 1 160px" }}>
+            <label className="field-label">Created By</label>
+            <select className="field-input" value={filterCreatedByTeamId} onChange={(e) => setFilterCreatedByTeamId(e.target.value)}>
+              <option value="">All teams</option>
+              {teams
+                .filter((t) => currentUser?.role === "ADMIN" || t.id === currentUser?.teamId)
+                .map((t) => <option key={t.id} value={t.id}>{currentUser?.role === "ADMIN" ? t.name : `My team (${t.name})`}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ flex: "1 1 160px" }}>
           <label className="field-label">Sub Area</label>
           <select className="field-input" value={filterSubAreaId} onChange={(e) => setFilterSubAreaId(e.target.value)}>
@@ -496,6 +510,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
             setFilterRaceId("");
             setFilterFirsttimeBranchId("");
             setFilterPurposeId("");
+            setFilterCreatedByTeamId("");
           }}
         >
           Clear
@@ -537,6 +552,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
                 </div>
               )}
               {!isOwnScope && <div>Created Date</div>}
+              {!isOwnScope && <div>Created By</div>}
               <div>Business Type</div>
               <div>Business Name</div>
               <div>Tel No</div>
@@ -577,6 +593,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
                     </div>
                   )}
                   {!isOwnScope && <div style={{ color: "#6b7280" }}>{formatDate(c.createdAt)}</div>}
+                  {!isOwnScope && <div style={{ color: "#6b7280" }}>{nameOf(teams, c.createdByTeamId) || "—"}</div>}
                   <div style={{ color: "#6b7280" }}>{nameOf(businessTagTypes, c.businessTypeId) || "—"}</div>
                   <div style={{ color: "#6b7280" }}>{c.businessName || "—"}</div>
                   <div style={{ color: "#6b7280" }}>{c.phone}</div>
