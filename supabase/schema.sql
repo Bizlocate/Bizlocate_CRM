@@ -188,6 +188,7 @@ create table customers (
   budget_max numeric,
   remark text,
   created_by uuid references profiles (id) on delete set null,
+  created_by_team_id uuid references teams (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -605,9 +606,11 @@ create policy "profiles_update" on profiles for update using (
 );
 create policy "profiles_delete_admin" on profiles for delete using (is_admin());
 
--- teams: admin full, member can see own team
+-- teams: admin full, member can see own team, any manager can read every
+-- team (names only matter: used to label which team created a customer)
 create policy "teams_select" on teams for select using (
   is_admin() or id = my_team_id()
+  or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 );
 create policy "teams_insert_admin" on teams for insert with check (is_admin());
 create policy "teams_update_admin" on teams for update using (is_admin());
@@ -2635,4 +2638,39 @@ insert into mandatory_field_settings (field_key, required) values
 --         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
 --     )
 --   )
+-- );
+
+-- ============================================================
+-- Migration: Customer created-by-team — records which team created each
+-- customer (drives the "Created by" list filter and the dashboard's
+-- new-leads counts). Run once against an already-provisioned database,
+-- BEFORE deploying the app version that writes this column.
+--
+-- STEP 0 (read-only, run first): confirm the SK team's exact name and the
+-- current teams policy:
+--   select id, name from teams order by name;
+--   select policyname, qual from pg_policies where tablename = 'teams' and policyname = 'teams_select';
+-- Expected: a team named exactly 'SK Team'; teams_select qual =
+--   is_admin() OR id = my_team_id()
+-- If the name differs, edit 'SK Team' below to match before running.
+-- ============================================================
+--
+-- alter table customers add column if not exists created_by_team_id uuid references teams (id) on delete set null;
+--
+-- do $$
+-- declare sk uuid;
+-- begin
+--   select id into sk from teams where name = 'SK Team';
+--   if sk is null then
+--     raise exception 'Team "SK Team" not found - check STEP 0 and fix the name in this script';
+--   end if;
+--   update customers set created_by_team_id = sk where created_by_team_id is null;
+-- end $$;
+--
+-- create index if not exists customers_created_by_team_idx on customers (created_by_team_id);
+--
+-- drop policy if exists "teams_select" on teams;
+-- create policy "teams_select" on teams for select using (
+--   is_admin() or id = my_team_id()
+--   or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 -- );
