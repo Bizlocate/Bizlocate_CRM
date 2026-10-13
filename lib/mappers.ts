@@ -52,6 +52,7 @@ export function mapCustomer(row: {
   budget_max: number | null;
   remark: string | null;
   created_by: string | null;
+  created_by_team_id: string | null;
   created_at: string;
   updated_at: string;
 }): Customer {
@@ -91,6 +92,7 @@ export function mapCustomer(row: {
     optionalPhone: row.optional_phone ?? "",
     remark: row.remark ?? "",
     createdBy: row.created_by,
+    createdByTeamId: row.created_by_team_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

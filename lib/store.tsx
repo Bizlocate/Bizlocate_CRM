@@ -1891,6 +1891,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         stage_2: input.assignedToUserId2 ? defaultStage.id : null,
         stage_3: input.assignedToUserId3 ? defaultStage.id : null,
         created_by: currentUserId,
+        created_by_team_id: currentUser?.teamId ?? null,
         source_id: profile.sourceId,
         area_id: profile.areaId,
         sub_area_id: profile.subAreaId,

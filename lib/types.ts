@@ -244,6 +244,7 @@ export interface Customer {
   optionalPhone: string;
   remark: string;
   createdBy: string | null;
+  createdByTeamId: string | null;
   createdAt: string;
   updatedAt: string;
 }
