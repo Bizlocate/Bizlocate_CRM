@@ -2575,3 +2575,64 @@ insert into mandatory_field_settings (field_key, required) values
 -- ============================================================
 --
 -- alter table removal_requests add column if not exists note text;
+
+-- ============================================================
+-- Migration: Blasting — a salesperson (or manager) with an unlocked,
+-- unexpired blast item can read and update that customer's profile, but
+-- not log activity or tasks (activities_insert / tasks_insert still
+-- require a real assignee slot). Run once against an already-provisioned
+-- database. Phone/remark stay admin/manager-only via the existing
+-- protect_customer_remark_column trigger; assignment/pool triggers are
+-- unchanged, so a blast-only user cannot reassign or flip pool either.
+--
+-- STEP 0 (read-only, run first): confirm the live policies match what is
+-- recreated below, in case they were edited by hand in Supabase:
+--   select policyname, cmd, qual, with_check from pg_policies
+--   where tablename in ('customers', 'customer_change_log')
+--     and policyname in ('customers_select', 'customers_update', 'customer_change_log_insert');
+-- Expected: customers_select / customers_update qual =
+--   is_admin() OR is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
+-- If they differ, merge the difference into the statements below first.
+-- ============================================================
+--
+-- create or replace function has_open_blast_item(cid uuid) returns boolean as $$
+--   select exists (
+--     select 1
+--     from blast_items bi
+--     join blast_requests br on br.id = bi.blast_request_id
+--     where bi.customer_id = cid
+--       and br.salesperson_id = auth.uid()
+--       and br.status = 'APPROVED'
+--       and bi.unlocked_at is not null
+--       and bi.status <> 'EXPIRED'
+--   );
+-- $$ language sql security definer stable set search_path = public;
+--
+-- drop policy if exists "customers_select" on customers;
+-- create policy "customers_select" on customers for select using (
+--   is_admin()
+--   or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
+--   or has_open_blast_item(id)
+-- );
+--
+-- drop policy if exists "customers_update" on customers;
+-- create policy "customers_update" on customers for update using (
+--   is_admin()
+--   or is_customer_assignee(assigned_to, assigned_to_2, assigned_to_3)
+--   or has_open_blast_item(id)
+-- );
+--
+-- -- change-log rows written when a blast-only user edits the profile
+-- drop policy if exists "customer_change_log_insert" on customer_change_log;
+-- create policy "customer_change_log_insert" on customer_change_log for insert with check (
+--   changed_by = auth.uid()
+--   and (
+--     is_admin()
+--     or has_open_blast_item(customer_id)
+--     or exists (
+--       select 1 from customers c
+--       where c.id = customer_change_log.customer_id
+--         and is_customer_assignee(c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--     )
+--   )
+-- );
