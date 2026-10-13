@@ -207,14 +207,10 @@ export default function DashboardPage() {
   const scopedDealClosures = useMemo(() => dealClosures.filter((d) => d.userId === null || scopedIds.has(d.userId)), [dealClosures, scopedIds]);
 
   if (!currentUser) return null;
+  const viewer = currentUser; // non-null alias for nested function declarations
 
   const canManage = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
-  // ADMIN picks from every area; MANAGER only from areas admin has assigned
-  // to their team (Area.teamIds) — zero assigned areas means no dropdown at
-  // all, since there's nothing to narrow down to. SP never gets one — they
-  // only ever see their own scope regardless of area.
-  const availableAreas = currentUser.role === "ADMIN" ? areas : areas.filter((a) => !!currentUser.teamId && a.teamIds.includes(currentUser.teamId));
-  // Same ADMIN-sees-all / MANAGER-sees-own-team-only split as availableAreas.
+  // ADMIN picks from every team; MANAGER only their own.
   const availableTeams = currentUser.role === "ADMIN" ? teams : teams.filter((t) => t.id === currentUser.teamId);
   const customerAreaMap = new Map(visibleCustomers.map((c) => [c.id, c.areaId]));
 
@@ -258,6 +254,19 @@ export default function DashboardPage() {
     };
   }
 
+  // New leads belong to the team that created the customer
+  // (Customer.createdByTeamId), not to whoever is assigned now. MANAGER: own
+  // team's customers only (none if the manager has no team); ADMIN: every
+  // customer, optionally narrowed by the section's team filter. Area narrows
+  // either way, "" = all areas.
+  function newLeadCustomers(areaId: string, teamId: string) {
+    if (viewer.role === "MANAGER" && !viewer.teamId) return [];
+    const creatingTeamId = viewer.role === "ADMIN" ? teamId : viewer.teamId;
+    return visibleCustomers.filter(
+      (c) => (!areaId || c.areaId === areaId) && (!creatingTeamId || c.createdByTeamId === creatingTeamId)
+    );
+  }
+
   // Reused by 团队表现 and the three ops reports below — active, in-scope,
   // never ADMIN (admins don't carry deals or get assigned customers).
   const teamMembers = users.filter((u) => scopedIds.has(u.id) && u.active && u.role !== "ADMIN");
@@ -299,9 +308,8 @@ export default function DashboardPage() {
 
   const ops = scopeByTeam(scopeByArea(opsAreaId), opsTeamId);
   const opsMembers = membersInTeam(opsTeamId);
-  const sourceRows = leadsBySource(ops.customers, leadSources, opsMonth);
-  const sourceYearScoped = scopeByTeam(scopeByArea(sourceYearAreaId), sourceYearTeamId);
-  const sourceYearRows = leadsBySourceByYear(sourceYearScoped.customers, leadSources, sourceYear);
+  const sourceRows = leadsBySource(newLeadCustomers(opsAreaId, opsTeamId), leadSources, areas, opsMonth);
+  const sourceYearRows = leadsBySourceByYear(newLeadCustomers(sourceYearAreaId, sourceYearTeamId), leadSources, areas, sourceYear);
   const sourceYearMonthTotals = Array.from({ length: 12 }, (_, i) => sourceYearRows.reduce((sum, r) => sum + r.monthlyCounts[i], 0));
   const sourceYearGrandTotal = sourceYearMonthTotals.reduce((sum, n) => sum + n, 0);
   const assignRows = assignmentCounts(opsMembers, ops.assignmentEvents, opsMonth);
@@ -536,7 +544,7 @@ export default function DashboardPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>运营报表</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <AreaFilter value={opsAreaId} onChange={setOpsAreaId} areas={availableAreas} />
+              <AreaFilter value={opsAreaId} onChange={setOpsAreaId} areas={areas} />
               <TeamFilter value={opsTeamId} onChange={setOpsTeamId} teams={availableTeams} />
               <input type="month" className="field-input" style={{ width: 150 }} value={opsMonth} onChange={(e) => setOpsMonth(e.target.value)} />
             </div>
@@ -546,9 +554,9 @@ export default function DashboardPage() {
               <CardLabel>New leads by source</CardLabel>
               {sourceRows.length === 0 && <div style={{ fontSize: 13, color: "#9aa0ab" }}>No new leads this month.</div>}
               {sourceRows.map((r) => (
-                <div key={r.id ?? "none"} style={{ marginBottom: 9 }} title={`${r.name}: ${r.count}`}>
+                <div key={`${r.id ?? "none"}|${r.areaId ?? "none"}`} style={{ marginBottom: 9 }} title={`${r.name} · ${r.areaName}: ${r.count}`}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
-                    <span>{r.name}</span>
+                    <span>{r.name} <span style={{ color: "#9aa0ab" }}>· {r.areaName}</span></span>
                     <span style={{ color: "#6b7280" }}>{r.count}</span>
                   </div>
                   <div style={{ background: TRACK, borderRadius: 4, height: 8 }}>
@@ -623,7 +631,7 @@ export default function DashboardPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>New Leads by Source — Yearly</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <AreaFilter value={sourceYearAreaId} onChange={setSourceYearAreaId} areas={availableAreas} />
+              <AreaFilter value={sourceYearAreaId} onChange={setSourceYearAreaId} areas={areas} />
               <TeamFilter value={sourceYearTeamId} onChange={setSourceYearTeamId} teams={availableTeams} />
               <input
                 type="number"
@@ -642,6 +650,7 @@ export default function DashboardPage() {
                 <thead>
                   <tr>
                     <th style={{ textAlign: "left", padding: "6px 10px", color: "#9aa0ab", fontWeight: 600 }}>Source</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", color: "#9aa0ab", fontWeight: 600 }}>Area</th>
                     {MONTH_ABBR.map((m) => (
                       <th key={m} style={{ textAlign: "right", padding: "6px 10px", color: "#9aa0ab", fontWeight: 600 }}>{m}</th>
                     ))}
@@ -652,6 +661,7 @@ export default function DashboardPage() {
                   {sourceYearRows.map((r) => (
                     <tr key={r.id ?? "none"} style={{ borderTop: "1px solid #eef0f2" }}>
                       <td style={{ padding: "6px 10px", fontWeight: 500 }}>{r.name}</td>
+                      <td style={{ padding: "6px 10px", color: "#6b7280" }}>{r.areaName}</td>
                       {r.monthlyCounts.map((count, i) => (
                         <td key={i} style={{ textAlign: "right", padding: "6px 10px", color: count === 0 ? "#c7cbd3" : undefined }}>{count}</td>
                       ))}
@@ -660,6 +670,7 @@ export default function DashboardPage() {
                   ))}
                   <tr style={{ borderTop: "2px solid #e2e4e9" }}>
                     <td style={{ padding: "6px 10px", fontWeight: 700 }}>Total</td>
+                    <td />
                     {sourceYearMonthTotals.map((count, i) => (
                       <td key={i} style={{ textAlign: "right", padding: "6px 10px", fontWeight: 700 }}>{count}</td>
                     ))}
@@ -677,7 +688,7 @@ export default function DashboardPage() {
           Sales Performance Tracker
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canManage && <AreaFilter value={spAreaId} onChange={setSpAreaId} areas={availableAreas} />}
+          {canManage && <AreaFilter value={spAreaId} onChange={setSpAreaId} areas={areas} />}
           {canManage && <TeamFilter value={spTeamId} onChange={setSpTeamId} teams={availableTeams} />}
           <input type="month" className="field-input" style={{ width: 150 }} value={spMonth} onChange={(e) => setSpMonth(e.target.value)} />
         </div>
