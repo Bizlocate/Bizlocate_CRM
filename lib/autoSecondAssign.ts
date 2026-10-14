@@ -103,7 +103,7 @@ export function computeAutoSecondAssignPlan(
     if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
     const slot1Stage = slot1.stageId ? stages.find((s) => s.id === slot1.stageId) : undefined;
     if (!isSecondAssignDue(c, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
-    const excluded = [slot1.userId, c.assignments.find((s) => s.slot === 3)?.userId].filter((id): id is string => !!id);
+    const excluded = c.assignments.map((s) => s.userId);
     const candidates = users
       .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));

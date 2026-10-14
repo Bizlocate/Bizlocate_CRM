@@ -7,7 +7,7 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
-import { attachSeats } from "./assignments";
+import { attachSeats, fetchAllSeatRows } from "./assignments";
 import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "./mappers";
 import {
   Activity,
@@ -801,8 +801,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   async function loadCustomerAssignments(): Promise<CustomerAssignment[]> {
     const supabase = createClient();
-    const { data } = await supabase.from("customer_assignments").select("*");
-    const mapped = (data ?? []).map(mapCustomerAssignment);
+    const { rows } = await fetchAllSeatRows(supabase);
+    const mapped = rows.map((r) => mapCustomerAssignment(r as Parameters<typeof mapCustomerAssignment>[0]));
     setCustomerAssignments(mapped);
     return mapped;
   }
@@ -931,7 +931,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCustomerAssignments((prev) => prev.filter((s) => !stale.some((x) => x.customerId === s.customerId && x.userId === s.userId)));
     const supabase = createClient();
     for (const { customerId, userId } of stale) {
-      supabase.from("customer_assignments").delete().eq("customer_id", customerId).eq("user_id", userId).then(() => {});
+      supabase.from("customer_assignments").delete().eq("customer_id", customerId).eq("user_id", userId).then(({ error }) => {
+        if (error) seatWriteFailed(error.message);
+      });
     }
   }
 
@@ -989,7 +991,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
-          sweepStalePool(attachSeats(loadedCustomers, loadedAssignments),loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
+          sweepStalePool(attachSeats(loadedCustomers, loadedAssignments), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
@@ -1155,7 +1157,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return customers;
     }
     return customers.filter((c) => assigneeSlots(c).includes(currentUser.id));
-  }, [customers, users, currentUser]);
+  }, [customers, currentUser]);
 
   async function addUser(input: { name: string; email: string; phone: string; ic: string | null; role: User["role"]; teamId: string | null; activePoolLimit: number | null; inactivePoolLimit: number | null; password?: string }) {
     const res = await fetch("/api/admin/users", {
@@ -2175,7 +2177,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Permanently deletes a removed assignee's whole activity log for this
   // customer (admin/manager only, per activities_delete policy). Call
-  // before clearing the slot — same RLS-race reason as logAssignmentRemoval.
+  // The delete is allowed for a manager of the author's team and no longer
+  // depends on a seat (still done before the seat is cleared).
   function deleteAssigneeActivities(customerId: string, userId: string) {
     const supabase = createClient();
     supabase.from("activities").delete().eq("customer_id", customerId).eq("user_id", userId).then(() => {});
@@ -2346,7 +2349,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Whoever occupies a slot requests their own removal from a customer —
   // does not touch the slot itself; only inserts a PENDING request an
   // ADMIN/MANAGER must approve (see resolveClientRemoval). Blocks a
-  // second request while one is already pending for the same slot.
+  // second request while one is already pending from the same person.
   function requestClientRemoval(customerId: string, slot: 1 | 2 | 3, reasonId: string, note: string): { ok: boolean; error?: string } {
     if (!currentUser) return { ok: false, error: "Not signed in." };
     if (!note.trim()) return { ok: false, error: "A note is required." };
@@ -2373,7 +2376,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // ADMIN/MANAGER approves or rejects a pending removal request. Approval
-  // reuses the existing reassignCustomer(customerId, slot, null) to clear
+  // reuses the existing reassignCustomer(customerId, teamId, slot, null) to clear
   // the slot (assignee, pool, stage) — the customer record itself is
   // never touched or deleted. Rejection only updates the request's status.
   function resolveClientRemoval(requestId: string, approve: boolean) {
@@ -2390,19 +2393,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .from("removal_requests")
       .update({ status, resolved_by: currentUser.id, resolved_at: now })
       .eq("id", requestId)
-      .then(() => {});
-    if (approve) {
-      const seat = customers.find((x) => x.id === request.customerId)?.assignments.find((s) => s.userId === request.requestedBy);
-      if (seat) {
-        // log + delete before clearing: the RLS checks need the manager's team to still hold a seat
-        const removedUser = users.find((u) => u.id === request.requestedBy);
-        const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
-        const logNote = [reasonName, request.note].filter(Boolean).join(": ");
-        logAssignmentRemoval(request.customerId, seat.slot, removedUser?.name ?? "Unknown", logNote || undefined);
-        deleteAssigneeActivities(request.customerId, request.requestedBy);
-        reassignCustomer(request.customerId, seat.teamId, seat.slot, null);
-      }
-    }
+      .then(() => {
+        // the seat is cleared only after the status update has landed
+        if (!approve) return;
+        const seat = customers.find((x) => x.id === request.customerId)?.assignments.find((s) => s.userId === request.requestedBy);
+        if (seat) {
+          // log + delete before clearing: the RLS checks need the manager's team to still hold a seat
+          const removedUser = users.find((u) => u.id === request.requestedBy);
+          const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
+          const logNote = [reasonName, request.note].filter(Boolean).join(": ");
+          logAssignmentRemoval(request.customerId, seat.slot, removedUser?.name ?? "Unknown", logNote || undefined);
+          deleteAssigneeActivities(request.customerId, request.requestedBy);
+          reassignCustomer(request.customerId, seat.teamId, seat.slot, null);
+        }
+      });
   }
 
   // MANAGER requests a customer be deleted -- inserts a PENDING row only;
@@ -2432,6 +2436,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .single()
       .then(({ data, error }) => {
         if (!error && data) setCustomerDeleteRequests((prev) => [mapCustomerDeleteRequest(data), ...prev]);
+        else if (error) alert(`The delete request was NOT submitted: ${error.message}`);
       });
     return { ok: true };
   }
@@ -2645,6 +2650,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .single()
       .then(({ data, error }) => {
         if (!error && data) setTasks((prev) => [...prev, mapTask(data)]);
+        else if (error) alert(`The task could not be saved: ${error.message}`);
       });
   }
 

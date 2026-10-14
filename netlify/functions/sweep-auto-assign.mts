@@ -1,7 +1,7 @@
 import { createAdminClient } from "../../lib/supabase/admin.ts";
 import { mapActivity, mapArea, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "../../lib/mappers.ts";
 import { computeAutoSecondAssignPlan } from "../../lib/autoSecondAssign.ts";
-import { attachSeats } from "../../lib/assignments.ts";
+import { attachSeats, fetchAllSeatRows } from "../../lib/assignments.ts";
 
 export const config = { schedule: "@daily" };
 
@@ -15,7 +15,6 @@ export default async () => {
     { data: stageRows, error: stageError },
     { data: customerRows, error: customerError },
     { data: activityRows, error: activityError },
-    { data: seatRows, error: seatError },
   ] = await Promise.all([
     supabase.from("profiles").select("*"),
     supabase.from("areas").select("*"),
@@ -23,7 +22,6 @@ export default async () => {
     supabase.from("pipeline_stages").select("*"),
     supabase.from("customers").select("*").order("name"),
     supabase.from("activities").select("*").order("created_at", { ascending: false }),
-    supabase.from("customer_assignments").select("*"),
   ]);
 
   if (profileError) throw profileError;
@@ -32,6 +30,7 @@ export default async () => {
   if (stageError) throw stageError;
   if (customerError) throw customerError;
   if (activityError) throw activityError;
+  const { rows: seatRows, error: seatError } = await fetchAllSeatRows(supabase);
   if (seatError) throw seatError;
 
   const users = (profileRows ?? []).map(mapProfile);
@@ -45,7 +44,7 @@ export default async () => {
   const areas = (areaRows ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
 
   const stages = (stageRows ?? []).map(mapStage);
-  const customers = attachSeats((customerRows ?? []).map(mapCustomer), (seatRows ?? []).map(mapCustomerAssignment));
+  const customers = attachSeats((customerRows ?? []).map(mapCustomer), seatRows.map((r) => mapCustomerAssignment(r as Parameters<typeof mapCustomerAssignment>[0])));
 
   const usersById = new Map(users.map((u) => [u.id, u]));
   const activities = (activityRows ?? []).map((row) => mapActivity(row, usersById));

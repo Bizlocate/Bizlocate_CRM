@@ -160,12 +160,12 @@ export default function CustomerDetailPage() {
     ? assignedUsers.filter(({ user }) => user.id === currentUser.id)
     : assignedUsers;
 
-  function poolOf(slot: 1 | 2 | 3) {
-    return customer!.assignments.find((s) => s.slot === slot)?.pool ?? null;
+  function poolOf(userId: string) {
+    return customer!.assignments.find((s) => s.userId === userId)?.pool ?? null;
   }
 
-  function stageOf(slot: 1 | 2 | 3) {
-    return customer!.assignments.find((s) => s.slot === slot)?.stageId ?? null;
+  function stageOf(userId: string) {
+    return customer!.assignments.find((s) => s.userId === userId)?.stageId ?? null;
   }
 
   function pendingRemovalForSlot(slot: 1 | 2 | 3, occupantUserId: string) {
@@ -332,7 +332,7 @@ export default function CustomerDetailPage() {
     if (group.slot && currentRole !== "SALESPERSON") {
       const stageName = pendingRemovalForSlot(group.slot, group.key)
         ? "Removal Pending"
-        : stages.find((s) => s.id === stageOf(group.slot!))?.name;
+        : stages.find((s) => s.id === stageOf(group.key))?.name;
       return [`Assigned ${group.slot}`, group.name, group.roleLabel, stageName].filter(Boolean).join(" · ");
     }
     const base = group.slot && assignedUsers.length > 1 ? `${group.name} (Assigned ${group.slot})` : group.name;
@@ -478,7 +478,7 @@ export default function CustomerDetailPage() {
               {" "}· Assigned:{" "}
               {visibleAssignedUsers.length > 0 ? (
                 visibleAssignedUsers.map(({ slot, user }, i) => {
-                  const pool = poolOf(slot);
+                  const pool = poolOf(user.id);
                   const canToggle = currentUser.role === "ADMIN" || currentUser.id === user.id;
                   const badgeStyle: React.CSSProperties = {
                     marginLeft: 6,
@@ -509,7 +509,7 @@ export default function CustomerDetailPage() {
                         </span>
                       ) : currentUser.role === "SALESPERSON" ? (() => {
                         // stage badge for admin/manager moved down into each log card's header instead
-                        const stage = stages.find((s) => s.id === stageOf(slot));
+                        const stage = stages.find((s) => s.id === stageOf(user.id));
                         if (!stage) return null;
                         const stageStyle = STAGE_STYLES[stage.name] ?? { bg: "#eef0f4", color: "#4b5566" };
                         return (

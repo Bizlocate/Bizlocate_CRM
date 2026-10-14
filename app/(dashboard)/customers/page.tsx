@@ -198,7 +198,6 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     setSubmitting(false);
     if (!result.ok && result.customerId) {
       // created but seats failed: go to the customer (re-submitting would duplicate it)
-      alert(result.error ?? "The customer was created but could not be fully saved.");
       router.push(`/customers/${result.customerId}`);
       return;
     }

@@ -1,7 +1,7 @@
 // Self-check for assignments. Run with:
 //   node --experimental-strip-types lib/assignments.check.ts
 import assert from "node:assert";
-import { attachSeats, seatsFromSlots } from "./assignments.ts";
+import { attachSeats, fetchAllSeatRows, seatsFromSlots } from "./assignments.ts";
 import type { Customer, CustomerAssignment } from "./types.ts";
 
 function slots(overrides: Partial<Customer> = {}) {
@@ -61,6 +61,29 @@ function seat(overrides: Partial<CustomerAssignment> & { id: string; customerId:
   assert.deepStrictEqual(out[1].assignments.map((s) => s.id), ["d"]);
   assert.deepStrictEqual(out[2].assignments, [], "customer with no seats");
   assert.deepStrictEqual(raw[0].assignments, [], "input customers are not mutated");
+}
+
+// --- fetchAllSeatRows: pages until a short page; stops; surfaces an error with the rows so far ---
+{
+  const fake = (pages: ({ n: number } | { err: string })[]) => {
+    let call = 0;
+    const q: any = {
+      select: () => q,
+      order: () => q,
+      range: async () => {
+        const p = pages[call++];
+        if (!p) throw new Error("fetched past the last page");
+        return "err" in p ? { data: null, error: { message: p.err } } : { data: Array.from({ length: p.n }, (_, i) => ({ id: `r${call}-${i}` })), error: null };
+      },
+    };
+    return { from: () => q } as any;
+  };
+  const ok = await fetchAllSeatRows(fake([{ n: 1000 }, { n: 5 }]));
+  assert.strictEqual(ok.rows.length, 1005);
+  assert.strictEqual(ok.error, null);
+  const bad = await fetchAllSeatRows(fake([{ n: 1000 }, { err: "boom" }]));
+  assert.strictEqual(bad.rows.length, 1000, "rows so far are returned");
+  assert.strictEqual(bad.error?.message, "boom");
 }
 
 console.log("assignments.check.ts: all assertions passed");
