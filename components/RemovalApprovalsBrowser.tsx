@@ -22,10 +22,6 @@ export default function RemovalApprovalsBrowser() {
   const [filterAreaId, setFilterAreaId] = useState("");
   const pending = removalRequests.filter((r) => r.status === "PENDING");
 
-  // Admin picks from every area; a manager's dropdown is scoped to only the
-  // areas their own team owns (same area<->team link the assignee-scoping
-  // sweep uses), since that's the slice of the company they're responsible for.
-  const areaOptions = areas;
 
   function customerName(customerId: string) {
     return customers.find((c) => c.id === customerId)?.name ?? "Unknown customer";
@@ -55,7 +51,7 @@ export default function RemovalApprovalsBrowser() {
         <label className="field-label">Area</label>
         <select className="field-input" value={filterAreaId} onChange={(e) => setFilterAreaId(e.target.value)}>
           <option value="">All areas ({pending.length})</option>
-          {areaOptions.map((a) => <option key={a.id} value={a.id}>{a.name} ({pendingCountForArea(a.id)})</option>)}
+          {areas.map((a) => <option key={a.id} value={a.id}>{a.name} ({pendingCountForArea(a.id)})</option>)}
         </select>
       </div>
       <div className="card">

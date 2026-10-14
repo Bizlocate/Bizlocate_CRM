@@ -112,6 +112,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [dupes, setDupes] = useState<Customer[] | null>(null);
   const [dupeAssignee, setDupeAssignee] = useState<Record<string, string>>({});
+  const [assigning, setAssigning] = useState(false);
 
   const filteredSubAreas = subAreas.filter((s) => s.areaId === areaId);
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === businessIndustryId);
@@ -149,6 +150,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   }
 
   function assignExisting(c: Customer) {
+    if (assigning) return;
     const userId = dupeAssignee[c.id];
     const user = users.find((u) => u.id === userId);
     if (!user?.teamId) return;
@@ -158,8 +160,10 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
       alert(`${user.name}'s team already has all 3 seats on this customer.`);
       return;
     }
+    setAssigning(true);
     const result = reassignCustomer(c.id, user.teamId, slot, userId);
     if (!result.ok) {
+      setAssigning(false);
       alert(result.error ?? "Could not assign this customer.");
       return;
     }
@@ -194,6 +198,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     const enteredPhones = [phone.trim(), optionalPhone.trim()].filter(Boolean);
     const found = customers.filter((c) => enteredPhones.some((p) => c.phone === p || c.optionalPhone === p));
     if (found.length > 0) {
+      setDupeAssignee({});
       setDupes(found);
       return;
     }
@@ -458,7 +463,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     </div>
 
       {dupes && (
-        <div className="modal-overlay" style={{ zIndex: 60 }} onClick={(e) => { if (e.target === e.currentTarget) setDupes(null); }}>
+        <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={(e) => { if (e.target === e.currentTarget) { setDupes(null); setDupeAssignee({}); } }}>
           <div className="card modal-card" style={{ maxWidth: 720 }}>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>This phone number is already in the system</div>
             <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 14 }}>
@@ -491,7 +496,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
                             </option>
                           ))}
                         </select>
-                        <button className="btn btn-primary" type="button" disabled={!dupeAssignee[c.id]} onClick={() => assignExisting(c)}>
+                        <button className="btn btn-primary" type="button" disabled={assigning || !candidates.some((u) => u.id === dupeAssignee[c.id])} onClick={() => assignExisting(c)}>
                           Assign
                         </button>
                       </>
@@ -503,12 +508,13 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
               );
             })}
             <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
-              <button className="btn btn-outline" type="button" onClick={() => setDupes(null)}>Cancel</button>
+              <button className="btn btn-outline" type="button" onClick={() => { setDupes(null); setDupeAssignee({}); }}>Cancel</button>
               <button
                 className="btn btn-primary"
                 type="button"
                 onClick={async () => {
                   setDupes(null);
+                  setDupeAssignee({});
                   await createCustomer();
                 }}
               >

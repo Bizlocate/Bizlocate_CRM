@@ -51,9 +51,6 @@ export default function InactiveListingsBrowser() {
     return customerById.get(customerId)?.businessName || "—";
   }
 
-  // Manager's dropdowns are scoped to their own team, same as
-  // RemovalApprovalsBrowser's Area filter.
-  const areaOptions = areas;
   const memberOptions = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === "MANAGER") return users.filter((u) => u.teamId === currentUser.teamId && u.role === "SALESPERSON");
@@ -111,7 +108,7 @@ export default function InactiveListingsBrowser() {
             <label className="field-label">Area</label>
             <select className="field-input" value={filterAreaId} onChange={(e) => setFilterAreaId(e.target.value)}>
               <option value="">All areas ({allAreasCount})</option>
-              {areaOptions.map((a) => <option key={a.id} value={a.id}>{a.name} ({countForArea(a.id)})</option>)}
+              {areas.map((a) => <option key={a.id} value={a.id}>{a.name} ({countForArea(a.id)})</option>)}
             </select>
           </div>
           <div style={{ maxWidth: 260, flex: 1 }}>
