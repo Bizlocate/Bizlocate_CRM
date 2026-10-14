@@ -144,8 +144,22 @@ function areaNameOf(areas: Area[], areaId: string | null): string {
   return areaId ? areas.find((a) => a.id === areaId)?.name ?? "Unknown area" : "No area";
 }
 
+// Keeps every row of the same source together: sources by their combined
+// count (desc, ties broken by id so two equal sources never interleave),
+// then a source's areas by their own count (desc).
+function sortBySourceThenCount<T extends { id: string | null }>(rows: T[], countOf: (r: T) => number): T[] {
+  const sourceTotal = new Map<string | null, number>();
+  for (const r of rows) sourceTotal.set(r.id, (sourceTotal.get(r.id) ?? 0) + countOf(r));
+  return rows.sort(
+    (a, b) =>
+      sourceTotal.get(b.id)! - sourceTotal.get(a.id)! ||
+      (a.id ?? "").localeCompare(b.id ?? "") ||
+      countOf(b) - countOf(a)
+  );
+}
+
 // Customers created in yearMonth, grouped by lead source AND area (one row
-// per pair). `customers` is caller-scoped (area/team already filtered in) —
+// per pair), rows of the same source adjacent. `customers` is caller-scoped (area/team already filtered in) —
 // no source lands in a "No source" bucket and no area in "No area" rather
 // than being dropped.
 export function leadsBySource(customers: Customer[], leadSources: LeadSource[], areas: Area[], yearMonth: string): SourceAreaCount[] {
@@ -164,7 +178,7 @@ export function leadsBySource(customers: Customer[], leadSources: LeadSource[], 
     areaId: r.areaId,
     areaName: areaNameOf(areas, r.areaId),
   }));
-  return rows.sort((a, b) => b.count - a.count);
+  return sortBySourceThenCount(rows, (r) => r.count);
 }
 
 export interface SourceYearRow {
@@ -202,7 +216,7 @@ export function leadsBySourceByYear(customers: Customer[], leadSources: LeadSour
     areaId: r.areaId,
     areaName: areaNameOf(areas, r.areaId),
   }));
-  return rows.sort((a, b) => b.total - a.total);
+  return sortBySourceThenCount(rows, (r) => r.total);
 }
 
 export interface CountRow {

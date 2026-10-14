@@ -204,6 +204,19 @@ assert.equal(bySource.find((r) => r.name === "Referral")!.areaName, "No area");
 assert.equal(bySource.find((r) => r.name === "No source")!.areaName, "TTDI");
 assert.equal(leadsBySource(sourceCustomers, sources, areaList, "2026-05").length, 0, "no leads that month -> empty, not a crash");
 
+// --- same source stays together, even when two sources tie on total and each spans two areas ---
+const tieCustomers = [
+  customer({ id: "t1", sourceId: "s1", areaId: "a1", createdAt: "2026-08-01T00:00:00Z" }),
+  customer({ id: "t2", sourceId: "s1", areaId: "a2", createdAt: "2026-08-01T00:00:00Z" }),
+  customer({ id: "t3", sourceId: "s2", areaId: "a1", createdAt: "2026-08-01T00:00:00Z" }),
+  customer({ id: "t4", sourceId: "s2", areaId: "a2", createdAt: "2026-08-01T00:00:00Z" }),
+];
+const tieRows = leadsBySource(tieCustomers, sources, areaList, "2026-08");
+assert.deepEqual(tieRows.map((r) => r.id), ["s1", "s1", "s2", "s2"], "monthly: same source adjacent");
+assert.deepEqual(leadsBySourceByYear(tieCustomers, sources, areaList, 2026).map((r) => r.id), ["s1", "s1", "s2", "s2"], "yearly: same source adjacent");
+// Facebook (3 across two areas) outranks the single-row sources, and its two rows lead the list
+assert.deepEqual(bySource.slice(0, 2).map((r) => r.name), ["Facebook", "Facebook"], "Facebook's two area rows are the first two");
+
 // --- leadsBySourceByYear: one row per (source, area), bucketed by month across a whole year ---
 const yearCustomers = [
   customer({ id: "y1", sourceId: "s1", areaId: "a1", createdAt: "2026-01-05T00:00:00Z" }),
