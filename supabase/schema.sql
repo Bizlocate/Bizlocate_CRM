@@ -3157,3 +3157,15 @@ insert into mandatory_field_settings (field_key, required) values
 -- ============================================================
 --
 -- alter table teams add column if not exists last_auto_assigned_user_id uuid references profiles (id) on delete set null;
+
+-- ============================================================
+-- Migration: auto-assign switches move to teams — a per-team On/Off (default
+-- On) and a resume cutoff (a customer whose due date fell before the team was
+-- last switched back On is permanently skipped). The epoch default keeps every
+-- currently-eligible customer eligible. Additive and safe; run BEFORE deploying
+-- the matching app version. The old areas.auto_assign_* columns are no longer
+-- used (dropped in Phase 4).
+-- ============================================================
+--
+-- alter table teams add column if not exists auto_assign_enabled boolean not null default true;
+-- alter table teams add column if not exists auto_assign_resumed_at timestamptz not null default '1970-01-01T00:00:00Z';
