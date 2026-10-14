@@ -2833,3 +2833,300 @@ insert into mandatory_field_settings (field_key, required) values
 -- --   drop function if exists trg_profiles_resync_assignments();
 -- --   drop function if exists resync_customer_assignments(uuid);
 -- --   drop table if exists customer_assignments;
+
+-- ============================================================
+-- Migration: Phase 3c CUTOVER — customer_assignments becomes the source of
+-- truth for who is assigned to a customer; leaders see all customers.
+-- Run ONCE, together with deploying the Phase 3c app (the old app and this
+-- schema are not compatible). Runbook: docs/superpowers/plans/2026-10-14-phase3c-cutover.md Task 7.
+--
+-- STEP 0 (read-only; save the output of all four before running anything):
+--   select schemaname, tablename, policyname, cmd, qual, with_check from pg_policies order by tablename, policyname;
+--   select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--     where n.nspname = 'public' and p.prosrc ilike '%assigned_to%' order by 1;
+--   select event_object_table, trigger_name from information_schema.triggers where trigger_schema = 'public' order by 1, 2;
+--   select count(*) as seats from customer_assignments;   -- the Phase 3a mirror must be populated
+-- Send me the first three before running the block: any policy or function
+-- that mentions assigned_to / is_customer_assignee and is NOT replaced below
+-- would silently go stale.
+-- ============================================================
+--
+-- begin;
+--
+-- -- 1. one last sync from the old columns, then stop mirroring
+-- do $$
+-- declare
+--   cid uuid;
+-- begin
+--   for cid in select id from customers loop
+--     perform resync_customer_assignments(cid);
+--   end loop;
+-- end $$;
+-- drop trigger if exists customers_resync_assignments on customers;
+-- drop trigger if exists profiles_resync_assignments on profiles;
+-- drop function if exists trg_customers_resync_assignments();
+-- drop function if exists trg_profiles_resync_assignments();
+-- drop function if exists resync_customer_assignments(uuid);
+--
+-- -- 2. a person holds at most one seat per customer
+-- do $$
+-- begin
+--   if not exists (select 1 from pg_constraint where conname = 'customer_assignments_customer_user_key') then
+--     alter table customer_assignments add constraint customer_assignments_customer_user_key unique (customer_id, user_id);
+--   end if;
+-- end $$;
+--
+-- -- 3. helpers
+-- create or replace function is_manager() returns boolean as $$
+--   select exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER');
+-- $$ language sql security definer stable set search_path = public;
+--
+-- -- the caller holds a seat on the customer, or someone on the caller's team does
+-- create or replace function is_customer_member(cid uuid) returns boolean as $$
+--   select exists (
+--     select 1 from customer_assignments ca
+--     where ca.customer_id = cid and (ca.user_id = auth.uid() or ca.team_id = my_team_id())
+--   );
+-- $$ language sql security definer stable set search_path = public;
+--
+-- -- 4. seat guard: a seat never moves between customers/teams/seat numbers
+-- -- (except via the team-move trigger below, i.e. nested trigger depth), and
+-- -- its occupant must belong to the seat's team.
+-- create or replace function protect_seat_row() returns trigger as $$
+-- declare
+--   holder_team uuid;
+-- begin
+--   if pg_trigger_depth() > 1 then
+--     return new;
+--   end if;
+--   if tg_op = 'UPDATE' and (
+--     new.customer_id is distinct from old.customer_id
+--     or new.team_id is distinct from old.team_id
+--     or new.slot is distinct from old.slot
+--   ) then
+--     raise exception 'a seat cannot be moved to another customer, team or seat number';
+--   end if;
+--   if tg_op = 'INSERT' or new.user_id is distinct from old.user_id then
+--     select team_id into holder_team from profiles where id = new.user_id;
+--     if holder_team is distinct from new.team_id then
+--       raise exception 'the assignee must belong to the seat''s team';
+--     end if;
+--     if tg_op = 'UPDATE'
+--       and (auth.jwt() ->> 'role') is distinct from 'service_role'
+--       and not is_admin() and not is_manager() then
+--       raise exception 'only an admin or manager can reassign a seat';
+--     end if;
+--   end if;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists customer_assignments_protect on customer_assignments;
+-- create trigger customer_assignments_protect
+--   before insert or update on customer_assignments
+--   for each row execute function protect_seat_row();
+--
+-- -- keep customers.updated_at fresh when a seat changes (the customer list's
+-- -- "Last Updated" used to move on every assign / stage / pool change)
+-- create or replace function trg_seat_touch_customer() returns trigger as $$
+-- begin
+--   update customers set updated_at = now() where id = coalesce(new.customer_id, old.customer_id);
+--   return null;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists customer_assignments_touch_customer on customer_assignments;
+-- create trigger customer_assignments_touch_customer
+--   after insert or update or delete on customer_assignments
+--   for each row execute function trg_seat_touch_customer();
+--
+-- -- 5. seat policies: admin all; a manager their own team's seats; a person
+-- -- their own seat (pool/stage/clear). Nobody else writes.
+-- drop policy if exists "customer_assignments_select" on customer_assignments;
+-- create policy "customer_assignments_select" on customer_assignments for select using (
+--   is_admin() or team_id = my_team_id() or user_id = auth.uid()
+-- );
+-- drop policy if exists "customer_assignments_insert" on customer_assignments;
+-- create policy "customer_assignments_insert" on customer_assignments for insert with check (
+--   is_admin() or (is_manager() and team_id = my_team_id())
+-- );
+-- drop policy if exists "customer_assignments_update" on customer_assignments;
+-- create policy "customer_assignments_update" on customer_assignments for update
+--   using (is_admin() or user_id = auth.uid() or (is_manager() and team_id = my_team_id()))
+--   with check (is_admin() or user_id = auth.uid() or (is_manager() and team_id = my_team_id()));
+-- drop policy if exists "customer_assignments_delete" on customer_assignments;
+-- create policy "customer_assignments_delete" on customer_assignments for delete using (
+--   is_admin() or user_id = auth.uid() or (is_manager() and team_id = my_team_id())
+-- );
+--
+-- -- 6. customers: every manager sees and edits every customer; the old
+-- -- flat-column guards are no longer relevant (nothing writes those columns)
+-- drop policy if exists "customers_select" on customers;
+-- create policy "customers_select" on customers for select using (
+--   is_admin() or is_manager() or is_customer_member(id) or has_open_blast_item(id)
+-- );
+-- drop policy if exists "customers_update" on customers;
+-- create policy "customers_update" on customers for update using (
+--   is_admin() or is_manager() or is_customer_member(id) or has_open_blast_item(id)
+-- );
+-- drop trigger if exists customers_protect_assignment on customers;
+-- drop trigger if exists customers_protect_pool on customers;
+--
+-- -- 7. policies that used is_customer_assignee(assigned_to…) now use seats
+-- -- activities: you read logs written by your own team (and your own); a
+-- -- manager of team B never reads team A's logs on a shared customer
+-- drop policy if exists "activities_select" on activities;
+-- create policy "activities_select" on activities for select using (
+--   is_admin()
+--   or activities.user_id = auth.uid()
+--   or (
+--     activities.user_id in (select id from profiles where team_id = my_team_id())
+--     and exists (select 1 from customers c where c.id = activities.customer_id)
+--   )
+-- );
+-- drop policy if exists "activities_insert" on activities;
+-- create policy "activities_insert" on activities for insert with check (
+--   is_admin() or is_customer_member(activities.customer_id)
+-- );
+-- drop policy if exists "activities_delete" on activities;
+-- create policy "activities_delete" on activities for delete using (
+--   is_admin()
+--   or (is_manager() and activities.user_id in (select id from profiles where team_id = my_team_id()))
+-- );
+--
+-- drop policy if exists "tasks_insert" on tasks;
+-- create policy "tasks_insert" on tasks for insert with check (
+--   user_id = auth.uid()
+--   and (is_admin() or is_customer_member(tasks.customer_id))
+-- );
+--
+-- -- change log: every manager reads every team's; anyone who may edit may append
+-- drop policy if exists "customer_change_log_select" on customer_change_log;
+-- create policy "customer_change_log_select" on customer_change_log for select using (
+--   is_admin() or is_manager()
+-- );
+-- drop policy if exists "customer_change_log_insert" on customer_change_log;
+-- create policy "customer_change_log_insert" on customer_change_log for insert with check (
+--   changed_by = auth.uid()
+--   and (
+--     is_admin() or is_manager()
+--     or has_open_blast_item(customer_change_log.customer_id)
+--     or is_customer_member(customer_change_log.customer_id)
+--   )
+-- );
+--
+-- drop policy if exists "deal_closures_select" on deal_closures;
+-- create policy "deal_closures_select" on deal_closures for select using (
+--   is_admin() or is_customer_member(deal_closures.customer_id)
+-- );
+-- drop policy if exists "deal_closures_insert" on deal_closures;
+-- create policy "deal_closures_insert" on deal_closures for insert with check (
+--   user_id = auth.uid()
+--   and (is_admin() or is_customer_member(deal_closures.customer_id))
+-- );
+--
+-- drop policy if exists "removal_requests_select" on removal_requests;
+-- create policy "removal_requests_select" on removal_requests for select using (
+--   is_admin() or requested_by = auth.uid() or is_customer_member(removal_requests.customer_id)
+-- );
+-- drop policy if exists "removal_requests_insert" on removal_requests;
+-- create policy "removal_requests_insert" on removal_requests for insert with check (
+--   requested_by = auth.uid()
+--   and exists (
+--     select 1 from customer_assignments ca
+--     where ca.customer_id = removal_requests.customer_id
+--       and ca.user_id = auth.uid()
+--       and ca.slot = removal_requests.slot
+--   )
+-- );
+-- drop policy if exists "removal_requests_update" on removal_requests;
+-- create policy "removal_requests_update" on removal_requests for update using (
+--   is_admin()
+--   or (
+--     is_manager()
+--     and is_customer_member(removal_requests.customer_id)
+--     and removal_requests.requested_by in (select id from profiles where team_id = my_team_id())
+--   )
+-- );
+--
+-- drop policy if exists "customer_delete_requests_insert" on customer_delete_requests;
+-- create policy "customer_delete_requests_insert" on customer_delete_requests for insert with check (
+--   requested_by = auth.uid()
+--   and is_manager()
+--   and is_customer_member(customer_delete_requests.customer_id)
+-- );
+--
+-- drop policy if exists "stage_events_insert" on stage_events;
+-- create policy "stage_events_insert" on stage_events for insert with check (
+--   is_admin() or is_customer_member(stage_events.customer_id)
+-- );
+--
+-- -- 8. a person changing team takes their seats along; a seat number already
+-- -- taken in the new team on that customer moves to the next free one, and a
+-- -- seat with no free number (or a person left without a team) is removed.
+-- create or replace function trg_profiles_move_seats() returns trigger as $$
+-- declare
+--   s record;
+--   free_slot int;
+-- begin
+--   if new.team_id is null then
+--     delete from customer_assignments where user_id = new.id;
+--     return null;
+--   end if;
+--   for s in select id, customer_id from customer_assignments where user_id = new.id loop
+--     select min(n) into free_slot
+--     from generate_series(1, 3) as n
+--     where not exists (
+--       select 1 from customer_assignments x
+--       where x.customer_id = s.customer_id and x.team_id = new.team_id and x.slot = n
+--     );
+--     if free_slot is null then
+--       delete from customer_assignments where id = s.id;
+--     else
+--       update customer_assignments set team_id = new.team_id, slot = free_slot where id = s.id;
+--     end if;
+--   end loop;
+--   return null;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists profiles_move_seats on profiles;
+-- create trigger profiles_move_seats
+--   after update of team_id on profiles
+--   for each row
+--   when (old.team_id is distinct from new.team_id)
+--   execute function trg_profiles_move_seats();
+--
+-- commit;
+--
+-- -- Verify (seats = the STEP 0 count, or slightly more if people assigned in between; the other two = 0):
+-- --   select count(*) as seats from customer_assignments;
+-- --   select count(*) as policies_still_on_flat_columns from pg_policies
+-- --     where qual ilike '%is_customer_assignee%' or with_check ilike '%is_customer_assignee%'
+-- --        or qual ilike '%assigned_to%' or with_check ilike '%assigned_to%';
+-- --   select count(*) as dup_seats from (select customer_id, user_id from customer_assignments group by 1,2 having count(*) > 1) d;
+--
+-- -- Rollback (only if something is badly wrong; data written to seats after the
+-- -- cutover is NOT copied back to the old columns):
+-- --   re-create the Phase 3a mirror (the "customer_assignments (Phase 3a)" block above),
+-- --   re-create the policies/triggers you saved in STEP 0 (they are also in the main schema above),
+-- --   drop trigger customer_assignments_protect / customer_assignments_touch_customer / profiles_move_seats,
+-- --   run: select resync_customer_assignments(id) ... is NOT valid in reverse; restore the flat columns from a backup instead.
+
+-- ============================================================
+-- Migration: Phase 3c cleanup — run a few days AFTER the cutover, once the
+-- team is happy. Empties the frozen flat slot columns on customers so a
+-- stale value can never be read, and so the old foreign keys from stage_1..3
+-- to pipeline_stages stop blocking the deletion of a stage. Not reversible
+-- without a backup. customers.updated_at is deliberately not touched.
+-- ============================================================
+--
+-- begin;
+-- alter table customers disable trigger customers_touch_updated_at;
+-- update customers set
+--   assigned_to = null, assigned_to_2 = null, assigned_to_3 = null,
+--   pool_1 = null, pool_2 = null, pool_3 = null,
+--   pool_1_since = null, pool_2_since = null, pool_3_since = null,
+--   stage_1 = null, stage_2 = null, stage_3 = null;
+-- alter table customers enable trigger customers_touch_updated_at;
+-- commit;
