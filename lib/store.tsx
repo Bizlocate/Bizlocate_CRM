@@ -7,8 +7,8 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
-import { withSeats } from "./assignments";
-import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapProfile, mapStage } from "./mappers";
+import { attachSeats } from "./assignments";
+import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "./mappers";
 import {
   Activity,
   ActivityType,
@@ -24,6 +24,7 @@ import {
   BusinessTagIndustry,
   BusinessTagType,
   Customer,
+  CustomerAssignment,
   CustomerChangeLogEntry,
   CustomerDeleteRequest,
   CustomerDeleteRequestStatus,
@@ -574,10 +575,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [fieldRequirements, setFieldRequirements] = useState<FieldRequirement[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [rawCustomers, setCustomers] = useState<Customer[]>([]);
-  // Customers as the rest of the app sees them: the raw rows plus a derived
-  // `assignments` seat list (see lib/assignments.ts). Recomputed whenever a
-  // customer or a user's team changes, so it can never go stale.
-  const customers = useMemo(() => withSeats(rawCustomers, users), [rawCustomers, users]);
+  const [customerAssignments, setCustomerAssignments] = useState<CustomerAssignment[]>([]);
+  // Customers as the rest of the app sees them: the raw rows plus each
+  // customer's seats from customer_assignments (see lib/assignments.ts).
+  const customers = useMemo(() => attachSeats(rawCustomers, customerAssignments), [rawCustomers, customerAssignments]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
@@ -798,6 +799,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
+  async function loadCustomerAssignments(): Promise<CustomerAssignment[]> {
+    const supabase = createClient();
+    const { data } = await supabase.from("customer_assignments").select("*");
+    const mapped = (data ?? []).map(mapCustomerAssignment);
+    setCustomerAssignments(mapped);
+    return mapped;
+  }
+
   async function loadDealClosures(): Promise<DealClosure[]> {
     const supabase = createClient();
     const { data } = await supabase.from("deal_closures").select("*").order("created_at", { ascending: false });
@@ -982,6 +991,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedTasks = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog();
+        const loadedAssignments = await loadCustomerAssignments();
         await loadDealClosures();
         await loadSalesTargets();
         const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -997,7 +1007,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
-          sweepStalePool(withSeats(loadedCustomers, loadedUsers), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
+          sweepStalePool(attachSeats(loadedCustomers, loadedAssignments),loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
@@ -1027,6 +1037,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "mandatory_field_settings", setState: (fn) => setFieldRequirements(fn), mapRow: mapFieldRequirement, keyOf: (x) => x.fieldKey },
       { table: "pipeline_stages", setState: (fn) => setStages(fn), mapRow: mapStage, keyOf: (x) => x.id },
       { table: "customers", setState: (fn) => setCustomers(fn), mapRow: mapCustomer, keyOf: (x) => x.id },
+      { table: "customer_assignments", setState: (fn) => setCustomerAssignments(fn), mapRow: mapCustomerAssignment, keyOf: (x) => x.id },
       { table: "activities", setState: (fn) => setActivities(fn), mapRow: (row) => mapActivity(row, new Map(usersRef.current.map((u) => [u.id, u]))), keyOf: (x) => x.id },
       { table: "customer_change_log", setState: (fn) => setChangeLog(fn), mapRow: mapChangeLog, keyOf: (x) => x.id },
       { table: "deal_closures", setState: (fn) => setDealClosures(fn), mapRow: mapDealClosure, keyOf: (x) => x.id },
@@ -1121,6 +1132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedTasks = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog();
+    const loadedAssignments = await loadCustomerAssignments();
     await loadDealClosures();
     await loadSalesTargets();
     const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -1141,7 +1153,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { error: tokenError } = await supabase.from("profiles").update({ session_token: sessionToken }).eq("id", profile.id);
     if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
-    sweepStalePool(withSeats(loadedCustomers, loadedUsers), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
+    sweepStalePool(attachSeats(loadedCustomers, loadedAssignments), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
   }
@@ -1151,14 +1163,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.auth.signOut();
     setCurrentUserId(null);
     setCustomers([]);
+    setCustomerAssignments([]);
   }
 
   const visibleCustomers = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === "ADMIN") return customers;
     if (currentUser.role === "MANAGER") {
-      const teamUserIds = new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id));
-      return customers.filter((c) => assigneeSlots(c).some((id) => teamUserIds.has(id)));
+      return customers;
     }
     return customers.filter((c) => assigneeSlots(c).includes(currentUser.id));
   }, [customers, users, currentUser]);

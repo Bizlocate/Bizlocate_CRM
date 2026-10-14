@@ -1,4 +1,4 @@
-import type { Customer, CustomerAssignment, User } from "./types";
+import type { Customer, CustomerAssignment } from "./types";
 
 type SlotFields = Pick<
   Customer,
@@ -10,12 +10,12 @@ type SlotFields = Pick<
 >;
 
 /**
- * Seats of one customer, derived from its flat slot columns: one per
- * populated slot, slot ascending. `teamIdOf` resolves an assignee's team (null
- * when they have none). Same mapping the customer_assignments DB mirror uses
- * (seat number = slot number), minus its "no team => no row" rule.
+ * TEST SUPPORT (the *.check.ts fixture builders): one seat per populated
+ * flat slot, slot ascending, so fixtures can still be written with the old
+ * slot fields. Production code never calls this -- seats come from the
+ * customer_assignments table. Removed together with the flat fields in Phase 4.
  */
-export function seatsFromSlots(c: SlotFields, teamIdOf: (userId: string) => string | null): CustomerAssignment[] {
+export function seatsFromSlots(c: SlotFields, teamIdOf: (userId: string) => string): CustomerAssignment[] {
   const slots = [
     { slot: 1 as const, userId: c.assignedToUserId, pool: c.pool1, poolSince: c.pool1Since, stageId: c.stage1Id },
     { slot: 2 as const, userId: c.assignedToUserId2, pool: c.pool2, poolSince: c.pool2Since, stageId: c.stage2Id },
@@ -38,8 +38,16 @@ export function seatsFromSlots(c: SlotFields, teamIdOf: (userId: string) => stri
   return seats;
 }
 
-/** Copies of `customers` whose `assignments` are derived from the flat fields + each user's current team. */
-export function withSeats(customers: Customer[], users: Pick<User, "id" | "teamId">[]): Customer[] {
-  const teamOf = new Map(users.map((u) => [u.id, u.teamId]));
-  return customers.map((c) => ({ ...c, assignments: seatsFromSlots(c, (id) => teamOf.get(id) ?? null) }));
+/** Copies of `customers` whose `assignments` are that customer's seat rows (slot, then team, ascending). */
+export function attachSeats(customers: Customer[], seats: CustomerAssignment[]): Customer[] {
+  const byCustomer = new Map<string, CustomerAssignment[]>();
+  for (const s of seats) {
+    const list = byCustomer.get(s.customerId) ?? [];
+    list.push(s);
+    byCustomer.set(s.customerId, list);
+  }
+  return customers.map((c) => ({
+    ...c,
+    assignments: (byCustomer.get(c.id) ?? []).slice().sort((a, b) => a.slot - b.slot || a.teamId.localeCompare(b.teamId)),
+  }));
 }

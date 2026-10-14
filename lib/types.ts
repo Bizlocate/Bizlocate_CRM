@@ -351,14 +351,11 @@ export interface AssignmentEvent {
 
 // One assigned seat on a customer: which team holds it, which of that
 // team's seats (1-3), who sits there, and that person's pool + stage on the
-// customer. Derived on the client from the customers' old slot columns by
-// withSeats() in lib/assignments.ts; the customer_assignments table (mirrored
-// by DB triggers) becomes the source in Phase 3c.
-// teamId is null for an assignee who has no team.
+// customer. One row of the customer_assignments table.
 export interface CustomerAssignment {
   id: string;
   customerId: string;
-  teamId: string | null;
+  teamId: string;
   slot: 1 | 2 | 3;
   userId: string;
   pool: PoolStatus | null;

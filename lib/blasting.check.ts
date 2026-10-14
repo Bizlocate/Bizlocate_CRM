@@ -21,7 +21,7 @@ function customer(overrides: Partial<Customer> & { id: string; createdAt: string
     assignments: [],
     ...overrides,
   };
-  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => null) };
+  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => "team-1") };
 }
 
 const noRangeCriteria = { businessNameKeyword: null, areaId: null, subAreaId: null, businessIndustryId: null, businessCategoryId: null, businessTypeId: null, createdFrom: null, createdTo: null };

@@ -42,7 +42,7 @@ function customer(overrides: Partial<Customer> & { id: string }): Customer {
     assignments: [],
     ...overrides,
   };
-  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => null) };
+  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => "team-1") };
 }
 
 function stage(overrides: Partial<Stage> & { id: string; name: string; order: number }): Stage {
