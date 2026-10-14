@@ -11,7 +11,6 @@ export default async () => {
   const [
     { data: profileRows, error: profileError },
     { data: areaRows, error: areaError },
-    { data: areaTeamRows, error: areaTeamError },
     { data: teamRows, error: teamError },
     { data: stageRows, error: stageError },
     { data: customerRows, error: customerError },
@@ -19,7 +18,6 @@ export default async () => {
   ] = await Promise.all([
     supabase.from("profiles").select("*"),
     supabase.from("areas").select("*"),
-    supabase.from("area_teams").select("*"),
     supabase.from("teams").select("id, last_auto_assigned_user_id"),
     supabase.from("pipeline_stages").select("*"),
     supabase.from("customers").select("*").order("name"),
@@ -28,7 +26,6 @@ export default async () => {
 
   if (profileError) throw profileError;
   if (areaError) throw areaError;
-  if (areaTeamError) throw areaTeamError;
   if (teamError) throw teamError;
   if (stageError) throw stageError;
   if (customerError) throw customerError;
@@ -38,13 +35,7 @@ export default async () => {
 
   const users = (profileRows ?? []).map(mapProfile);
 
-  const teamIdsByArea = new Map<string, string[]>();
-  for (const link of (areaTeamRows ?? []) as { area_id: string; team_id: string }[]) {
-    const list = teamIdsByArea.get(link.area_id) ?? [];
-    list.push(link.team_id);
-    teamIdsByArea.set(link.area_id, list);
-  }
-  const areas = (areaRows ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
+  const areas = (areaRows ?? []).map(mapArea);
 
   const teams = (teamRows ?? []).map((t) => ({ id: t.id as string, lastAutoAssignedUserId: (t.last_auto_assigned_user_id ?? null) as string | null }));
 

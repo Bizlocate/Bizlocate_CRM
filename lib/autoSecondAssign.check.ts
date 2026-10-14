@@ -33,7 +33,7 @@ function activity(overrides: Partial<Activity> & { id: string; customerId: strin
 }
 
 function area(overrides: Partial<Area> & { id: string }): Area {
-  return { name: "Area", teamIds: [], autoAssignEnabled: true, autoAssignResumedAt: new Date(0).toISOString(), lastAutoAssignedUserId: null, ...overrides };
+  return { name: "Area", autoAssignEnabled: true, autoAssignResumedAt: new Date(0).toISOString(), ...overrides };
 }
 
 function user(overrides: Partial<User> & { id: string; name: string }): User {
@@ -154,7 +154,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // pass -> round-robins between them, not both landing on the same person (regression
 // check for the pointerByArea/extraAssignedCount same-pass collision handling). ---
 {
-  const a = area({ id: "area-1", teamIds: ["team-1"], autoAssignResumedAt: isoDaysAgo(365) });
+  const a = area({ id: "area-1", autoAssignResumedAt: isoDaysAgo(365) });
   const u1 = user({ id: "sp-1", name: "Alice", teamId: "team-1" });
   const u2 = user({ id: "sp-2", name: "Bob", teamId: "team-1" });
   const c1 = customer({ id: "cust-1", areaId: "area-1", assignedToUserId: "owner-1", createdAt: isoDaysAgo(10), createdByTeamId: "team-1" });
@@ -168,7 +168,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // --- computeAutoSecondAssignPlan: a candidate already at their activePoolLimit is
 // skipped in favor of the next candidate. ---
 {
-  const a = area({ id: "area-2", teamIds: ["team-2"], autoAssignResumedAt: isoDaysAgo(365) });
+  const a = area({ id: "area-2", autoAssignResumedAt: isoDaysAgo(365) });
   const u1 = user({ id: "sp-3", name: "Alice", teamId: "team-2", activePoolLimit: 1 });
   const u2 = user({ id: "sp-4", name: "Bob", teamId: "team-2" });
   const existing = customer({ id: "existing", areaId: "area-2", assignedToUserId: "sp-3", pool1: "ACTIVE", createdAt: isoDaysAgo(1), createdByTeamId: "team-2" });
@@ -181,7 +181,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // --- computeAutoSecondAssignPlan: a legacy customer (createdBy: null) never produces
 // an action, no matter how overdue. ---
 {
-  const a = area({ id: "area-3", teamIds: ["team-3"], autoAssignResumedAt: isoDaysAgo(365) });
+  const a = area({ id: "area-3", autoAssignResumedAt: isoDaysAgo(365) });
   const u1 = user({ id: "sp-5", name: "Alice", teamId: "team-3" });
   const c = customer({ id: "legacy-1", areaId: "area-3", assignedToUserId: "owner-3", createdAt: isoDaysAgo(10), createdBy: null, createdByTeamId: "team-3" });
   const actions = computeAutoSecondAssignPlan([c], [a], [u1], [], [], NOW);
@@ -191,7 +191,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // --- computeAutoSecondAssignPlan: a customer whose due date fell before the area's
 // autoAssignResumedAt never produces an action (missed-window rule). ---
 {
-  const a = area({ id: "area-4", teamIds: ["team-4"], autoAssignResumedAt: isoDaysAgo(5) });
+  const a = area({ id: "area-4", autoAssignResumedAt: isoDaysAgo(5) });
   const u1 = user({ id: "sp-6", name: "Alice", teamId: "team-4" });
   const c = customer({ id: "missed-1", areaId: "area-4", assignedToUserId: "owner-4", createdAt: isoDaysAgo(20), createdByTeamId: "team-4" });
   const actions = computeAutoSecondAssignPlan([c], [a], [u1], [], [], NOW);
@@ -201,7 +201,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // --- computeAutoSecondAssignPlan: no candidates available (empty team) -> no action,
 // no throw. ---
 {
-  const a = area({ id: "area-5", teamIds: ["team-5"], autoAssignResumedAt: isoDaysAgo(365) });
+  const a = area({ id: "area-5", autoAssignResumedAt: isoDaysAgo(365) });
   const c = customer({ id: "orphan-1", areaId: "area-5", assignedToUserId: "owner-5", createdAt: isoDaysAgo(10), createdByTeamId: "team-5" });
   const actions = computeAutoSecondAssignPlan([c], [a], [], [], [], NOW);
   assert.strictEqual(actions.length, 0);
@@ -210,7 +210,7 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
 // --- computeAutoSecondAssignPlan: an action's stageId is set to the default stage's id
 // (not just trivially null, as every case above with stages: [] exercised). ---
 {
-  const a = area({ id: "area-6", teamIds: ["team-6"], autoAssignResumedAt: isoDaysAgo(365) });
+  const a = area({ id: "area-6", autoAssignResumedAt: isoDaysAgo(365) });
   const u1 = user({ id: "sp-7", name: "Alice", teamId: "team-6" });
   const s = stage({ id: "stage-default", isDefault: true });
   const c = customer({ id: "cust-6", areaId: "area-6", assignedToUserId: "owner-6", createdAt: isoDaysAgo(10), createdByTeamId: "team-6" });

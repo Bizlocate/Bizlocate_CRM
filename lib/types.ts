@@ -25,10 +25,8 @@ export interface Team {
 export interface Area {
   id: string;
   name: string;
-  teamIds: string[];
   autoAssignEnabled: boolean;
   autoAssignResumedAt: string;
-  lastAutoAssignedUserId: string | null;
 }
 
 export interface SubArea {

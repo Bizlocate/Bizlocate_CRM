@@ -127,7 +127,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   function assigneeOptions(excluding: string[]) {
     const teamIds = currentUser?.role === "MANAGER"
       ? (currentUser.teamId ? [currentUser.teamId] : [])
-      : areas.find((a) => a.id === areaId)?.teamIds ?? [];
+      : []; // TEMP stub: Task 4 rewrites this (areas no longer link to teams)
     if (teamIds.length === 0) return [];
     return activeUsers.filter((u) => u.role !== "ADMIN" && !!u.teamId && teamIds.includes(u.teamId) && !excluding.includes(u.id));
   }

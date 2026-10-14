@@ -462,8 +462,6 @@ interface Store {
 
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
-  addAreaTeam: (areaId: string, teamId: string) => void;
-  removeAreaTeam: (areaId: string, teamId: string) => void;
   updateAreaAutoAssign: (id: string, enabled: boolean) => void;
   deleteArea: (id: string) => void;
   addSubArea: (areaId: string, name: string) => void;
@@ -604,14 +602,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     usersRef.current = users;
   }, [users]);
 
-  // Realtime payloads for the "areas" table carry only areas-row columns,
-  // not the area_teams join -- preserve the area's current teamIds (looked
-  // up live, same reasoning as usersRef above) rather than dropping them.
-  const areasRef = useRef(areas);
-  useEffect(() => {
-    areasRef.current = areas;
-  }, [areas]);
-
   // Set by login() (a fresh login) or adopted from the DB on auto-restore
   // (an existing session continuing, e.g. reload/new tab -- never
   // overwritten there). The session-guard effect below compares this
@@ -638,18 +628,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   async function loadAreas(): Promise<Area[]> {
     const supabase = createClient();
-    const [{ data }, { data: links, error: linksError }] = await Promise.all([
-      supabase.from("areas").select("*").order("name"),
-      supabase.from("area_teams").select("*"),
-    ]);
-    if (linksError) console.error("Failed to load area_teams (has the area-team migration been run?):", linksError);
-    const teamIdsByArea = new Map<string, string[]>();
-    for (const link of (links ?? []) as { area_id: string; team_id: string }[]) {
-      const list = teamIdsByArea.get(link.area_id) ?? [];
-      list.push(link.team_id);
-      teamIdsByArea.set(link.area_id, list);
-    }
-    const mapped = (data ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
+    const { data } = await supabase.from("areas").select("*").order("name");
+    const mapped = (data ?? []).map(mapArea);
     setAreas(mapped);
     return mapped;
   }
@@ -1005,7 +985,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const entries: RealtimeTableEntry[] = [
       { table: "profiles", setState: (fn) => setUsers(fn), mapRow: mapProfile, keyOf: (x) => x.id },
       { table: "teams", setState: (fn) => setTeams(fn), mapRow: mapTeam, keyOf: (x) => x.id },
-      { table: "areas", setState: (fn) => setAreas(fn), mapRow: (row) => mapArea(row, areasRef.current.find((a) => a.id === row.id)?.teamIds ?? []), keyOf: (x) => x.id },
+      { table: "areas", setState: (fn) => setAreas(fn), mapRow: mapArea, keyOf: (x) => x.id },
       { table: "sub_areas", setState: (fn) => setSubAreas(fn), mapRow: mapSubArea, keyOf: (x) => x.id },
       { table: "business_tag_industries", setState: (fn) => setBusinessTagIndustries(fn), mapRow: mapBusinessTagIndustry, keyOf: (x) => x.id },
       { table: "business_tag_categories", setState: (fn) => setBusinessTagCategories(fn), mapRow: mapBusinessTagCategory, keyOf: (x) => x.id },
@@ -1044,11 +1024,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (payload: RealtimePostgresChangesPayload<Record<string, any>>) => applyRealtimeChange(entry, payload)
       );
     }
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "area_teams" },
-      () => { loadAreas(); }
-    );
     channel.subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -1309,7 +1284,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setAreas((prev) => [...prev, mapArea(data, [])]);
+        if (!error && data) setAreas((prev) => [...prev, mapArea(data)]);
       });
   }
 
@@ -1317,35 +1292,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, name } : a)));
     const supabase = createClient();
     supabase.from("areas").update({ name }).eq("id", id).then(() => {});
-  }
-
-  function addAreaTeam(areaId: string, teamId: string) {
-    const target = areas.find((a) => a.id === areaId);
-    if (!target || target.teamIds.includes(teamId)) return;
-    setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: [...a.teamIds, teamId] } : a)));
-    const supabase = createClient();
-    supabase
-      .from("area_teams")
-      .insert({ area_id: areaId, team_id: teamId })
-      .then(({ error }) => {
-        if (error) setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: a.teamIds.filter((id) => id !== teamId) } : a)));
-      });
-  }
-
-  function removeAreaTeam(areaId: string, teamId: string) {
-    const target = areas.find((a) => a.id === areaId);
-    if (!target) return;
-    const prevTeamIds = target.teamIds;
-    setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: a.teamIds.filter((id) => id !== teamId) } : a)));
-    const supabase = createClient();
-    supabase
-      .from("area_teams")
-      .delete()
-      .eq("area_id", areaId)
-      .eq("team_id", teamId)
-      .then(({ error }) => {
-        if (error) setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, teamIds: prevTeamIds } : a)));
-      });
   }
 
   function updateAreaAutoAssign(id: string, enabled: boolean) {
@@ -2734,8 +2680,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteTeam,
     addArea,
     updateArea,
-    addAreaTeam,
-    removeAreaTeam,
     updateAreaAutoAssign,
     deleteArea,
     addSubArea,
