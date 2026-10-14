@@ -287,6 +287,12 @@ export default function CustomerDetailPage() {
     && !myPendingRemoval
     && !blastAccess;
 
+  const createdByLabel = (
+    <div style={{ fontSize: 13.5, color: "#6b7280" }}>
+      Created by: {teams.find((t) => t.id === customer.createdByTeamId)?.name ?? "—"}
+    </div>
+  );
+
   function roleLabel(role: string) {
     return role === "SALESPERSON" ? "Sales Person" : role === "MANAGER" ? "Manager" : "Admin";
   }
@@ -473,7 +479,6 @@ export default function CustomerDetailPage() {
               ) : (
                 customer.phone
               )}
-              {" "}· Created by: {teams.find((t) => t.id === customer.createdByTeamId)?.name ?? "—"}
               {" "}· Assigned:{" "}
               {visibleAssignedUsers.length > 0 ? (
                 visibleAssignedUsers.map(({ slot, user }, i) => {
@@ -556,6 +561,7 @@ export default function CustomerDetailPage() {
             {pendingDeleteRequest ? "Delete request pending" : "Request Delete"}
           </button>
         )}
+        {currentUser.role === "SALESPERSON" && createdByLabel}
       </div>
 
       {(currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && (
@@ -628,6 +634,7 @@ export default function CustomerDetailPage() {
               );
             });
           })()}
+          <div style={{ marginLeft: "auto", alignSelf: "center" }}>{createdByLabel}</div>
         </div>
       )}
 
