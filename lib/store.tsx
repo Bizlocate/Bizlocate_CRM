@@ -1840,7 +1840,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function deleteStage(id: string) {
-    const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id)).length;
+    // Counts the flat stage columns, not seats: `stage_N` has a foreign key to
+    // pipeline_stages, and a slot whose assignee was deleted keeps its stage
+    // (assigned_to is set null, stage_N is not), so the DB would refuse the delete.
+    const count = customers.filter((c) => c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
     if (count > 0) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }

@@ -45,9 +45,6 @@
   - `CustomerAssignment.teamId: string | null` (was `string`)
   - `seatsFromSlots(c: SlotFields, teamIdOf: (userId: string) => string | null): CustomerAssignment[]`
   - `withSeats(customers: Customer[], users: Pick<User, "id" | "teamId">[]): Customer[]` (returns copies whose `assignments` are derived)
-  - `seatUserIds(c: Pick<Customer, "assignments">): string[]`
-  - `seatOfUser(c: Pick<Customer, "assignments">, userId: string): CustomerAssignment | undefined`
-  - `seatOfSlot(c: Pick<Customer, "assignments">, slot: 1 | 2 | 3): CustomerAssignment | undefined`
   - Seat `id` format: `"<customerId>:<slot>"`.
 
 - [ ] **Step 1: Write the failing check**
@@ -58,7 +55,7 @@ Create `lib/assignments.check.ts`:
 // Self-check for assignments. Run with:
 //   node --experimental-strip-types lib/assignments.check.ts
 import assert from "node:assert";
-import { seatOfSlot, seatOfUser, seatUserIds, seatsFromSlots, withSeats } from "./assignments.ts";
+import { seatsFromSlots, withSeats } from "./assignments.ts";
 import type { Customer } from "./types.ts";
 
 function slots(overrides: Partial<Customer> = {}) {
@@ -100,16 +97,6 @@ function slots(overrides: Partial<Customer> = {}) {
   assert.deepStrictEqual(out[0].assignments.map((s) => [s.userId, s.teamId]), [["u1", "tA"], ["u2", "tB"]]);
   assert.deepStrictEqual(out[1].assignments, []);
   assert.deepStrictEqual(raw[0].assignments, [], "input customers are not mutated");
-}
-
-// --- reader helpers ---
-{
-  const c = withSeats([{ ...fullCustomer("c1"), assignedToUserId: "u1", assignedToUserId3: "u3" }], [])[0];
-  assert.deepStrictEqual(seatUserIds(c), ["u1", "u3"]);
-  assert.strictEqual(seatOfUser(c, "u3")?.slot, 3);
-  assert.strictEqual(seatOfUser(c, "nobody"), undefined);
-  assert.strictEqual(seatOfSlot(c, 1)?.userId, "u1");
-  assert.strictEqual(seatOfSlot(c, 2), undefined);
 }
 
 function fullCustomer(id: string): Customer {
@@ -200,20 +187,6 @@ export function seatsFromSlots(c: SlotFields, teamIdOf: (userId: string) => stri
 export function withSeats(customers: Customer[], users: Pick<User, "id" | "teamId">[]): Customer[] {
   const teamOf = new Map(users.map((u) => [u.id, u.teamId]));
   return customers.map((c) => ({ ...c, assignments: seatsFromSlots(c, (id) => teamOf.get(id) ?? null) }));
-}
-
-export function seatUserIds(c: Pick<Customer, "assignments">): string[] {
-  return c.assignments.map((s) => s.userId);
-}
-
-export function seatOfUser(c: Pick<Customer, "assignments">, userId: string): CustomerAssignment | undefined {
-  return c.assignments.find((s) => s.userId === userId);
-}
-
-// ponytail: slot numbers become per-team in Phase 3c (several seats may share a
-// number); callers that need "the" slot 1 are revisited in 3c/3d.
-export function seatOfSlot(c: Pick<Customer, "assignments">, slot: 1 | 2 | 3): CustomerAssignment | undefined {
-  return c.assignments.find((s) => s.slot === slot);
 }
 ```
 
@@ -671,6 +644,8 @@ Replace its body: `return c.assignments.map((s) => s.userId);` (keep the name an
 - [ ] **Step 2: `deleteStage`**
 
 Replace `const count = customers.filter((c) => c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;` with `const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id)).length;`.
+
+Note: `deleteStage` was later reverted to the flat-field count (FK guard, see the comment in `lib/store.tsx`).
 
 - [ ] **Step 3: `assignmentError`**
 
