@@ -247,6 +247,11 @@ export interface Customer {
   createdByTeamId: string | null;
   createdAt: string;
   updatedAt: string;
+  // Seats on this customer (one per populated slot, slot ascending).
+  // Derived on the client from the flat slot fields above for now (see
+  // lib/assignments.ts); Phase 3c makes the customer_assignments table the
+  // source and removes the flat fields.
+  assignments: CustomerAssignment[];
 }
 
 export type ActivityType = "CALL" | "VISIT" | "NOTE";
@@ -348,10 +353,11 @@ export interface AssignmentEvent {
 // team's seats (1-3), who sits there, and that person's pool + stage on the
 // customer. Mirrored from the customers table's old slot columns for now
 // (see the customer_assignments migration in supabase/schema.sql).
+// teamId is null for an assignee who has no team.
 export interface CustomerAssignment {
   id: string;
   customerId: string;
-  teamId: string;
+  teamId: string | null;
   slot: 1 | 2 | 3;
   userId: string;
   pool: PoolStatus | null;

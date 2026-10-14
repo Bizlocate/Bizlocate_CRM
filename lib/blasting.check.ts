@@ -1,11 +1,12 @@
 // Self-check for blasting. Run with:
 //   node --experimental-strip-types lib/blasting.check.ts
 import assert from "node:assert";
+import { seatsFromSlots } from "./assignments.ts";
 import { matchesBlastCriteria, hasOpenBlastItem } from "./blasting.ts";
 import type { BlastItem, BlastRequest, Customer } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string; createdAt: string }): Customer {
-  return {
+  const base: Customer = {
     name: "C", email: "", phone: "",
     stage1Id: null, stage2Id: null, stage3Id: null,
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,
@@ -17,8 +18,10 @@ function customer(overrides: Partial<Customer> & { id: string; createdAt: string
     firsttimeBranchId: null, targetRaceId: null, targetTypeId: null, budgetMin: null, budgetMax: null,
     optionalPhone: "", remark: "", createdBy: null, createdByTeamId: null,
     updatedAt: overrides.createdAt,
+    assignments: [],
     ...overrides,
   };
+  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => null) };
 }
 
 const noRangeCriteria = { businessNameKeyword: null, areaId: null, subAreaId: null, businessIndustryId: null, businessCategoryId: null, businessTypeId: null, createdFrom: null, createdTo: null };

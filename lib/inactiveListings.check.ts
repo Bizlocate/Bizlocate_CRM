@@ -1,6 +1,7 @@
 // Self-check for inactiveListings. Run with:
 //   node --experimental-strip-types lib/inactiveListings.check.ts
 import assert from "node:assert";
+import { seatsFromSlots } from "./assignments.ts";
 import {
   ACTIVE_PULL_DAYS,
   ACTIVE_WARN_DAYS,
@@ -18,7 +19,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-09-04T00:00:00Z").getTime();
 
 function customer(overrides: Partial<Customer> & { id: string }): Customer {
-  return {
+  const base: Customer = {
     name: "C", email: "", phone: "",
     stage1Id: null, stage2Id: null, stage3Id: null,
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,
@@ -31,8 +32,10 @@ function customer(overrides: Partial<Customer> & { id: string }): Customer {
     optionalPhone: "", remark: "", createdBy: null, createdByTeamId: null,
     createdAt: new Date(NOW - 100 * DAY_MS).toISOString(),
     updatedAt: new Date(NOW - 100 * DAY_MS).toISOString(),
+    assignments: [],
     ...overrides,
   };
+  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => null) };
 }
 
 function activity(overrides: Partial<Activity> & { id: string; customerId: string; authorUserId: string; createdAt: string }): Activity {

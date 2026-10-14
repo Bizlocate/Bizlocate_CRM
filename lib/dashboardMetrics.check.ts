@@ -1,6 +1,7 @@
 // Self-check for dashboardMetrics. Run with:
 //   node --experimental-strip-types lib/dashboardMetrics.check.ts
 import assert from "node:assert";
+import { seatsFromSlots } from "./assignments.ts";
 import {
   appointmentMonthlyTrend,
   assignToAppointmentDuration,
@@ -26,7 +27,7 @@ import {
 import type { Activity, Area, AssignmentEvent, Customer, DealClosure, LeadSource, RemovalReason, RemovalRequest, SalesTarget, Stage, StageEvent, Task, User } from "./types.ts";
 
 function customer(overrides: Partial<Customer> & { id: string }): Customer {
-  return {
+  const base: Customer = {
     name: "C", email: "", phone: "",
     stage1Id: null, stage2Id: null, stage3Id: null,
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,
@@ -38,8 +39,10 @@ function customer(overrides: Partial<Customer> & { id: string }): Customer {
     firsttimeBranchId: null, targetRaceId: null, targetTypeId: null, budgetMin: null, budgetMax: null,
     optionalPhone: "",
     remark: "", createdBy: null, createdByTeamId: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+    assignments: [],
     ...overrides,
   };
+  return { ...base, assignments: overrides.assignments ?? seatsFromSlots(base, () => null) };
 }
 
 function stage(overrides: Partial<Stage> & { id: string; name: string; order: number }): Stage {
