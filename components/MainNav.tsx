@@ -11,29 +11,35 @@ export default function MainNav() {
   const { currentUser, removalRequests, customerDeleteRequests, customers, activities, assignmentEvents, users, tasks, blastItems, blastRequests, blastClaimRequests, stages } = useStore();
   const pathname = usePathname();
 
-  // Shared by both "own assigned customers in default stage" badges below
-  // (SP's Customers tab, MANAGER's My Customers tab) -- same stage-slot
-  // logic as myStageId in components/CustomerListView.tsx (own assignee slot, whichever
-  // of the 3 is theirs).
-  function countOwnDefaultStage(userId: string): number {
+  // How many customers have at least one assignee slot, held by someone in
+  // `userIds`, sitting in the default ("New") stage -- same stage-slot logic
+  // as myStageId in components/CustomerListView.tsx.
+  function countDefaultStageFor(userIds: Set<string>): number {
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return 0;
-    return customers.filter((c) => {
-      const stageId =
-        c.assignedToUserId === userId ? c.stage1Id :
-        c.assignedToUserId2 === userId ? c.stage2Id :
-        c.assignedToUserId3 === userId ? c.stage3Id :
-        null;
-      return stageId === defaultStage.id;
-    }).length;
+    return customers.filter((c) =>
+      [
+        { userId: c.assignedToUserId, stageId: c.stage1Id },
+        { userId: c.assignedToUserId2, stageId: c.stage2Id },
+        { userId: c.assignedToUserId3, stageId: c.stage3Id },
+      ].some((slot) => slot.userId !== null && userIds.has(slot.userId) && slot.stageId === defaultStage.id)
+    ).length;
   }
 
-  // Badge count for own assigned customers in their default stage (used by
-  // both "Customers" tab for SALESPERSON and "My Customers" tab for MANAGER).
+  // Own badge: the viewer's own assigned customers in the default stage --
+  // SALESPERSON's Customers tab and MANAGER's My Customers tab.
   const ownNewStageCount = useMemo(() => {
     if (!currentUser || currentUser.role === "ADMIN") return 0;
-    return countOwnDefaultStage(currentUser.id);
+    return countDefaultStageFor(new Set([currentUser.id]));
   }, [customers, currentUser, stages]);
+
+  // Team badge (MANAGER's Customers tab): customers where anyone on the
+  // manager's own team has a slot in the default stage -- the same set the
+  // list shows when filtered to the "New" stage.
+  const teamNewStageCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== "MANAGER" || !currentUser.teamId) return 0;
+    return countDefaultStageFor(new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id)));
+  }, [customers, users, currentUser, stages]);
 
   // tasks is already RLS-scoped to "mine" (private per creator), so this is
   // just the current user's own open-task count -- same list TodoTasksBrowser
@@ -86,7 +92,7 @@ export default function MainNav() {
 
   const tabs: { href: string; label: string; active: boolean; badge?: number }[] = [
     { href: "/dashboard", label: "Dashboard", active: pathname.startsWith("/dashboard") },
-    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: ownNewStageCount },
+    { href: "/customers", label: "Customers", active: pathname.startsWith("/customers"), badge: currentUser.role === "MANAGER" ? teamNewStageCount : ownNewStageCount },
   ];
   if (currentUser.role === "MANAGER") {
     tabs.push({ href: "/my-customers", label: "My Customers", active: pathname.startsWith("/my-customers"), badge: ownNewStageCount });
