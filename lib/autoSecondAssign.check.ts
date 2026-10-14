@@ -215,4 +215,14 @@ const IDLE_STAGE: Pick<Stage, "excludeFromAutoAssign"> = { excludeFromAutoAssign
   assert.strictEqual(actions[0].stageId, "stage-default");
 }
 
+// --- a manager is in the rotation when switched On, and skipped when Off ---
+{
+  const teams = [{ id: "team-7", lastAutoAssignedUserId: null, autoAssignEnabled: true, autoAssignResumedAt: isoDaysAgo(365) }];
+  const manager = user({ id: "mgr-1", name: "Boss", role: "MANAGER", teamId: "team-7" });
+  const c = customer({ id: "cust-7", assignedToUserId: "owner-7", createdAt: isoDaysAgo(10), createdByTeamId: "team-7" });
+  assert.strictEqual(computeAutoSecondAssignPlan([c], [manager], [], [], NOW, teams)[0]?.winnerId, "mgr-1", "manager switched On can win");
+  const off = { ...manager, autoAssignEnabled: false };
+  assert.strictEqual(computeAutoSecondAssignPlan([c], [off], [], [], NOW, teams).length, 0, "manager switched Off is skipped");
+}
+
 console.log("autoSecondAssign.check.ts: all assertions passed");

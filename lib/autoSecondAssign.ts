@@ -90,7 +90,7 @@ export interface SecondAssignAction {
  * (`createdByTeamId`). That team's On/Off switch and resume time
  * (`teams[].autoAssignEnabled` / `autoAssignResumedAt`) gate the customer;
  * areas are not used. That team's seat 1 decides when it is due, only that
- * team's active auto-assign salespeople can win, and the round-robin pointer
+ * team's active salespeople and managers switched On can win, and the round-robin pointer
  * is per team (`teams[].lastAutoAssignedUserId`). Nobody who already holds
  * any seat on the customer can win (a person holds one seat per customer).
  * pointerByTeam/extraAssignedCount track this call's own in-progress picks so
@@ -121,7 +121,7 @@ export function computeAutoSecondAssignPlan(
     if (!isSecondAssignDue({ id: c.id, createdAt: c.createdAt, assignments: teamSeats }, activities, slot1Stage, team.autoAssignResumedAt, now)) continue;
     const excluded = c.assignments.map((s) => s.userId);
     const candidates = users
-      .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && u.teamId === teamId && !excluded.includes(u.id))
+      .filter((u) => u.active && u.autoAssignEnabled && (u.role === "SALESPERSON" || u.role === "MANAGER") && u.teamId === teamId && !excluded.includes(u.id))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     if (candidates.length === 0) continue;
     const currentPointer = pointerByTeam.has(teamId) ? pointerByTeam.get(teamId)! : team.lastAutoAssignedUserId;

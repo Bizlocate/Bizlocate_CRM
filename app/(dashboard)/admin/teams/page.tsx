@@ -19,7 +19,8 @@ export default function AdminTeamsPage() {
   const managers = users.filter((u) => u.role === "MANAGER");
 
   function members(teamId: string) {
-    return users.filter((u) => u.teamId === teamId);
+    // managers first, then everyone else (each group keeps the users' name order)
+    return users.filter((u) => u.teamId === teamId).sort((a, b) => Number(b.role === "MANAGER") - Number(a.role === "MANAGER"));
   }
 
   function managerName(id: string | null) {
@@ -141,7 +142,7 @@ export default function AdminTeamsPage() {
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 0", fontSize: 13 }}>
                       <span style={{ color: "#374151" }}>{m.name}</span>
                       <span style={{ color: "#9aa0ab" }}>{m.role}</span>
-                      {m.role === "SALESPERSON" && (
+                      {m.role !== "ADMIN" && (
                         <label style={{ display: "flex", alignItems: "center", gap: 4, color: "#6b7280", opacity: t.autoAssignEnabled ? 1 : 0.5 }} title="Include this member in the auto second-assign rotation">
                           <input type="checkbox" checked={m.autoAssignEnabled} onChange={(e) => updateUserAutoAssign(m.id, e.target.checked)} />
                           {m.autoAssignEnabled ? "On" : "Off"}
