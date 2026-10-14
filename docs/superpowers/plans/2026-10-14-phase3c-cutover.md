@@ -795,6 +795,8 @@ git commit -m "Auto second-assign sweep inserts a seat in the winner's team"
 
 ### Task 6: SQL — the cutover block
 
+> **SQL of record is `supabase/schema.sql`.** The copy below was the first draft; the opus review and the final review changed it (per-person removal index, `user_id = auth.uid()` on activities/stage_events inserts, team-scoped removal reads, `lock_timeout`, cleanup-block guard, leaders may add tasks / file delete requests on any customer). Always send the user the text from `schema.sql`.
+
 **Files:**
 - Modify: `supabase/schema.sql` (append at the very end)
 

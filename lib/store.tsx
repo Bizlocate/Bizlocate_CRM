@@ -2176,9 +2176,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // Permanently deletes a removed assignee's whole activity log for this
-  // customer (admin/manager only, per activities_delete policy). Call
-  // The delete is allowed for a manager of the author's team and no longer
-  // depends on a seat (still done before the seat is cleared).
+  // customer (admin, or a manager of the author's team, per the
+  // activities_delete policy -- it no longer depends on a seat). Still called
+  // before the seat is cleared.
   function deleteAssigneeActivities(customerId: string, userId: string) {
     const supabase = createClient();
     supabase.from("activities").delete().eq("customer_id", customerId).eq("user_id", userId).then(() => {});
