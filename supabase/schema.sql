@@ -3000,7 +3000,7 @@ insert into mandatory_field_settings (field_key, required) values
 -- drop policy if exists "tasks_insert" on tasks;
 -- create policy "tasks_insert" on tasks for insert with check (
 --   user_id = auth.uid()
---   and (is_admin() or is_customer_member(tasks.customer_id))
+--   and (is_admin() or is_manager() or is_customer_member(tasks.customer_id))
 -- );
 --
 -- -- change log: every manager reads every team's; anyone who may edit may append
@@ -3058,7 +3058,6 @@ insert into mandatory_field_settings (field_key, required) values
 -- create policy "customer_delete_requests_insert" on customer_delete_requests for insert with check (
 --   requested_by = auth.uid()
 --   and is_manager()
---   and is_customer_member(customer_delete_requests.customer_id)
 -- );
 --
 -- drop policy if exists "stage_events_insert" on stage_events;
