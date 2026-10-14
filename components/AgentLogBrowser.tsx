@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { STAGE_STYLES, type Area, type Customer, type User } from "@/lib/types";
+import { STAGE_STYLES, type Area, type Customer, type Team, type User } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso: string): string {
@@ -28,6 +28,8 @@ interface AgentEntry {
  * (`/admin/agent-logs`, company-wide) and Manager (`/team/agent-logs`,
  * own team) pages — only which `agents`/`customers`/`areas` are passed in
  * differs; `areas` defaults to every area (admin) when not given.
+ * Passing `teams` (the admin page) switches the filters to Team | Member |
+ * Stage instead of Area | Stage | Agent.
  *
  * The Agent filter defaults to "All Agents": one entry per matching
  * assignee slot (a customer with two in-scope assignees contributes one
@@ -35,12 +37,14 @@ interface AgentEntry {
  * assignable slots as independent engagements). Picking a specific agent
  * narrows to just their slot, same as before this filter existed.
  */
-export default function AgentLogBrowser({ agents, customers, areas: areasProp }: { agents: User[]; customers: Customer[]; areas?: Area[] }) {
+export default function AgentLogBrowser({ agents, customers, areas: areasProp, teams }: { agents: User[]; customers: Customer[]; areas?: Area[]; teams?: Team[] }) {
   const { areas: allAreas, stages } = useStore();
   // dropdown offers only the scoped set (manager: own team); name lookup
   // still resolves against every area so an out-of-scope area still renders
   const filterAreas = areasProp ?? allAreas;
+  const teamMode = !!teams;
   const [areaId, setAreaId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [stageId, setStageId] = useState("");
   const [agentId, setAgentId] = useState("");
 
@@ -50,14 +54,16 @@ export default function AgentLogBrowser({ agents, customers, areas: areasProp }:
   // area's team(s).
   const selectedAreaTeamIds = areaId ? filterAreas.find((a) => a.id === areaId)?.teamIds ?? [] : [];
   const areaAgents = selectedAreaTeamIds.length > 0 ? agents.filter((a) => !!a.teamId && selectedAreaTeamIds.includes(a.teamId)) : agents;
-  // If switching area drops the previously-picked agent out of scope, fall
-  // back to "All Agents" instead of silently filtering by a hidden id.
-  const selectedAgentId = agentId && areaAgents.some((a) => a.id === agentId) ? agentId : "";
+  // Team mode (admin): the Member dropdown narrows to the picked team instead.
+  const visibleAgents = teamMode ? (teamId ? agents.filter((a) => a.teamId === teamId) : agents) : areaAgents;
+  // If switching area/team drops the previously-picked agent out of scope, fall
+  // back to "All" instead of silently filtering by a hidden id.
+  const selectedAgentId = agentId && visibleAgents.some((a) => a.id === agentId) ? agentId : "";
 
   // Scoped by Area + Agent only (not Stage) -- this is what the stage
   // summary table counts, and what the list further narrows by Stage.
   const scopedEntries: AgentEntry[] = [];
-  const scopedAgentIds = selectedAgentId ? [selectedAgentId] : areaAgents.map((a) => a.id);
+  const scopedAgentIds = selectedAgentId ? [selectedAgentId] : visibleAgents.map((a) => a.id);
   for (const c of customers) {
     if (areaId && c.areaId !== areaId) continue;
     for (const aid of scopedAgentIds) {
@@ -90,24 +96,43 @@ export default function AgentLogBrowser({ agents, customers, areas: areasProp }:
   return (
     <div>
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-          <option value="">All Areas</option>
-          {filterAreas.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+        {teamMode ? (
+          <select className="field-input" style={{ width: 180 }} value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <option value="">All Teams</option>
+            {teams!.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        ) : (
+          <select className="field-input" style={{ width: 180 }} value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+            <option value="">All Areas</option>
+            {filterAreas.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        )}
+        {teamMode && (
+          <select className="field-input" style={{ width: 220 }} value={selectedAgentId} onChange={(e) => setAgentId(e.target.value)}>
+            <option value="">All Members</option>
+            {visibleAgents.map((u) => (
+              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+            ))}
+          </select>
+        )}
         <select className="field-input" style={{ width: 180 }} value={stageId} onChange={(e) => setStageId(e.target.value)}>
           <option value="">All Stages</option>
           {stages.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
-        <select className="field-input" style={{ width: 220 }} value={selectedAgentId} onChange={(e) => setAgentId(e.target.value)}>
-          <option value="">All Agents</option>
-          {areaAgents.map((u) => (
-            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-          ))}
-        </select>
+        {!teamMode && (
+          <select className="field-input" style={{ width: 220 }} value={selectedAgentId} onChange={(e) => setAgentId(e.target.value)}>
+            <option value="">All Agents</option>
+            {visibleAgents.map((u) => (
+              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
