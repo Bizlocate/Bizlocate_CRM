@@ -1,7 +1,7 @@
 // Self-check for assignments. Run with:
 //   node --experimental-strip-types lib/assignments.check.ts
 import assert from "node:assert";
-import { seatOfSlot, seatOfUser, seatUserIds, seatsFromSlots, withSeats } from "./assignments.ts";
+import { seatsFromSlots, withSeats } from "./assignments.ts";
 import type { Customer } from "./types.ts";
 
 function slots(overrides: Partial<Customer> = {}) {
@@ -43,16 +43,6 @@ function slots(overrides: Partial<Customer> = {}) {
   assert.deepStrictEqual(out[0].assignments.map((s) => [s.userId, s.teamId]), [["u1", "tA"], ["u2", "tB"]]);
   assert.deepStrictEqual(out[1].assignments, []);
   assert.deepStrictEqual(raw[0].assignments, [], "input customers are not mutated");
-}
-
-// --- reader helpers ---
-{
-  const c = withSeats([{ ...fullCustomer("c1"), assignedToUserId: "u1", assignedToUserId3: "u3" }], [])[0];
-  assert.deepStrictEqual(seatUserIds(c), ["u1", "u3"]);
-  assert.strictEqual(seatOfUser(c, "u3")?.slot, 3);
-  assert.strictEqual(seatOfUser(c, "nobody"), undefined);
-  assert.strictEqual(seatOfSlot(c, 1)?.userId, "u1");
-  assert.strictEqual(seatOfSlot(c, 2), undefined);
 }
 
 function fullCustomer(id: string): Customer {

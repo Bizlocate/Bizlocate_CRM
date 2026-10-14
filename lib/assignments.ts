@@ -43,17 +43,3 @@ export function withSeats(customers: Customer[], users: Pick<User, "id" | "teamI
   const teamOf = new Map(users.map((u) => [u.id, u.teamId]));
   return customers.map((c) => ({ ...c, assignments: seatsFromSlots(c, (id) => teamOf.get(id) ?? null) }));
 }
-
-export function seatUserIds(c: Pick<Customer, "assignments">): string[] {
-  return c.assignments.map((s) => s.userId);
-}
-
-export function seatOfUser(c: Pick<Customer, "assignments">, userId: string): CustomerAssignment | undefined {
-  return c.assignments.find((s) => s.userId === userId);
-}
-
-// ponytail: slot numbers become per-team in Phase 3c (several seats may share a
-// number); callers that need "the" slot 1 are revisited in 3c/3d.
-export function seatOfSlot(c: Pick<Customer, "assignments">, slot: 1 | 2 | 3): CustomerAssignment | undefined {
-  return c.assignments.find((s) => s.slot === slot);
-}
