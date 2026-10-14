@@ -53,12 +53,21 @@ export default async () => {
   const actions = computeAutoSecondAssignPlan(customers, areas, users, stages, activities, Date.now());
 
   for (const action of actions) {
-    const { error: customerUpdateError } = await supabase
-      .from("customers")
-      .update({ assigned_to_2: action.winnerId, pool_2: "ACTIVE", pool_2_since: null, stage_2: action.stageId })
-      .eq("id", action.customerId);
-    if (customerUpdateError) {
-      console.error(`sweep-auto-assign: failed to update customer ${action.customerId}:`, customerUpdateError);
+    const winnerTeamId = users.find((u) => u.id === action.winnerId)?.teamId;
+    if (!winnerTeamId) {
+      console.error(`sweep-auto-assign: winner ${action.winnerId} has no team, skipping customer ${action.customerId}`);
+      continue;
+    }
+    const { error: seatInsertError } = await supabase.from("customer_assignments").insert({
+      customer_id: action.customerId,
+      team_id: winnerTeamId,
+      slot: 2,
+      user_id: action.winnerId,
+      pool: "ACTIVE",
+      stage_id: action.stageId,
+    });
+    if (seatInsertError) {
+      console.error(`sweep-auto-assign: failed to assign customer ${action.customerId}:`, seatInsertError);
       continue;
     }
 
