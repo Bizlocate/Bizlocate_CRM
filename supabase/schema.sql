@@ -2758,9 +2758,14 @@ insert into mandatory_field_settings (field_key, required) values
 --     set user_id = excluded.user_id,
 --         pool = excluded.pool,
 --         pool_since = excluded.pool_since,
---         stage_id = excluded.stage_id;
+--         stage_id = excluded.stage_id
+--     where (customer_assignments.user_id, customer_assignments.pool, customer_assignments.pool_since, customer_assignments.stage_id)
+--       is distinct from (excluded.user_id, excluded.pool, excluded.pool_since, excluded.stage_id);
 -- end;
 -- $$ language plpgsql security definer set search_path = public;
+--
+-- -- not meant to be called from the API; the trigger functions (owner-run) still work
+-- revoke execute on function resync_customer_assignments(uuid) from public, anon, authenticated;
 --
 -- create or replace function trg_customers_resync_assignments() returns trigger as $$
 -- begin
@@ -2810,8 +2815,16 @@ insert into mandatory_field_settings (field_key, required) values
 --   end loop;
 -- end $$;
 --
--- -- Realtime (run once; errors with "already member" if repeated — ignore)
--- alter publication supabase_realtime add table customer_assignments;
+-- -- Realtime (skipped if the table is already in the publication)
+-- do $$
+-- begin
+--   if not exists (
+--     select 1 from pg_publication_tables
+--     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'customer_assignments'
+--   ) then
+--     alter publication supabase_realtime add table customer_assignments;
+--   end if;
+-- end $$;
 --
 -- -- Rollback, if ever needed:
 -- --   drop trigger if exists customers_resync_assignments on customers;
