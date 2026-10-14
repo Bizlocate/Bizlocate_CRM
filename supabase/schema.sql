@@ -3147,3 +3147,13 @@ insert into mandatory_field_settings (field_key, required) values
 --   stage_1 = null, stage_2 = null, stage_3 = null;
 -- alter table customers enable trigger customers_touch_updated_at;
 -- commit;
+
+-- ============================================================
+-- Migration: Phase 3d — per-team rotation pointer for the daily auto
+-- second-assign (it used to be per area; the second person now comes from the
+-- team that created the customer, so fairness is tracked per team). Additive
+-- and safe to run any time; run it BEFORE deploying Phase 3d. The old
+-- areas.last_auto_assigned_user_id column is no longer used (dropped in Phase 4).
+-- ============================================================
+--
+-- alter table teams add column if not exists last_auto_assigned_user_id uuid references profiles (id) on delete set null;
