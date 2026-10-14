@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import type { Customer } from "@/lib/types";
 import CustomerListView from "@/components/CustomerListView";
 
 type LookupItem = { id: string; name: string };
@@ -79,6 +80,8 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     targetRaces,
     targetTypes,
     fieldRequirements,
+    teams,
+    reassignCustomer,
   } = useStore();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -107,6 +110,8 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [dupes, setDupes] = useState<Customer[] | null>(null);
+  const [dupeAssignee, setDupeAssignee] = useState<Record<string, string>>({});
 
   const filteredSubAreas = subAreas.filter((s) => s.areaId === areaId);
   const filteredCategories = businessTagCategories.filter((c) => c.industryId === businessIndustryId);
@@ -120,16 +125,45 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     return isFieldRequired(fieldKey) ? <span style={{ color: "#a13a2b" }}> *</span> : null;
   }
 
-  // each assignee dropdown excludes whoever is already picked in the other two slots,
-  // and is scoped to a team (ADMIN excluded — doesn't do sales). A MANAGER always picks from their
-  // own team, whatever the area; an ADMIN picks from the team(s) that own the selected area (none
-  // linked yet? no candidates — set it on /admin/area first).
+  // each assignee dropdown excludes whoever is already picked in the other two
+  // slots (ADMIN excluded — doesn't do sales). A MANAGER picks from their own
+  // team; an ADMIN may pick any member of any team (the member's team decides
+  // which team's seat they take).
   function assigneeOptions(excluding: string[]) {
-    const teamIds = currentUser?.role === "MANAGER"
-      ? (currentUser.teamId ? [currentUser.teamId] : [])
-      : []; // TEMP stub: Task 4 rewrites this (areas no longer link to teams)
-    if (teamIds.length === 0) return [];
-    return activeUsers.filter((u) => u.role !== "ADMIN" && !!u.teamId && teamIds.includes(u.teamId) && !excluding.includes(u.id));
+    return activeUsers.filter((u) =>
+      u.role !== "ADMIN"
+      && !!u.teamId
+      && !excluding.includes(u.id)
+      && (currentUser?.role === "ADMIN" || u.teamId === currentUser?.teamId)
+    );
+  }
+
+  // members who could take a seat on an existing customer: a manager's own team (not already holding a seat on it); an admin: anyone
+  function dupeCandidates(c: Customer) {
+    return activeUsers.filter((u) =>
+      u.role !== "ADMIN"
+      && !!u.teamId
+      && (currentUser?.role === "ADMIN" || u.teamId === currentUser?.teamId)
+      && !c.assignments.some((s) => s.userId === u.id)
+    );
+  }
+
+  function assignExisting(c: Customer) {
+    const userId = dupeAssignee[c.id];
+    const user = users.find((u) => u.id === userId);
+    if (!user?.teamId) return;
+    const taken = new Set(c.assignments.filter((s) => s.teamId === user.teamId).map((s) => s.slot));
+    const slot = ([1, 2, 3] as const).find((n) => !taken.has(n));
+    if (!slot) {
+      alert(`${user.name}'s team already has all 3 seats on this customer.`);
+      return;
+    }
+    const result = reassignCustomer(c.id, user.teamId, slot, userId);
+    if (!result.ok) {
+      alert(result.error ?? "Could not assign this customer.");
+      return;
+    }
+    router.push(`/customers/${c.id}`);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -158,15 +192,15 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
     }
 
     const enteredPhones = [phone.trim(), optionalPhone.trim()].filter(Boolean);
-    const dupes = customers.filter((c) => enteredPhones.some((p) => c.phone === p || c.optionalPhone === p));
-    if (dupes.length > 0) {
-      const details = dupes
-        .map((c) => `${c.name} — ${c.businessName || "—"} — ${nameOf(businessTagTypes, c.businessTypeId) || "—"}`)
-        .join("\n");
-      const proceed = window.confirm(`This phone number is already used by:\n\n${details}\n\nCreate anyway?`);
-      if (!proceed) return;
+    const found = customers.filter((c) => enteredPhones.some((p) => c.phone === p || c.optionalPhone === p));
+    if (found.length > 0) {
+      setDupes(found);
+      return;
     }
+    await createCustomer();
+  }
 
+  async function createCustomer() {
     setFormError("");
     setSubmitting(true);
     const result = await addCustomer({
@@ -230,6 +264,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
+    <>
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <form onSubmit={handleSubmit} className="card modal-card" style={{ maxWidth: 900 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -264,7 +299,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
           </FormField>
           <FormField>
             <label className="field-label">Area<Asterisk fieldKey="area" /></label>
-            <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); setAssignedToUserId(""); setAssignedToUserId2(""); setAssignedToUserId3(""); }}>
+            <select className="field-input" style={fieldStyle("area")} onFocus={() => clearInvalid("area")} value={areaId} onChange={(e) => { setAreaId(e.target.value); setSubAreaId(""); }}>
               <option value="">—</option>
               {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
@@ -383,7 +418,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
             >
               <option value="">—</option>
               {assigneeOptions([assignedToUserId2, assignedToUserId3]).map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>{u.name}{currentUser?.role === "ADMIN" ? ` (${teams.find((t) => t.id === u.teamId)?.name ?? "—"})` : ""}</option>
               ))}
             </select>
           </FormField>
@@ -392,7 +427,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
             <select className="field-input" value={assignedToUserId2} onChange={(e) => setAssignedToUserId2(e.target.value)}>
               <option value="">—</option>
               {assigneeOptions([assignedToUserId, assignedToUserId3]).map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>{u.name}{currentUser?.role === "ADMIN" ? ` (${teams.find((t) => t.id === u.teamId)?.name ?? "—"})` : ""}</option>
               ))}
             </select>
           </FormField>
@@ -401,7 +436,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
             <select className="field-input" value={assignedToUserId3} onChange={(e) => setAssignedToUserId3(e.target.value)}>
               <option value="">—</option>
               {assigneeOptions([assignedToUserId, assignedToUserId2]).map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>{u.name}{currentUser?.role === "ADMIN" ? ` (${teams.find((t) => t.id === u.teamId)?.name ?? "—"})` : ""}</option>
               ))}
             </select>
           </FormField>
@@ -421,5 +456,68 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
         {formError && <div className="error-text" style={{ marginTop: 10 }}>{formError}</div>}
       </form>
     </div>
+
+      {dupes && (
+        <div className="modal-overlay" style={{ zIndex: 60 }} onClick={(e) => { if (e.target === e.currentTarget) setDupes(null); }}>
+          <div className="card modal-card" style={{ maxWidth: 720 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>This phone number is already in the system</div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 14 }}>
+              You don't need to create it again — open it, or assign it to a member of your team.
+            </div>
+            {dupes.map((c) => {
+              const candidates = dupeCandidates(c);
+              return (
+                <div key={c.id} style={{ padding: "12px 0", borderTop: "1px solid #eef0f2" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                    {c.name} — {c.businessName || "—"} — {nameOf(businessTagTypes, c.businessTypeId) || "—"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#9aa0ab", margin: "2px 0 8px" }}>
+                    Created by {teams.find((t) => t.id === c.createdByTeamId)?.name ?? "—"}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <button className="btn btn-outline" type="button" onClick={() => router.push(`/customers/${c.id}`)}>Open</button>
+                    {candidates.length > 0 ? (
+                      <>
+                        <select
+                          className="field-input"
+                          style={{ width: "auto" }}
+                          value={dupeAssignee[c.id] ?? ""}
+                          onChange={(e) => setDupeAssignee((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        >
+                          <option value="">— assign to —</option>
+                          {candidates.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}{currentUser?.role === "ADMIN" ? ` (${teams.find((t) => t.id === u.teamId)?.name ?? "—"})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <button className="btn btn-primary" type="button" disabled={!dupeAssignee[c.id]} onClick={() => assignExisting(c)}>
+                          Assign
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12.5, color: "#9aa0ab" }}>No free member to assign.</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline" type="button" onClick={() => setDupes(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={async () => {
+                  setDupes(null);
+                  await createCustomer();
+                }}
+              >
+                Create anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
