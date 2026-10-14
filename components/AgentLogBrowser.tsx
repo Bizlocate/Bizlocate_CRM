@@ -10,14 +10,11 @@ function formatDate(iso: string): string {
 }
 
 function assigneeIds(c: Customer): string[] {
-  return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
+  return c.assignments.map((s) => s.userId);
 }
 
 function agentStageId(c: Customer, agentId: string): string | null {
-  if (c.assignedToUserId === agentId) return c.stage1Id;
-  if (c.assignedToUserId2 === agentId) return c.stage2Id;
-  if (c.assignedToUserId3 === agentId) return c.stage3Id;
-  return null;
+  return c.assignments.find((s) => s.userId === agentId)?.stageId ?? null;
 }
 
 interface AgentEntry {

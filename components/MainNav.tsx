@@ -17,13 +17,7 @@ export default function MainNav() {
   function countDefaultStageFor(userIds: Set<string>): number {
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return 0;
-    return customers.filter((c) =>
-      [
-        { userId: c.assignedToUserId, stageId: c.stage1Id },
-        { userId: c.assignedToUserId2, stageId: c.stage2Id },
-        { userId: c.assignedToUserId3, stageId: c.stage3Id },
-      ].some((slot) => slot.userId !== null && userIds.has(slot.userId) && slot.stageId === defaultStage.id)
-    ).length;
+    return customers.filter((c) => c.assignments.some((s) => userIds.has(s.userId) && s.stageId === defaultStage.id)).length;
   }
 
   // Own badge: the viewer's own assigned customers in the default stage --

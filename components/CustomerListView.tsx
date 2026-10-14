@@ -112,8 +112,8 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
   const showAssignedTo = scope === "all";
   const isOwnScope = scope === "own";
 
-  function assigneeIds(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string[] {
-    return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
+  function assigneeIds(c: Pick<Customer, "assignments">): string[] {
+    return c.assignments.map((s) => s.userId);
   }
 
   const filteredCustomers = useMemo(() => {
@@ -136,7 +136,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
       if (searchStageId) {
         if (isOwnScope) {
           if (myStageId(c) !== searchStageId) return false;
-        } else if (c.stage1Id !== searchStageId && c.stage2Id !== searchStageId && c.stage3Id !== searchStageId) {
+        } else if (!c.assignments.some((s) => s.stageId === searchStageId)) {
           return false;
         }
       }
@@ -153,11 +153,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
       if (filterPurposeId && c.purposeId !== filterPurposeId) return false;
       if (filterCreatedByTeamId && c.createdByTeamId !== filterCreatedByTeamId) return false;
       if (isOwnScope && currentUser) {
-        const myPool =
-          c.assignedToUserId === currentUser.id ? c.pool1 :
-          c.assignedToUserId2 === currentUser.id ? c.pool2 :
-          c.assignedToUserId3 === currentUser.id ? c.pool3 :
-          null;
+        const myPool = c.assignments.find((s) => s.userId === currentUser.id)?.pool ?? null;
         if (myPool !== poolTab) return false;
       }
       if (keyword) {
@@ -232,7 +228,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
   function stageOrderOf(c: Customer): number {
     const stageId = isOwnScope
       ? myStageId(c)
-      : c.assignedToUserId ? c.stage1Id : c.assignedToUserId2 ? c.stage2Id : c.assignedToUserId3 ? c.stage3Id : null;
+      : c.assignments[0]?.stageId ?? null;
     const order = stages.find((s) => s.id === stageId)?.order;
     return order ?? Number.MAX_SAFE_INTEGER;
   }
@@ -245,20 +241,11 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
 
   function myStageId(c: Customer): string | null {
     if (!currentUser) return null;
-    if (c.assignedToUserId === currentUser.id) return c.stage1Id;
-    if (c.assignedToUserId2 === currentUser.id) return c.stage2Id;
-    if (c.assignedToUserId3 === currentUser.id) return c.stage3Id;
-    return null;
+    return c.assignments.find((s) => s.userId === currentUser.id)?.stageId ?? null;
   }
 
   function stageBadgeNames(c: Customer): string[] {
-    return [
-      { userId: c.assignedToUserId, stageId: c.stage1Id },
-      { userId: c.assignedToUserId2, stageId: c.stage2Id },
-      { userId: c.assignedToUserId3, stageId: c.stage3Id },
-    ]
-      .filter((s) => s.userId)
-      .map((s) => stageNameOf(s.stageId));
+    return c.assignments.map((s) => stageNameOf(s.stageId));
   }
 
   function formatDate(iso: string): string {
@@ -273,7 +260,7 @@ export default function CustomerListView({ scope }: { scope: "own" | "all" }) {
     ? businessTagTypes.filter((t) => t.categoryId === filterBusinessCategoryId)
     : businessTagTypes;
 
-  function assigneeNames(c: { assignedToUserId: string | null; assignedToUserId2: string | null; assignedToUserId3: string | null }): string {
+  function assigneeNames(c: Pick<Customer, "assignments">): string {
     return assigneeIds(c)
       .map((id) => users.find((u) => u.id === id)?.name ?? "")
       .filter(Boolean)
