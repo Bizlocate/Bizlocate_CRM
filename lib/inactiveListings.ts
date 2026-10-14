@@ -59,13 +59,7 @@ export function computeSlotAges(
 
   const ages: SlotAge[] = [];
   for (const c of customers) {
-    (
-      [
-        { slot: 1 as const, pool: c.pool1, since: c.pool1Since, userId: c.assignedToUserId },
-        { slot: 2 as const, pool: c.pool2, since: c.pool2Since, userId: c.assignedToUserId2 },
-        { slot: 3 as const, pool: c.pool3, since: c.pool3Since, userId: c.assignedToUserId3 },
-      ] as const
-    ).forEach(({ slot, pool, since, userId }) => {
+    c.assignments.forEach(({ slot, pool, poolSince: since, userId }) => {
       if (!pool || !userId) return;
       const anchor =
         pool === "INACTIVE"
