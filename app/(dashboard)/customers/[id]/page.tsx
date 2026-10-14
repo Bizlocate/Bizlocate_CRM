@@ -150,13 +150,8 @@ export default function CustomerDetailPage() {
   if (!currentUser || !customer) return null;
   const currentRole = currentUser.role;
 
-  const assignedSlots: { slot: 1 | 2 | 3; userId: string | null }[] = [
-    { slot: 1, userId: customer.assignedToUserId },
-    { slot: 2, userId: customer.assignedToUserId2 },
-    { slot: 3, userId: customer.assignedToUserId3 },
-  ];
-  const assignedUsers = assignedSlots
-    .map(({ slot, userId }) => ({ slot, user: userId ? users.find((u) => u.id === userId) : undefined }))
+  const assignedUsers = customer.assignments
+    .map((seat) => ({ slot: seat.slot, user: users.find((u) => u.id === seat.userId) }))
     .filter((a): a is { slot: 1 | 2 | 3; user: NonNullable<typeof a.user> } => !!a.user);
   const myAssignedSlot = assignedUsers.find(({ user }) => user.id === currentUser.id)?.slot ?? null;
   // salesperson only sees their own slot up top — teammates' names/stage stay hidden
@@ -165,11 +160,11 @@ export default function CustomerDetailPage() {
     : assignedUsers;
 
   function poolOf(slot: 1 | 2 | 3) {
-    return slot === 1 ? customer!.pool1 : slot === 2 ? customer!.pool2 : customer!.pool3;
+    return customer!.assignments.find((s) => s.slot === slot)?.pool ?? null;
   }
 
   function stageOf(slot: 1 | 2 | 3) {
-    return slot === 1 ? customer!.stage1Id : slot === 2 ? customer!.stage2Id : customer!.stage3Id;
+    return customer!.assignments.find((s) => s.slot === slot)?.stageId ?? null;
   }
 
   function pendingRemovalForSlot(slot: 1 | 2 | 3, occupantUserId: string) {
@@ -568,9 +563,9 @@ export default function CustomerDetailPage() {
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {(() => {
             const rows = [
-              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignedToUserId, clearable: true },
-              { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignedToUserId2, clearable: true },
-              { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignedToUserId3, clearable: true },
+              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignments.find((s) => s.slot === 1)?.userId ?? null, clearable: true },
+              { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignments.find((s) => s.slot === 2)?.userId ?? null, clearable: true },
+              { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignments.find((s) => s.slot === 3)?.userId ?? null, clearable: true },
             ];
             return rows.map(({ slot, value, setValue, current, clearable }) => {
               const otherCurrent = rows.filter((r) => r.slot !== slot).map((r) => r.current);

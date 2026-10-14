@@ -239,7 +239,7 @@ export default function DashboardPage() {
     const memberIds = new Set(membersInTeam(teamId).map((u) => u.id));
     const inTeam = new Set(
       scoped.customers
-        .filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].some((id) => id !== null && memberIds.has(id)))
+        .filter((c) => c.assignments.some((s) => memberIds.has(s.userId)))
         .map((c) => c.id)
     );
     const inScope = (customerId: string) => inTeam.has(customerId);
@@ -297,7 +297,7 @@ export default function DashboardPage() {
   const pipeline = scopeByTeam(scopeByArea(""), pipelineTeamId);
   const pipelineScopedIds = memberId ? new Set([memberId]) : pipelineTeamId ? new Set(membersInTeam(pipelineTeamId).map((u) => u.id)) : scopedIds;
   const pipelineCustomers = memberId
-    ? pipeline.customers.filter((c) => [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].includes(memberId))
+    ? pipeline.customers.filter((c) => c.assignments.some((s) => s.userId === memberId))
     : pipeline.customers;
   const pipelineDealClosures = memberId ? pipeline.dealClosures.filter((d) => d.userId === memberId) : pipeline.dealClosures;
 
