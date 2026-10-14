@@ -91,10 +91,11 @@ function stageEvent(overrides: Partial<StageEvent> & { id: string; customerId: s
 const newStage = stage({ id: "new", name: "New", order: 1 });
 const wonStage = stage({ id: "won", name: "Won", order: 2 });
 const lostStage = stage({ id: "lost", name: "Lost", order: 3 });
+// a slot only has a stage while someone holds it (the app clears both together)
 const funnelCustomers = [
-  customer({ id: "c1", stage1Id: "new" }),
-  customer({ id: "c2", stage2Id: "won" }),
-  customer({ id: "c3", stage1Id: "won", stage3Id: "new" }),
+  customer({ id: "c1", stage1Id: "new", assignedToUserId: "u1" }),
+  customer({ id: "c2", stage2Id: "won", assignedToUserId2: "u1" }),
+  customer({ id: "c3", stage1Id: "won", assignedToUserId: "u1", stage3Id: "new", assignedToUserId3: "u1" }),
 ];
 const funnel = stageFunnel(funnelCustomers, [wonStage, newStage, lostStage]);
 assert.deepEqual(funnel.map((f) => f.stageId), ["new", "won", "lost"], "sorted by order regardless of input order");
@@ -103,7 +104,7 @@ assert.equal(funnel.find((f) => f.stageId === "won")!.count, 2);
 assert.equal(funnel.find((f) => f.stageId === "lost")!.count, 0);
 
 // --- lostCount: matches stage name "Lost" case-insensitively, across slots ---
-const lostCustomers = [customer({ id: "c1", stage2Id: "lost" }), customer({ id: "c2", stage1Id: "new" })];
+const lostCustomers = [customer({ id: "c1", stage2Id: "lost", assignedToUserId2: "u1" }), customer({ id: "c2", stage1Id: "new", assignedToUserId: "u1" })];
 assert.equal(lostCount(lostCustomers, [newStage, lostStage]), 1);
 assert.equal(lostCount(lostCustomers, [newStage]), 0, "no Lost stage configured -> 0, not a crash");
 

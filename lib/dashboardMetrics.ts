@@ -13,11 +13,7 @@ export interface FunnelRow {
 // Slots (stage + assignee) for a customer, optionally filtered to only those
 // whose assignee is in scope. Pass no scopedIds for unscoped (e.g. ADMIN).
 function slotsInScope(c: Customer, scopedIds?: Set<string>): { stageId: string | null; userId: string | null }[] {
-  const slots = [
-    { stageId: c.stage1Id, userId: c.assignedToUserId },
-    { stageId: c.stage2Id, userId: c.assignedToUserId2 },
-    { stageId: c.stage3Id, userId: c.assignedToUserId3 },
-  ];
+  const slots = c.assignments.map((s) => ({ stageId: s.stageId, userId: s.userId }));
   if (!scopedIds) return slots;
   return slots.filter((s) => s.userId !== null && scopedIds.has(s.userId));
 }
@@ -352,12 +348,7 @@ export function assignToAppointmentDuration(
   if (appointmentStageIds.size === 0) return [];
   const durationsByUser = new Map<string, number[]>();
   for (const c of customers) {
-    const slots: { stageId: string | null; userId: string | null; slot: 1 | 2 | 3 }[] = [
-      { stageId: c.stage1Id, userId: c.assignedToUserId, slot: 1 },
-      { stageId: c.stage2Id, userId: c.assignedToUserId2, slot: 2 },
-      { stageId: c.stage3Id, userId: c.assignedToUserId3, slot: 3 },
-    ];
-    for (const s of slots) {
+    for (const s of c.assignments) {
       if (!s.userId || !s.stageId || !appointmentStageIds.has(s.stageId)) continue;
       const enteredEvents = stageEvents
         .filter((e) => e.customerId === c.id && e.slot === s.slot && appointmentStageIds.has(e.stageId))
