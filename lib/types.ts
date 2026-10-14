@@ -344,6 +344,21 @@ export interface AssignmentEvent {
   createdAt: string;
 }
 
+// One assigned seat on a customer: which team holds it, which of that
+// team's seats (1-3), who sits there, and that person's pool + stage on the
+// customer. Mirrored from the customers table's old slot columns for now
+// (see the customer_assignments migration in supabase/schema.sql).
+export interface CustomerAssignment {
+  id: string;
+  customerId: string;
+  teamId: string;
+  slot: 1 | 2 | 3;
+  userId: string;
+  pool: PoolStatus | null;
+  poolSince: string | null;
+  stageId: string | null;
+}
+
 // One row per stage change on a slot — lets dashboard reports measure
 // duration between two stages (e.g. assign -> Appointment) instead of
 // only ever seeing the current stage. Forward-looking only.

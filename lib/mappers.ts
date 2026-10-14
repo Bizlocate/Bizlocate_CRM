@@ -1,4 +1,4 @@
-import type { Activity, ActivityType, Area, Customer, PoolStatus, Role, Stage, User } from "./types";
+import type { Activity, ActivityType, Area, Customer, CustomerAssignment, PoolStatus, Role, Stage, User } from "./types";
 
 export function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
@@ -117,5 +117,27 @@ export function mapActivity(row: {
     authorUserId: row.user_id,
     time: formatTimestamp(row.created_at),
     createdAt: row.created_at,
+  };
+}
+
+export function mapCustomerAssignment(row: {
+  id: string;
+  customer_id: string;
+  team_id: string;
+  slot: number;
+  user_id: string;
+  pool: PoolStatus | null;
+  pool_since: string | null;
+  stage_id: string | null;
+}): CustomerAssignment {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    teamId: row.team_id,
+    slot: row.slot as 1 | 2 | 3,
+    userId: row.user_id,
+    pool: row.pool,
+    poolSince: row.pool_since,
+    stageId: row.stage_id,
   };
 }
