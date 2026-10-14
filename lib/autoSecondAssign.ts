@@ -7,19 +7,20 @@ export const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
  * When a customer's slot-2 auto-assignment becomes due: 7 days after slot-1
  * was created, or — if slot-1's stage is flagged excludeFromAutoAssign
  * (e.g. Appointment/Nego) — 14 days after the last activity logged by the
- * slot-1 assignee (falling back to pool1Since/createdAt if there's none).
+ * slot-1 assignee (falling back to slot 1's pool-since/createdAt if there's none).
  * Same "last touched" formula sweepStalePool already uses.
  */
 export function secondAssignDueAt(
-  customer: Pick<Customer, "id" | "createdAt" | "pool1Since" | "assignedToUserId">,
+  customer: Pick<Customer, "id" | "createdAt" | "assignments">,
   activities: Pick<Activity, "customerId" | "authorUserId" | "createdAt">[],
   slot1Stage: Pick<Stage, "excludeFromAutoAssign"> | undefined
 ): number {
   if (slot1Stage?.excludeFromAutoAssign) {
+    const slot1 = customer.assignments.find((s) => s.slot === 1);
     const lastOwnActivity = activities
-      .filter((a) => a.customerId === customer.id && a.authorUserId === customer.assignedToUserId)
+      .filter((a) => a.customerId === customer.id && a.authorUserId === slot1?.userId)
       .reduce((max, a) => Math.max(max, new Date(a.createdAt).getTime()), 0);
-    const lastTouched = Math.max(new Date(customer.pool1Since ?? customer.createdAt).getTime(), lastOwnActivity);
+    const lastTouched = Math.max(new Date(slot1?.poolSince ?? customer.createdAt).getTime(), lastOwnActivity);
     return lastTouched + FOURTEEN_DAYS_MS;
   }
   return new Date(customer.createdAt).getTime() + SEVEN_DAYS_MS;
@@ -47,7 +48,7 @@ export function secondAssignDueAt(
  * date on every subsequent sweep.
  */
 export function isSecondAssignDue(
-  customer: Pick<Customer, "id" | "createdAt" | "pool1Since" | "assignedToUserId">,
+  customer: Pick<Customer, "id" | "createdAt" | "assignments">,
   activities: Pick<Activity, "customerId" | "authorUserId" | "createdAt">[],
   slot1Stage: Pick<Stage, "excludeFromAutoAssign"> | undefined,
   areaResumedAt: string,
@@ -95,13 +96,14 @@ export function computeAutoSecondAssignPlan(
   const pointerByArea = new Map<string, string | null>();
   const extraAssignedCount = new Map<string, number>();
   for (const c of customers) {
-    if (c.assignedToUserId2 || !c.assignedToUserId || !c.areaId) continue;
+    const slot1 = c.assignments.find((s) => s.slot === 1);
+    if (c.assignments.some((s) => s.slot === 2) || !slot1 || !c.areaId) continue;
     if (!c.createdBy) continue; // legacy/imported customer, never eligible
     const area = areas.find((a) => a.id === c.areaId);
     if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
-    const slot1Stage = c.stage1Id ? stages.find((s) => s.id === c.stage1Id) : undefined;
+    const slot1Stage = slot1.stageId ? stages.find((s) => s.id === slot1.stageId) : undefined;
     if (!isSecondAssignDue(c, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
-    const excluded = [c.assignedToUserId, c.assignedToUserId3].filter((id): id is string => !!id);
+    const excluded = [slot1.userId, c.assignments.find((s) => s.slot === 3)?.userId].filter((id): id is string => !!id);
     const candidates = users
       .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -115,9 +117,7 @@ export function computeAutoSecondAssignPlan(
       const limit = candidate.activePoolLimit;
       if (limit !== null && limit !== undefined) {
         const activeCount = customers.filter((other) =>
-          (other.assignedToUserId === candidate.id && other.pool1 === "ACTIVE") ||
-          (other.assignedToUserId2 === candidate.id && other.pool2 === "ACTIVE") ||
-          (other.assignedToUserId3 === candidate.id && other.pool3 === "ACTIVE")
+          other.assignments.some((s) => s.userId === candidate.id && s.pool === "ACTIVE")
         ).length + (extraAssignedCount.get(candidate.id) ?? 0);
         if (activeCount >= limit) continue;
       }

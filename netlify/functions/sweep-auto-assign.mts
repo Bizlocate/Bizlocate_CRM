@@ -1,6 +1,7 @@
 import { createAdminClient } from "../../lib/supabase/admin.ts";
 import { mapActivity, mapArea, mapCustomer, mapProfile, mapStage } from "../../lib/mappers.ts";
 import { computeAutoSecondAssignPlan } from "../../lib/autoSecondAssign.ts";
+import { withSeats } from "../../lib/assignments.ts";
 
 export const config = { schedule: "@daily" };
 
@@ -41,7 +42,7 @@ export default async () => {
   const areas = (areaRows ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
 
   const stages = (stageRows ?? []).map(mapStage);
-  const customers = (customerRows ?? []).map(mapCustomer);
+  const customers = withSeats((customerRows ?? []).map(mapCustomer), users);
 
   const usersById = new Map(users.map((u) => [u.id, u]));
   const activities = (activityRows ?? []).map((row) => mapActivity(row, usersById));
