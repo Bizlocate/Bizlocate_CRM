@@ -12,6 +12,7 @@ export default async () => {
     { data: profileRows, error: profileError },
     { data: areaRows, error: areaError },
     { data: areaTeamRows, error: areaTeamError },
+    { data: teamRows, error: teamError },
     { data: stageRows, error: stageError },
     { data: customerRows, error: customerError },
     { data: activityRows, error: activityError },
@@ -19,6 +20,7 @@ export default async () => {
     supabase.from("profiles").select("*"),
     supabase.from("areas").select("*"),
     supabase.from("area_teams").select("*"),
+    supabase.from("teams").select("id, last_auto_assigned_user_id"),
     supabase.from("pipeline_stages").select("*"),
     supabase.from("customers").select("*").order("name"),
     supabase.from("activities").select("*").order("created_at", { ascending: false }),
@@ -27,6 +29,7 @@ export default async () => {
   if (profileError) throw profileError;
   if (areaError) throw areaError;
   if (areaTeamError) throw areaTeamError;
+  if (teamError) throw teamError;
   if (stageError) throw stageError;
   if (customerError) throw customerError;
   if (activityError) throw activityError;
@@ -43,23 +46,20 @@ export default async () => {
   }
   const areas = (areaRows ?? []).map((row) => mapArea(row, teamIdsByArea.get(row.id) ?? []));
 
+  const teams = (teamRows ?? []).map((t) => ({ id: t.id as string, lastAutoAssignedUserId: (t.last_auto_assigned_user_id ?? null) as string | null }));
+
   const stages = (stageRows ?? []).map(mapStage);
   const customers = attachSeats((customerRows ?? []).map(mapCustomer), seatRows.map((r) => mapCustomerAssignment(r as Parameters<typeof mapCustomerAssignment>[0])));
 
   const usersById = new Map(users.map((u) => [u.id, u]));
   const activities = (activityRows ?? []).map((row) => mapActivity(row, usersById));
 
-  const actions = computeAutoSecondAssignPlan(customers, areas, users, stages, activities, Date.now());
+  const actions = computeAutoSecondAssignPlan(customers, areas, users, stages, activities, Date.now(), teams);
 
   for (const action of actions) {
-    const winnerTeamId = users.find((u) => u.id === action.winnerId)?.teamId;
-    if (!winnerTeamId) {
-      console.error(`sweep-auto-assign: winner ${action.winnerId} has no team, skipping customer ${action.customerId}`);
-      continue;
-    }
     const { error: seatInsertError } = await supabase.from("customer_assignments").insert({
       customer_id: action.customerId,
-      team_id: winnerTeamId,
+      team_id: action.teamId,
       slot: 2,
       user_id: action.winnerId,
       pool: "ACTIVE",
@@ -70,12 +70,12 @@ export default async () => {
       continue;
     }
 
-    const { error: areaUpdateError } = await supabase
-      .from("areas")
+    const { error: teamUpdateError } = await supabase
+      .from("teams")
       .update({ last_auto_assigned_user_id: action.winnerId })
-      .eq("id", action.areaId);
-    if (areaUpdateError) {
-      console.error(`sweep-auto-assign: failed to update area ${action.areaId}:`, areaUpdateError);
+      .eq("id", action.teamId);
+    if (teamUpdateError) {
+      console.error(`sweep-auto-assign: failed to update team ${action.teamId} pointer:`, teamUpdateError);
     }
 
     const { error: eventInsertError } = await supabase

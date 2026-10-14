@@ -69,19 +69,25 @@ export function isSecondAssignDue(
 export interface SecondAssignAction {
   customerId: string;
   areaId: string;
+  teamId: string;
   winnerId: string;
   stageId: string | null;
 }
 
 /**
- * The full slot-2 auto-assign decision for one sweep pass: which customers
- * are due, who wins each one via round-robin, honoring each candidate's
- * activePoolLimit. Pure — returns the plan as data, does not write
- * anything. A single call can produce multiple actions for the same area;
- * pointerByArea/extraAssignedCount track this call's own in-progress
- * picks so the second customer processed for an area sees the first one's
- * winner, instead of both reading the same stale round-robin pointer and
- * colliding on the same person.
+ * The full second-seat auto-assign decision for one sweep pass: which
+ * customers are due, who wins each one via round-robin, honoring each
+ * candidate's activePoolLimit. Pure -- returns the plan as data, does not
+ * write anything.
+ *
+ * The second person always comes from the team that CREATED the customer
+ * (`createdByTeamId`): that team's seat 1 decides when it is due, only that
+ * team's active auto-assign salespeople can win, and the round-robin pointer
+ * is per team (`teams[].lastAutoAssignedUserId`). Nobody who already holds
+ * any seat on the customer can win (a person holds one seat per customer).
+ * pointerByTeam/extraAssignedCount track this call's own in-progress picks so
+ * the second customer processed for a team sees the first one's winner,
+ * instead of both reading the same stale pointer and colliding.
  */
 export function computeAutoSecondAssignPlan(
   customers: Customer[],
@@ -89,26 +95,29 @@ export function computeAutoSecondAssignPlan(
   users: User[],
   stages: Stage[],
   activities: Activity[],
-  now: number
+  now: number,
+  teams: { id: string; lastAutoAssignedUserId: string | null }[] = []
 ): SecondAssignAction[] {
   const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
   const actions: SecondAssignAction[] = [];
-  const pointerByArea = new Map<string, string | null>();
+  const pointerByTeam = new Map<string, string | null>();
   const extraAssignedCount = new Map<string, number>();
   for (const c of customers) {
-    const slot1 = c.assignments.find((s) => s.slot === 1);
-    if (c.assignments.some((s) => s.slot === 2) || !slot1 || !c.areaId) continue;
-    if (!c.createdBy) continue; // legacy/imported customer, never eligible
+    if (!c.areaId || !c.createdBy || !c.createdByTeamId) continue; // legacy/imported or admin-created: never eligible
+    const teamId = c.createdByTeamId;
     const area = areas.find((a) => a.id === c.areaId);
-    if (!area || area.teamIds.length === 0 || !area.autoAssignEnabled) continue;
+    if (!area || !area.autoAssignEnabled) continue;
+    const teamSeats = c.assignments.filter((s) => s.teamId === teamId);
+    const slot1 = teamSeats.find((s) => s.slot === 1);
+    if (!slot1 || teamSeats.some((s) => s.slot === 2)) continue;
     const slot1Stage = slot1.stageId ? stages.find((s) => s.id === slot1.stageId) : undefined;
-    if (!isSecondAssignDue(c, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
+    if (!isSecondAssignDue({ id: c.id, createdAt: c.createdAt, assignments: teamSeats }, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
     const excluded = c.assignments.map((s) => s.userId);
     const candidates = users
-      .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && !!u.teamId && area.teamIds.includes(u.teamId) && !excluded.includes(u.id))
+      .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && u.teamId === teamId && !excluded.includes(u.id))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     if (candidates.length === 0) continue;
-    const currentPointer = pointerByArea.has(area.id) ? pointerByArea.get(area.id)! : area.lastAutoAssignedUserId;
+    const currentPointer = pointerByTeam.has(teamId) ? pointerByTeam.get(teamId)! : teams.find((t) => t.id === teamId)?.lastAutoAssignedUserId ?? null;
     const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
     const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
     let winner: User | undefined;
@@ -126,9 +135,9 @@ export function computeAutoSecondAssignPlan(
     }
     if (!winner) continue;
     const winnerId = winner.id;
-    pointerByArea.set(area.id, winnerId);
+    pointerByTeam.set(teamId, winnerId);
     extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
-    actions.push({ customerId: c.id, areaId: area.id, winnerId, stageId: defaultStage?.id ?? null });
+    actions.push({ customerId: c.id, areaId: area.id, teamId, winnerId, stageId: defaultStage?.id ?? null });
   }
   return actions;
 }
