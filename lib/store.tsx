@@ -525,10 +525,10 @@ interface Store {
   upsertSalesTarget: (userId: string, yearMonth: string, amount: number) => void;
 
   addCustomer: (input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) => Promise<{ ok: boolean; error?: string; customerId?: string }>;
-  reassignCustomer: (customerId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
+  reassignCustomer: (customerId: string, teamId: string, slot: 1 | 2 | 3, userId: string | null) => { ok: boolean; error?: string };
   logAssignmentRemoval: (customerId: string, slot: 1 | 2 | 3, removedUserName: string, note?: string) => void;
   deleteAssigneeActivities: (customerId: string, userId: string) => void;
-  togglePool: (customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) => { ok: boolean; error?: string };
+  togglePool: (customerId: string, userId: string, pool: PoolStatus) => { ok: boolean; error?: string };
   deleteCustomer: (customerId: string) => void;
   updateCustomerProfile: (customerId: string, patch: Partial<Omit<CustomerProfileInput, "remark">>) => void;
   updateCustomerIdentity: (customerId: string, patch: { name?: string; phone?: string }) => void;
@@ -926,30 +926,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const stale = computeSlotAges(customersList, activitiesList, assignmentEvents, tasksList)
       .filter(isStalePastPull)
       .filter((age) => isAdmin || age.userId === forUserId)
-      .map((age) => ({ customerId: age.customerId, slot: age.slot }));
+      .map((age) => ({ customerId: age.customerId, userId: age.userId }));
     if (stale.length === 0) return;
-    setCustomers((prev) =>
-      prev.map((c) => {
-        const hit1 = stale.some((s) => s.customerId === c.id && s.slot === 1);
-        const hit2 = stale.some((s) => s.customerId === c.id && s.slot === 2);
-        const hit3 = stale.some((s) => s.customerId === c.id && s.slot === 3);
-        if (!hit1 && !hit2 && !hit3) return c;
-        return {
-          ...c,
-          ...(hit1 ? { assignedToUserId: null, pool1: null, pool1Since: null, stage1Id: null } : {}),
-          ...(hit2 ? { assignedToUserId2: null, pool2: null, pool2Since: null, stage2Id: null } : {}),
-          ...(hit3 ? { assignedToUserId3: null, pool3: null, pool3Since: null, stage3Id: null } : {}),
-        };
-      })
-    );
+    setCustomerAssignments((prev) => prev.filter((s) => !stale.some((x) => x.customerId === s.customerId && x.userId === s.userId)));
     const supabase = createClient();
-    for (const { customerId, slot } of stale) {
-      const update = slot === 1
-        ? { assigned_to: null, pool_1: null, pool_1_since: null, stage_1: null }
-        : slot === 2
-        ? { assigned_to_2: null, pool_2: null, pool_2_since: null, stage_2: null }
-        : { assigned_to_3: null, pool_3: null, pool_3_since: null, stage_3: null };
-      supabase.from("customers").update(update).eq("id", customerId).then(() => {});
+    for (const { customerId, userId } of stale) {
+      supabase.from("customer_assignments").delete().eq("customer_id", customerId).eq("user_id", userId).then(() => {});
     }
   }
 
@@ -1881,11 +1863,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   async function addCustomer(input: { name: string; email: string; phone: string; assignedToUserId?: string | null; assignedToUserId2?: string | null; assignedToUserId3?: string | null } & Partial<CustomerProfileInput>) {
-    const assigneeIds = [input.assignedToUserId, input.assignedToUserId2, input.assignedToUserId3].filter((id): id is string => !!id);
-    if (new Set(assigneeIds).size !== assigneeIds.length) return { ok: false, error: "The same person can't be assigned twice." };
-    for (const id of assigneeIds) {
-      const error = assignmentError(id, "ACTIVE");
+    const assignees = [input.assignedToUserId, input.assignedToUserId2, input.assignedToUserId3]
+      .map((userId, i) => ({ userId, field: (i + 1) as 1 | 2 | 3 }))
+      .filter((a): a is { userId: string; field: 1 | 2 | 3 } => !!a.userId);
+    if (new Set(assignees.map((a) => a.userId)).size !== assignees.length) return { ok: false, error: "The same person can't be assigned twice." };
+    for (const a of assignees) {
+      const error = assignmentError(a.userId, "ACTIVE");
       if (error) return { ok: false, error };
+      if (!users.find((u) => u.id === a.userId)?.teamId) return { ok: false, error: `${users.find((u) => u.id === a.userId)?.name ?? "This person"} has no team, so can't be assigned.` };
     }
     const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
     if (!defaultStage) return { ok: false, error: "No pipeline stage configured. Add one in Admin → Pipeline Stages first." };
@@ -1897,15 +1882,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name: input.name,
         email: input.email || null,
         phone: input.phone || null,
-        assigned_to: input.assignedToUserId || null,
-        assigned_to_2: input.assignedToUserId2 || null,
-        assigned_to_3: input.assignedToUserId3 || null,
-        pool_1: input.assignedToUserId ? "ACTIVE" : null,
-        pool_2: input.assignedToUserId2 ? "ACTIVE" : null,
-        pool_3: input.assignedToUserId3 ? "ACTIVE" : null,
-        stage_1: input.assignedToUserId ? defaultStage.id : null,
-        stage_2: input.assignedToUserId2 ? defaultStage.id : null,
-        stage_3: input.assignedToUserId3 ? defaultStage.id : null,
         created_by: currentUserId,
         created_by_team_id: currentUser?.teamId ?? null,
         source_id: profile.sourceId,
@@ -1933,54 +1909,96 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCustomers((prev) => [...prev, mapCustomer(data)]);
     // Initial assignment counts too, not just later reassigns — same
     // "assigned N this month" report reassignCustomer feeds.
-    if (input.assignedToUserId) logAssignmentEvent(data.id, input.assignedToUserId, 1);
-    if (input.assignedToUserId2) logAssignmentEvent(data.id, input.assignedToUserId2, 2);
-    if (input.assignedToUserId3) logAssignmentEvent(data.id, input.assignedToUserId3, 3);
+    // Seat number = the form field (1-3) when free in that person's team, else that team's next free number.
+    const usedByTeam = new Map<string, Set<number>>();
+    const seatRows = assignees.map((a) => {
+      const teamId = users.find((u) => u.id === a.userId)!.teamId!;
+      const used = usedByTeam.get(teamId) ?? new Set<number>();
+      const slot = (!used.has(a.field) ? a.field : ([1, 2, 3] as const).find((n) => !used.has(n))!) as 1 | 2 | 3;
+      used.add(slot);
+      usedByTeam.set(teamId, used);
+      return { customerId: data.id as string, teamId, slot, userId: a.userId, stageId: defaultStage.id as string | null };
+    });
+    if (seatRows.length > 0) {
+      const saved = await insertSeats(seatRows);
+      if (!saved) return { ok: false, error: "The customer was created but could not be assigned. Open it and assign again.", customerId: data.id as string };
+      for (const r of seatRows) logAssignmentEvent(r.customerId, r.userId, r.slot);
+    }
     return { ok: true, customerId: data.id as string };
   }
 
-  function reassignCustomer(customerId: string, slot: 1 | 2 | 3, userId: string | null) {
+  function reassignCustomer(customerId: string, teamId: string, slot: 1 | 2 | 3, userId: string | null) {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) return { ok: false, error: "Customer not found." };
-    const slotKey = slot === 1 ? "assignedToUserId" : slot === 2 ? "assignedToUserId2" : "assignedToUserId3";
-    const columnKey = slot === 1 ? "assigned_to" : slot === 2 ? "assigned_to_2" : "assigned_to_3";
-    const poolKey = slot === 1 ? "pool1" : slot === 2 ? "pool2" : "pool3";
-    const poolColumn = slot === 1 ? "pool_1" : slot === 2 ? "pool_2" : "pool_3";
-    const sinceKey = slot === 1 ? "pool1Since" : slot === 2 ? "pool2Since" : "pool3Since";
-    const sinceColumn = slot === 1 ? "pool_1_since" : slot === 2 ? "pool_2_since" : "pool_3_since";
-    const stageKey = slot === 1 ? "stage1Id" : slot === 2 ? "stage2Id" : "stage3Id";
-    const stageColumn = slot === 1 ? "stage_1" : slot === 2 ? "stage_2" : "stage_3";
-    const otherSlotKeys = (["assignedToUserId", "assignedToUserId2", "assignedToUserId3"] as const).filter((k) => k !== slotKey);
-    const otherSlots = otherSlotKeys.map((k) => customer[k]).filter((id): id is string => !!id);
-    if (userId && otherSlots.includes(userId)) return { ok: false, error: "The same person can't be assigned twice." };
-    const changing = customer[slotKey] !== userId;
-    if (userId && changing) {
+    const seat = customer.assignments.find((s) => s.teamId === teamId && s.slot === slot);
+    if (userId && customer.assignments.some((s) => s.id !== seat?.id && s.userId === userId)) {
+      return { ok: false, error: "The same person can't be assigned twice." };
+    }
+    if ((seat?.userId ?? null) === userId) return { ok: true };
+    if (userId) {
       const error = assignmentError(userId, "ACTIVE", customerId);
       if (error) return { ok: false, error };
     }
-    // a newly (re)assigned slot always starts in the active pool at the default stage; clearing a slot clears both
-    const newPool: PoolStatus | null = userId ? "ACTIVE" : null;
-    const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
-    const newStageId: string | null = userId ? (defaultStage?.id ?? null) : null;
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === customerId
-          ? { ...c, [slotKey]: userId, ...(changing ? { [poolKey]: newPool, [sinceKey]: null, [stageKey]: newStageId } : {}) }
-          : c
-      )
-    );
     const supabase = createClient();
-    const update: Record<string, string | null> = { [columnKey]: userId };
-    if (changing) {
-      update[poolColumn] = newPool;
-      update[sinceColumn] = null;
-      update[stageColumn] = newStageId;
+    if (!userId) {
+      // clearing the seat (the seat exists: both null === null was handled above)
+      setCustomerAssignments((prev) => prev.filter((s) => s.id !== seat!.id));
+      supabase.from("customer_assignments").delete().eq("id", seat!.id).then(({ error }) => {
+        if (error) seatWriteFailed(error.message);
+      });
+      return { ok: true };
     }
-    supabase.from("customers").update(update).eq("id", customerId).then(() => {});
-    if (userId && changing) {
-      logAssignmentEvent(customerId, userId, slot);
+    // a newly (re)assigned seat always starts in the active pool at the default stage
+    const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
+    const stageId = defaultStage?.id ?? null;
+    if (seat) {
+      setCustomerAssignments((prev) => prev.map((s) => (s.id === seat.id ? { ...s, userId, pool: "ACTIVE", poolSince: null, stageId } : s)));
+      supabase
+        .from("customer_assignments")
+        .update({ user_id: userId, pool: "ACTIVE", pool_since: null, stage_id: stageId })
+        .eq("id", seat.id)
+        .then(({ error }) => {
+          if (error) seatWriteFailed(error.message);
+        });
+    } else {
+      insertSeats([{ customerId, teamId, slot, userId, stageId }]);
     }
+    logAssignmentEvent(customerId, userId, slot);
     return { ok: true };
+  }
+
+  // Seat writes go straight to customer_assignments; RLS plus the
+  // protect_seat_row trigger decide who may. Ids are generated here so the
+  // optimistic row and the Realtime echo of the same insert are one row.
+  async function insertSeats(
+    rows: { customerId: string; teamId: string; slot: 1 | 2 | 3; userId: string; stageId: string | null }[]
+  ): Promise<boolean> {
+    const seats: CustomerAssignment[] = rows.map((r) => ({
+      id: crypto.randomUUID(),
+      customerId: r.customerId,
+      teamId: r.teamId,
+      slot: r.slot,
+      userId: r.userId,
+      pool: "ACTIVE",
+      poolSince: null,
+      stageId: r.stageId,
+    }));
+    setCustomerAssignments((prev) => [...prev, ...seats]);
+    const { error } = await createClient()
+      .from("customer_assignments")
+      .insert(seats.map((s) => ({ id: s.id, customer_id: s.customerId, team_id: s.teamId, slot: s.slot, user_id: s.userId, pool: s.pool, stage_id: s.stageId })));
+    if (error) {
+      setCustomerAssignments((prev) => prev.filter((s) => !seats.some((n) => n.id === s.id)));
+      alert(`Could not save the assignment: ${error.message}`);
+      return false;
+    }
+    return true;
+  }
+
+  // Shared failure path for seat updates/deletes: tell the user and re-sync from the DB.
+  function seatWriteFailed(message: string) {
+    alert(`Could not save the change: ${message}`);
+    loadCustomerAssignments();
   }
 
   // One row per successful assignment, for the "assigned N this month"
@@ -1997,11 +2015,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
   }
 
-  function togglePool(customerId: string, slot: 1 | 2 | 3, pool: PoolStatus) {
+  function togglePool(customerId: string, userId: string, pool: PoolStatus) {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) return { ok: false, error: "Customer not found." };
-    const userId = slot === 1 ? customer.assignedToUserId : slot === 2 ? customer.assignedToUserId2 : customer.assignedToUserId3;
-    if (!userId) return { ok: false, error: "This slot has no assignee." };
+    const seat = customer.assignments.find((s) => s.userId === userId);
+    if (!seat) return { ok: false, error: "This person has no seat on this customer." };
     if (currentUser?.role !== "ADMIN" && currentUser?.id !== userId) {
       return { ok: false, error: "Only the assignee or an admin can change this pool status." };
     }
@@ -2009,14 +2027,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const error = assignmentError(userId, "INACTIVE", customerId);
       if (error) return { ok: false, error };
     }
-    const poolKey = slot === 1 ? "pool1" : slot === 2 ? "pool2" : "pool3";
-    const poolColumn = slot === 1 ? "pool_1" : slot === 2 ? "pool_2" : "pool_3";
-    const sinceKey = slot === 1 ? "pool1Since" : slot === 2 ? "pool2Since" : "pool3Since";
-    const sinceColumn = slot === 1 ? "pool_1_since" : slot === 2 ? "pool_2_since" : "pool_3_since";
     const since = pool === "INACTIVE" ? new Date().toISOString() : null;
-    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [poolKey]: pool, [sinceKey]: since } : c)));
-    const supabase = createClient();
-    supabase.from("customers").update({ [poolColumn]: pool, [sinceColumn]: since }).eq("id", customerId).then(() => {});
+    setCustomerAssignments((prev) => prev.map((s) => (s.id === seat.id ? { ...s, pool, poolSince: since } : s)));
+    createClient()
+      .from("customer_assignments")
+      .update({ pool, pool_since: since })
+      .eq("id", seat.id)
+      .then(({ error }) => {
+        if (error) seatWriteFailed(error.message);
+      });
     return { ok: true };
   }
 
@@ -2280,12 +2299,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     closedAmount?: number
   ) {
     if (!currentUser) return;
-    const stageKey = slot === 1 ? "stage1Id" : slot === 2 ? "stage2Id" : "stage3Id";
-    const stageColumn = slot === 1 ? "stage_1" : slot === 2 ? "stage_2" : "stage_3";
-    const stageChanged = customers.find((c) => c.id === customerId)?.[stageKey] !== stageId;
-    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, [stageKey]: stageId } : c)));
+    const seat = customers.find((c) => c.id === customerId)?.assignments.find((s) => s.userId === currentUser.id);
+    if (!seat) return;
+    const stageChanged = seat.stageId !== stageId;
+    setCustomerAssignments((prev) => prev.map((s) => (s.id === seat.id ? { ...s, stageId } : s)));
     const supabase = createClient();
-    supabase.from("customers").update({ [stageColumn]: stageId }).eq("id", customerId).then(() => {});
+    supabase.from("customer_assignments").update({ stage_id: stageId }).eq("id", seat.id).then(({ error }) => {
+      if (error) seatWriteFailed(error.message);
+    });
     // Log the transition (not a same-stage re-log) for duration reports —
     // "assign -> Appointment" and friends. See stage_events in schema.sql.
     if (stageChanged) {
@@ -2366,18 +2387,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .eq("id", requestId)
       .then(() => {});
     if (approve) {
-      const c = customers.find((x) => x.id === request.customerId);
-      const occupant =
-        request.slot === 1 ? c?.assignedToUserId : request.slot === 2 ? c?.assignedToUserId2 : c?.assignedToUserId3;
-      if (occupant === request.requestedBy) {
-        // log + delete before clearing: both RLS checks need this slot (or
-        // another) to still tie the manager to the row
+      const seat = customers.find((x) => x.id === request.customerId)?.assignments.find((s) => s.userId === request.requestedBy);
+      if (seat) {
+        // log + delete before clearing: the RLS checks need the manager's team to still hold a seat
         const removedUser = users.find((u) => u.id === request.requestedBy);
         const reasonName = removalReasons.find((r) => r.id === request.reasonId)?.name;
         const logNote = [reasonName, request.note].filter(Boolean).join(": ");
-        logAssignmentRemoval(request.customerId, request.slot, removedUser?.name ?? "Unknown", logNote || undefined);
+        logAssignmentRemoval(request.customerId, seat.slot, removedUser?.name ?? "Unknown", logNote || undefined);
         deleteAssigneeActivities(request.customerId, request.requestedBy);
-        reassignCustomer(request.customerId, request.slot, null);
+        reassignCustomer(request.customerId, seat.teamId, seat.slot, null);
       }
     }
   }
@@ -2587,18 +2605,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!approve) return;
 
     const errors: string[] = [];
+    const requesterTeamId = users.find((u) => u.id === request.requestedBy)?.teamId;
     for (const customerId of request.customerIds) {
       const customer = customers.find((c) => c.id === customerId);
       if (!customer) {
         errors.push("A claimed customer could not be found.");
         continue;
       }
-      const emptySlot: 1 | 2 | 3 | null = !customer.assignedToUserId ? 1 : !customer.assignedToUserId2 ? 2 : !customer.assignedToUserId3 ? 3 : null;
+      if (!requesterTeamId) {
+        errors.push(`${customer.name}: the requester has no team.`);
+        continue;
+      }
+      const taken = new Set(customer.assignments.filter((s) => s.teamId === requesterTeamId).map((s) => s.slot));
+      const emptySlot = ([1, 2, 3] as const).find((n) => !taken.has(n));
       if (!emptySlot) {
         errors.push(`${customer.name}: no empty assignee slot.`);
         continue;
       }
-      const result = reassignCustomer(customerId, emptySlot, request.requestedBy);
+      const result = reassignCustomer(customerId, requesterTeamId, emptySlot, request.requestedBy);
       if (!result.ok) errors.push(`${customer.name}: ${result.error}`);
     }
     if (errors.length > 0) {

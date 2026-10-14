@@ -173,9 +173,9 @@ export default function CustomerDetailPage() {
     );
   }
 
-  function handleTogglePool(slot: 1 | 2 | 3, pool: "ACTIVE" | "INACTIVE") {
+  function handleTogglePool(userId: string, pool: "ACTIVE" | "INACTIVE") {
     const next = pool === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    const result = togglePool(customer!.id, slot, next);
+    const result = togglePool(customer!.id, userId, next);
     if (!result.ok) alert(result.error ?? "Could not change pool status.");
   }
   const canSendWhatsApp = currentUser.role === "ADMIN" || currentUser.role === "MANAGER";
@@ -495,7 +495,7 @@ export default function CustomerDetailPage() {
                       {user.name}
                       {pool && (
                         canToggle ? (
-                          <button type="button" onClick={() => handleTogglePool(slot, pool)} style={{ ...badgeStyle, cursor: "pointer" }}>
+                          <button type="button" onClick={() => handleTogglePool(user.id, pool)} style={{ ...badgeStyle, cursor: "pointer" }}>
                             {pool === "ACTIVE" ? "Active" : "Potential"}
                           </button>
                         ) : (
@@ -562,6 +562,8 @@ export default function CustomerDetailPage() {
       {(currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && (
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {(() => {
+            // TEMPORARY (Task 3 replaces this block): the team whose seat the row edits
+            const seatTeamId = currentUser.role === "MANAGER" ? currentUser.teamId : customer.assignments[0]?.teamId ?? customer.createdByTeamId ?? null;
             const rows = [
               { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignments.find((s) => s.slot === 1)?.userId ?? null, clearable: true },
               { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignments.find((s) => s.slot === 2)?.userId ?? null, clearable: true },
@@ -605,6 +607,7 @@ export default function CustomerDetailPage() {
                     <button
                       className="btn btn-primary"
                       onClick={() => {
+                        if (!seatTeamId) return;
                         const isRemoval = value === "" && !!current;
                         const removedName = currentUserObj?.name ?? "this assignee";
                         if (isRemoval && !window.confirm(`Remove ${removedName} from Assigned ${slot}? This permanently deletes their activity log for this customer — it can't be undone. (A "Removed" entry stays in Change History.)`)) return;
@@ -614,7 +617,7 @@ export default function CustomerDetailPage() {
                           logAssignmentRemoval(customer.id, slot, removedName);
                           deleteAssigneeActivities(customer.id, current!);
                         }
-                        const result = reassignCustomer(customer.id, slot, value || null);
+                        const result = reassignCustomer(customer.id, seatTeamId, slot, value || null);
                         if (!result.ok) {
                           alert(result.error ?? "Could not reassign customer.");
                           return;
