@@ -7,7 +7,8 @@ import { parseAreaCsv } from "./parseAreaCsv";
 import { parseBusinessTagCsv } from "./parseBusinessTagCsv";
 import { computeSlotAges, isStalePastPull } from "./inactiveListings";
 import { computeBlastSweep, sampleForApproval, splitIntoBatches } from "./blasting";
-import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "./mappers";
+import { withSeats } from "./assignments";
+import { formatTimestamp, mapActivity, mapArea, mapCustomer, mapProfile, mapStage } from "./mappers";
 import {
   Activity,
   ActivityType,
@@ -23,7 +24,6 @@ import {
   BusinessTagIndustry,
   BusinessTagType,
   Customer,
-  CustomerAssignment,
   CustomerChangeLogEntry,
   CustomerDeleteRequest,
   CustomerDeleteRequestStatus,
@@ -425,7 +425,6 @@ interface Store {
   fieldRequirements: FieldRequirement[];
   stages: Stage[];
   customers: Customer[];
-  customerAssignments: CustomerAssignment[];
   activities: Activity[];
   changeLog: CustomerChangeLogEntry[];
   dealClosures: DealClosure[];
@@ -574,10 +573,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [targetTypes, setTargetTypes] = useState<TargetType[]>([]);
   const [fieldRequirements, setFieldRequirements] = useState<FieldRequirement[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [rawCustomers, setCustomers] = useState<Customer[]>([]);
+  // Customers as the rest of the app sees them: the raw rows plus a derived
+  // `assignments` seat list (see lib/assignments.ts). Recomputed whenever a
+  // customer or a user's team changes, so it can never go stale.
+  const customers = useMemo(() => withSeats(rawCustomers, users), [rawCustomers, users]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [changeLog, setChangeLog] = useState<CustomerChangeLogEntry[]>([]);
-  const [customerAssignments, setCustomerAssignments] = useState<CustomerAssignment[]>([]);
   const [dealClosures, setDealClosures] = useState<DealClosure[]>([]);
   const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
   const [assignmentEvents, setAssignmentEvents] = useState<AssignmentEvent[]>([]);
@@ -796,17 +798,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return mapped;
   }
 
-  // Read-only mirror of the customers' slot columns (see the
-  // customer_assignments migration). If the table doesn't exist yet the
-  // query just returns nothing and the app behaves exactly as before.
-  async function loadCustomerAssignments(): Promise<CustomerAssignment[]> {
-    const supabase = createClient();
-    const { data } = await supabase.from("customer_assignments").select("*");
-    const mapped = (data ?? []).map(mapCustomerAssignment);
-    setCustomerAssignments(mapped);
-    return mapped;
-  }
-
   async function loadDealClosures(): Promise<DealClosure[]> {
     const supabase = createClient();
     const { data } = await supabase.from("deal_closures").select("*").order("created_at", { ascending: false });
@@ -991,7 +982,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const loadedTasks = loadResults[18];
         const loadedActivities = await loadActivities(loadedUsers);
         await loadChangeLog();
-        await loadCustomerAssignments();
         await loadDealClosures();
         await loadSalesTargets();
         const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -1007,7 +997,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setCurrentUserId(profile.id);
           const { data: tokenRow } = await supabase.from("profiles").select("session_token").eq("id", profile.id).single();
           mySessionTokenRef.current = (tokenRow as any)?.session_token ?? null;
-          sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
+          sweepStalePool(withSeats(loadedCustomers, loadedUsers), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
           sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
         }
       }
@@ -1037,7 +1027,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "mandatory_field_settings", setState: (fn) => setFieldRequirements(fn), mapRow: mapFieldRequirement, keyOf: (x) => x.fieldKey },
       { table: "pipeline_stages", setState: (fn) => setStages(fn), mapRow: mapStage, keyOf: (x) => x.id },
       { table: "customers", setState: (fn) => setCustomers(fn), mapRow: mapCustomer, keyOf: (x) => x.id },
-      // customer_assignments: no live subscription yet — nothing reads it until phase 3b, which adds the entry (the table is in the publication by then); subscribing before the SQL runs can fail the whole channel.
       { table: "activities", setState: (fn) => setActivities(fn), mapRow: (row) => mapActivity(row, new Map(usersRef.current.map((u) => [u.id, u]))), keyOf: (x) => x.id },
       { table: "customer_change_log", setState: (fn) => setChangeLog(fn), mapRow: mapChangeLog, keyOf: (x) => x.id },
       { table: "deal_closures", setState: (fn) => setDealClosures(fn), mapRow: mapDealClosure, keyOf: (x) => x.id },
@@ -1132,7 +1121,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadedTasks = loadResults[18];
     const loadedActivities = await loadActivities(loadedUsers);
     await loadChangeLog();
-    await loadCustomerAssignments();
     await loadDealClosures();
     await loadSalesTargets();
     const loadedAssignmentEvents = await loadAssignmentEvents();
@@ -1153,7 +1141,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { error: tokenError } = await supabase.from("profiles").update({ session_token: sessionToken }).eq("id", profile.id);
     if (tokenError) console.error("Failed to set session_token:", tokenError);
     setCurrentUserId(profile.id);
-    sweepStalePool(loadedCustomers, loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
+    sweepStalePool(withSeats(loadedCustomers, loadedUsers), loadedActivities, loadedAssignmentEvents, loadedTasks, profile.id, profile.role === "ADMIN");
     sweepBlastRequests(loadedBlastRequests, loadedBlastItems, profile.role === "ADMIN");
     return { ok: true };
   }
@@ -1163,7 +1151,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.auth.signOut();
     setCurrentUserId(null);
     setCustomers([]);
-    setCustomerAssignments([]);
   }
 
   const visibleCustomers = useMemo(() => {
@@ -2669,7 +2656,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     fieldRequirements,
     stages,
     customers,
-    customerAssignments,
     activities,
     changeLog,
     dealClosures,
