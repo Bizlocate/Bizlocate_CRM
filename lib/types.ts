@@ -211,18 +211,6 @@ export interface Customer {
   name: string;
   email: string;
   phone: string;
-  stage1Id: string | null;
-  stage2Id: string | null;
-  stage3Id: string | null;
-  assignedToUserId: string | null;
-  assignedToUserId2: string | null;
-  assignedToUserId3: string | null;
-  pool1: PoolStatus | null;
-  pool2: PoolStatus | null;
-  pool3: PoolStatus | null;
-  pool1Since: string | null;
-  pool2Since: string | null;
-  pool3Since: string | null;
   sourceId: string | null;
   areaId: string | null;
   subAreaId: string | null;

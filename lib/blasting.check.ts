@@ -1,12 +1,12 @@
 // Self-check for blasting. Run with:
 //   node --experimental-strip-types lib/blasting.check.ts
 import assert from "node:assert";
-import { seatsFromSlots } from "./assignments.ts";
+import { seatsFromSlots, type SlotFields } from "./testSlots.ts";
 import { matchesBlastCriteria, hasOpenBlastItem } from "./blasting.ts";
 import type { BlastItem, BlastRequest, Customer } from "./types.ts";
 
-function customer(overrides: Partial<Customer> & { id: string; createdAt: string }): Customer {
-  const base: Customer = {
+function customer(overrides: Partial<Customer> & Partial<SlotFields> & { id: string; createdAt: string }): Customer {
+  const base: Customer & SlotFields = {
     name: "C", email: "", phone: "",
     stage1Id: null, stage2Id: null, stage3Id: null,
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,

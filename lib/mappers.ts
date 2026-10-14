@@ -22,18 +22,6 @@ export function mapCustomer(row: {
   email: string | null;
   phone: string | null;
   optional_phone: string | null;
-  assigned_to: string | null;
-  assigned_to_2: string | null;
-  assigned_to_3: string | null;
-  pool_1: PoolStatus | null;
-  pool_2: PoolStatus | null;
-  pool_3: PoolStatus | null;
-  pool_1_since: string | null;
-  pool_2_since: string | null;
-  pool_3_since: string | null;
-  stage_1: string | null;
-  stage_2: string | null;
-  stage_3: string | null;
   source_id: string | null;
   area_id: string | null;
   sub_area_id: string | null;
@@ -61,18 +49,6 @@ export function mapCustomer(row: {
     name: row.name,
     email: row.email ?? "",
     phone: row.phone ?? "",
-    assignedToUserId: row.assigned_to,
-    assignedToUserId2: row.assigned_to_2,
-    assignedToUserId3: row.assigned_to_3,
-    pool1: row.pool_1,
-    pool2: row.pool_2,
-    pool3: row.pool_3,
-    pool1Since: row.pool_1_since,
-    pool2Since: row.pool_2_since,
-    pool3Since: row.pool_3_since,
-    stage1Id: row.stage_1,
-    stage2Id: row.stage_2,
-    stage3Id: row.stage_3,
     sourceId: row.source_id,
     areaId: row.area_id,
     subAreaId: row.sub_area_id,

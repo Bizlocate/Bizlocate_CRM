@@ -3169,3 +3169,27 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- alter table teams add column if not exists auto_assign_enabled boolean not null default true;
 -- alter table teams add column if not exists auto_assign_resumed_at timestamptz not null default '1970-01-01T00:00:00Z';
+
+-- ============================================================
+-- Migration: Phase 4 — drop the legacy flat slot columns and the pieces that
+-- only existed for them. Run AFTER the Phase 4 app version is deployed and
+-- the Phase 3c cleanup has run. NOT reversible without a backup. No CASCADE
+-- on purpose: if anything still depends on an object, the whole transaction
+-- fails and nothing changes.
+-- ============================================================
+--
+-- begin;
+-- alter table customers
+--   drop column assigned_to, drop column assigned_to_2, drop column assigned_to_3,
+--   drop column pool_1, drop column pool_2, drop column pool_3,
+--   drop column pool_1_since, drop column pool_2_since, drop column pool_3_since,
+--   drop column stage_1, drop column stage_2, drop column stage_3;
+-- drop table area_teams;
+-- alter table areas
+--   drop column if exists last_auto_assigned_user_id,
+--   drop column if exists auto_assign_enabled,
+--   drop column if exists auto_assign_resumed_at;
+-- drop function is_customer_assignee(uuid, uuid, uuid);
+-- drop function protect_customer_assignment();
+-- drop function protect_pool_columns();
+-- commit;

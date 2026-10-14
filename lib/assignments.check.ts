@@ -1,10 +1,11 @@
 // Self-check for assignments. Run with:
 //   node --experimental-strip-types lib/assignments.check.ts
 import assert from "node:assert";
-import { attachSeats, fetchAllSeatRows, seatsFromSlots } from "./assignments.ts";
+import { attachSeats, fetchAllSeatRows } from "./assignments.ts";
+import { seatsFromSlots, type SlotFields } from "./testSlots.ts";
 import type { Customer, CustomerAssignment } from "./types.ts";
 
-function slots(overrides: Partial<Customer> = {}) {
+function slots(overrides: Partial<SlotFields> = {}) {
   return {
     id: "c1",
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,
@@ -18,10 +19,6 @@ function slots(overrides: Partial<Customer> = {}) {
 function fullCustomer(id: string): Customer {
   return {
     id, name: "C", email: "", phone: "", assignments: [],
-    stage1Id: null, stage2Id: null, stage3Id: null,
-    assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,
-    pool1: null, pool2: null, pool3: null,
-    pool1Since: null, pool2Since: null, pool3Since: null,
     sourceId: null, areaId: null, subAreaId: null, propertyTypeId: null, purposeId: null,
     businessIndustryId: null, businessCategoryId: null, businessTypeId: null,
     raceId: null, languageId: null, businessName: "",

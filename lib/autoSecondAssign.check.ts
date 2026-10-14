@@ -1,15 +1,15 @@
 // Self-check for autoSecondAssign. Run with:
 //   node --experimental-strip-types lib/autoSecondAssign.check.ts
 import assert from "node:assert";
-import { seatsFromSlots } from "./assignments.ts";
+import { seatsFromSlots, type SlotFields } from "./testSlots.ts";
 import { FOURTEEN_DAYS_MS, SEVEN_DAYS_MS, computeAutoSecondAssignPlan, isSecondAssignDue, secondAssignDueAt } from "./autoSecondAssign.ts";
 import type { Activity, Customer, Stage, User } from "./types.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-09-21T06:00:00Z").getTime();
 
-function customer(overrides: Partial<Customer> & { id: string }): Customer {
-  const base: Customer = {
+function customer(overrides: Partial<Customer> & Partial<SlotFields> & { id: string }): Customer & SlotFields {
+  const base: Customer & SlotFields = {
     name: "C", email: "", phone: "",
     stage1Id: null, stage2Id: null, stage3Id: null,
     assignedToUserId: null, assignedToUserId2: null, assignedToUserId3: null,

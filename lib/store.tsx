@@ -1768,7 +1768,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Seats carry the live stage; the frozen flat `stage_N` columns are still counted
     // because they keep a foreign key to pipeline_stages until Phase 4 drops them
     // (a stale value there would make the DB refuse the delete).
-    const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id) || c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
+    const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id)).length;
     if (count > 0) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
