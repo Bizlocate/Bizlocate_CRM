@@ -281,11 +281,7 @@ In `lib/store.tsx`:
 ```
 
 5. In **both** load sequences, directly after `await loadChangeLog();` add `await loadCustomerAssignments();` (the init `useEffect` and `login`).
-6. In the realtime `entries` array, after the `customers` entry add:
-
-```ts
-      { table: "customer_assignments", setState: (fn) => setCustomerAssignments(fn), mapRow: mapCustomerAssignment, keyOf: (x) => x.id },
-```
+6. **Do not** add a realtime subscription for this table in this phase. All realtime entries share one channel; if `customer_assignments` is not yet in the `supabase_realtime` publication (e.g. app deployed before the SQL ran) Supabase can fail the whole channel and live sync for every table stops. Nothing reads the data yet, so Phase 3b adds the entry once the table is guaranteed to exist. (The SQL in Task 1 still adds the table to the publication.)
 
 7. In `logout`, after `setCustomers([]);` add `setCustomerAssignments([]);`.
 8. In the `value: Store = { ... }` object, after `customers,` add `customerAssignments,`.
