@@ -120,6 +120,7 @@ export default function CustomerDetailPage() {
   const [followUp, setFollowUp] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDue, setTaskDue] = useState("");
+  const [adminSeatTeamId, setAdminSeatTeamId] = useState("");
   const [reassignTo1, setReassignTo1] = useState<string | null>(null);
   const [reassignTo2, setReassignTo2] = useState<string | null>(null);
   const [reassignTo3, setReassignTo3] = useState<string | null>(null);
@@ -559,36 +560,43 @@ export default function CustomerDetailPage() {
         {currentUser.role === "SALESPERSON" && createdByLabel}
       </div>
 
-      {(currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && (
-        <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
-          {(() => {
-            // TEMPORARY (Task 3 replaces this block): the team whose seat the row edits
-            const seatTeamId = currentUser.role === "MANAGER" ? currentUser.teamId : customer.assignments[0]?.teamId ?? customer.createdByTeamId ?? null;
-            const rows = [
-              { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1, current: customer.assignments.find((s) => s.slot === 1)?.userId ?? null, clearable: true },
-              { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2, current: customer.assignments.find((s) => s.slot === 2)?.userId ?? null, clearable: true },
-              { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3, current: customer.assignments.find((s) => s.slot === 3)?.userId ?? null, clearable: true },
-            ];
-            return rows.map(({ slot, value, setValue, current, clearable }) => {
-              const otherCurrent = rows.filter((r) => r.slot !== slot).map((r) => r.current);
-              // scoped to a team — ADMIN excluded (doesn't do sales). A MANAGER always picks
-              // from their own team, whatever the customer's area; an ADMIN picks from the
-              // team(s) that own the customer's area (none linked? set it on /admin/area first).
-              const areaTeamIds = currentUser.role === "MANAGER"
-                ? (currentUser.teamId ? [currentUser.teamId] : [])
-                : areas.find((a) => a.id === customer.areaId)?.teamIds ?? [];
-              const scopedOptions = users.filter((u) =>
-                u.active
-                && !otherCurrent.includes(u.id)
-                && u.role !== "ADMIN"
-                && !!u.teamId
-                && areaTeamIds.includes(u.teamId)
+      {(currentUser.role === "ADMIN" || currentUser.role === "MANAGER") && (() => {
+        // Which team's three seats the rows show: a manager always their own;
+        // an admin picks (default: the team that created the customer, else
+        // the first team holding a seat, else the first team).
+        const seatTeamId =
+          currentUser.role === "MANAGER"
+            ? currentUser.teamId
+            : adminSeatTeamId || customer.createdByTeamId || customer.assignments[0]?.teamId || teams[0]?.id || null;
+        const rowDefs = [
+          { slot: 1 as const, value: reassignTo1, setValue: setReassignTo1 },
+          { slot: 2 as const, value: reassignTo2, setValue: setReassignTo2 },
+          { slot: 3 as const, value: reassignTo3, setValue: setReassignTo3 },
+        ].map((r) => ({ ...r, current: customer.assignments.find((s) => s.teamId === seatTeamId && s.slot === r.slot)?.userId ?? null }));
+        // a person can hold only one seat on a customer, whichever team's
+        const heldByAnyone = customer.assignments.map((s) => s.userId);
+        return (
+          <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
+            {currentUser.role === "ADMIN" && (
+              <select
+                className="field-input"
+                style={{ width: "auto" }}
+                value={seatTeamId ?? ""}
+                onChange={(e) => {
+                  setAdminSeatTeamId(e.target.value);
+                  setReassignTo1(null);
+                  setReassignTo2(null);
+                  setReassignTo3(null);
+                }}
+              >
+                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+            {seatTeamId && rowDefs.map(({ slot, value, setValue, current }) => {
+              const options = users.filter(
+                (u) => u.active && u.role !== "ADMIN" && u.teamId === seatTeamId && (u.id === current || !heldByAnyone.includes(u.id))
               );
-              // keep the current occupant selectable/visible even if out of a manager's scope
               const currentUserObj = current ? users.find((u) => u.id === current) : undefined;
-              const options = currentUserObj && !scopedOptions.some((u) => u.id === currentUserObj.id)
-                ? [currentUserObj, ...scopedOptions]
-                : scopedOptions;
               return (
                 <div key={slot} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "#9aa0ab", fontWeight: 500 }}>Assigned {slot}:</span>
@@ -598,7 +606,7 @@ export default function CustomerDetailPage() {
                     value={value ?? current ?? ""}
                     onChange={(e) => setValue(e.target.value)}
                   >
-                    {clearable && <option value="">—</option>}
+                    <option value="">—</option>
                     {options.map((u) => (
                       <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
@@ -607,12 +615,10 @@ export default function CustomerDetailPage() {
                     <button
                       className="btn btn-primary"
                       onClick={() => {
-                        if (!seatTeamId) return;
                         const isRemoval = value === "" && !!current;
                         const removedName = currentUserObj?.name ?? "this assignee";
                         if (isRemoval && !window.confirm(`Remove ${removedName} from Assigned ${slot}? This permanently deletes their activity log for this customer — it can't be undone. (A "Removed" entry stays in Change History.)`)) return;
-                        // log + delete before clearing: both RLS checks need this slot
-                        // (or another) to still tie the caller to the row
+                        // log + delete before clearing: the RLS checks need the seat to still exist
                         if (isRemoval) {
                           logAssignmentRemoval(customer.id, slot, removedName);
                           deleteAssigneeActivities(customer.id, current!);
@@ -630,11 +636,11 @@ export default function CustomerDetailPage() {
                   )}
                 </div>
               );
-            });
-          })()}
-          <div style={{ marginLeft: "auto", alignSelf: "center" }}>{createdByLabel}</div>
-        </div>
-      )}
+            })}
+            <div style={{ marginLeft: "auto", alignSelf: "center" }}>{createdByLabel}</div>
+          </div>
+        );
+      })()}
 
       <div className="card" style={{ marginTop: 20, padding: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Business Profile</div>
