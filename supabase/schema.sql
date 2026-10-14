@@ -2682,3 +2682,141 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- drop policy if exists "teams_select" on teams;
 -- create policy "teams_select" on teams for select using (auth.uid() is not null);
+
+-- ============================================================
+-- Migration: customer_assignments (Phase 3a) — one row per assigned seat
+-- (customer, team, seat 1-3, user, pool, stage), mirrored automatically from
+-- the old customers.assigned_to*/pool_*/stage_* columns by triggers. The app
+-- only reads it for now; the old columns stay authoritative until the
+-- Phase 3c cutover. Run once, in this order, against an already-provisioned
+-- database. Safe to re-run.
+--
+-- STEP 0 (read-only, run first): list assignees that have no team — they get
+-- no row (a team is required), so they will be missing from the mirror:
+--   select p.id, p.name, count(*) as seats
+--   from profiles p
+--   join customers c on p.id in (c.assigned_to, c.assigned_to_2, c.assigned_to_3)
+--   where p.team_id is null
+--   group by p.id, p.name;
+-- Expected: no rows (or only users you are fine losing from the mirror).
+-- ============================================================
+--
+-- create table if not exists customer_assignments (
+--   id uuid primary key default gen_random_uuid(),
+--   customer_id uuid not null references customers (id) on delete cascade,
+--   team_id uuid not null references teams (id) on delete cascade,
+--   slot int not null check (slot in (1, 2, 3)),
+--   user_id uuid not null references profiles (id) on delete cascade,
+--   pool text check (pool in ('ACTIVE', 'INACTIVE')),
+--   pool_since timestamptz,
+--   stage_id uuid references pipeline_stages (id) on delete set null,
+--   unique (customer_id, team_id, slot)
+-- );
+-- create index if not exists customer_assignments_customer_idx on customer_assignments (customer_id);
+-- create index if not exists customer_assignments_user_idx on customer_assignments (user_id);
+--
+-- alter table customer_assignments enable row level security;
+-- -- visible wherever the customer itself is visible (customers' own RLS
+-- -- applies inside the subquery); no client write policies on purpose --
+-- -- only the security-definer triggers below write this table.
+-- drop policy if exists "customer_assignments_select" on customer_assignments;
+-- create policy "customer_assignments_select" on customer_assignments for select using (
+--   is_admin()
+--   or exists (select 1 from customers c where c.id = customer_assignments.customer_id)
+-- );
+--
+-- -- Rebuilds one customer's seat rows from its old slot columns: drops rows
+-- -- that no longer match, upserts the rest (so unchanged seats keep their id
+-- -- and don't churn Realtime).
+-- create or replace function resync_customer_assignments(cid uuid) returns void as $$
+-- declare
+--   c customers%rowtype;
+-- begin
+--   select * into c from customers where id = cid;
+--   if not found then
+--     return;
+--   end if;
+--
+--   delete from customer_assignments ca
+--   where ca.customer_id = cid
+--     and not exists (
+--       select 1
+--       from (values (1, c.assigned_to), (2, c.assigned_to_2), (3, c.assigned_to_3)) as s(slot, uid)
+--       join profiles p on p.id = s.uid
+--       where s.slot = ca.slot and s.uid = ca.user_id and p.team_id = ca.team_id
+--     );
+--
+--   insert into customer_assignments (customer_id, team_id, slot, user_id, pool, pool_since, stage_id)
+--   select cid, p.team_id, s.slot, s.uid, s.pool, s.since, s.stage
+--   from (values
+--     (1, c.assigned_to,   c.pool_1, c.pool_1_since, c.stage_1),
+--     (2, c.assigned_to_2, c.pool_2, c.pool_2_since, c.stage_2),
+--     (3, c.assigned_to_3, c.pool_3, c.pool_3_since, c.stage_3)
+--   ) as s(slot, uid, pool, since, stage)
+--   join profiles p on p.id = s.uid and p.team_id is not null
+--   on conflict (customer_id, team_id, slot) do update
+--     set user_id = excluded.user_id,
+--         pool = excluded.pool,
+--         pool_since = excluded.pool_since,
+--         stage_id = excluded.stage_id;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- create or replace function trg_customers_resync_assignments() returns trigger as $$
+-- begin
+--   perform resync_customer_assignments(new.id);
+--   return null;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists customers_resync_assignments on customers;
+-- create trigger customers_resync_assignments
+--   after insert or update of
+--     assigned_to, assigned_to_2, assigned_to_3,
+--     pool_1, pool_2, pool_3,
+--     pool_1_since, pool_2_since, pool_3_since,
+--     stage_1, stage_2, stage_3
+--   on customers
+--   for each row execute function trg_customers_resync_assignments();
+--
+-- -- a user moving to another team takes their seats with them
+-- create or replace function trg_profiles_resync_assignments() returns trigger as $$
+-- declare
+--   cid uuid;
+-- begin
+--   for cid in
+--     select id from customers where new.id in (assigned_to, assigned_to_2, assigned_to_3)
+--   loop
+--     perform resync_customer_assignments(cid);
+--   end loop;
+--   return null;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+--
+-- drop trigger if exists profiles_resync_assignments on profiles;
+-- create trigger profiles_resync_assignments
+--   after update of team_id on profiles
+--   for each row
+--   when (old.team_id is distinct from new.team_id)
+--   execute function trg_profiles_resync_assignments();
+--
+-- -- backfill every existing customer
+-- do $$
+-- declare
+--   cid uuid;
+-- begin
+--   for cid in select id from customers loop
+--     perform resync_customer_assignments(cid);
+--   end loop;
+-- end $$;
+--
+-- -- Realtime (run once; errors with "already member" if repeated — ignore)
+-- alter publication supabase_realtime add table customer_assignments;
+--
+-- -- Rollback, if ever needed:
+-- --   drop trigger if exists customers_resync_assignments on customers;
+-- --   drop trigger if exists profiles_resync_assignments on profiles;
+-- --   drop function if exists trg_customers_resync_assignments();
+-- --   drop function if exists trg_profiles_resync_assignments();
+-- --   drop function if exists resync_customer_assignments(uuid);
+-- --   drop table if exists customer_assignments;
