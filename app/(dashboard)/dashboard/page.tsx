@@ -313,10 +313,27 @@ export default function DashboardPage() {
   const sourceYearMonthTotals = Array.from({ length: 12 }, (_, i) => sourceYearRows.reduce((sum, r) => sum + r.monthlyCounts[i], 0));
   const sourceYearGrandTotal = sourceYearMonthTotals.reduce((sum, n) => sum + n, 0);
   const assignRows = assignmentCounts(opsMembers, ops.assignmentEvents, opsMonth);
-  const removedRows = removalCounts(opsMembers, ops.removalRequests, opsMonth);
-  const reasonRows = removalReasonBreakdown(ops.removalRequests, removalReasons, opsMonth);
-  const removalSourceRows = removalSourceBreakdown(ops.removalRequests, ops.customers, leadSources, opsMonth);
-  const removalCohortRows = removalCohortBreakdown(ops.removalRequests, ops.customers, opsMonth);
+  // Removals belong to the REQUESTER's team, not to customers a team holds
+  // now: an approved removal deletes the seat, so a seat-based scope would
+  // drop exactly the removals it should count. Departed/admin requesters
+  // still show if they have removals.
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const opsRemovals = removalRequests.filter((r) => {
+    const requester = userById.get(r.requestedBy);
+    return (
+      scopedIds.has(r.requestedBy) &&
+      (!opsAreaId || customerAreaMap.get(r.customerId) === opsAreaId) &&
+      (!opsTeamId || requester?.teamId === opsTeamId)
+    );
+  });
+  const removalRequesterIds = new Set(opsRemovals.map((r) => r.requestedBy));
+  const removalMembers = users.filter(
+    (u) => scopedIds.has(u.id) && (!opsTeamId || u.teamId === opsTeamId) && ((u.active && u.role !== "ADMIN") || removalRequesterIds.has(u.id))
+  );
+  const removedRows = removalCounts(removalMembers, opsRemovals, opsMonth);
+  const reasonRows = removalReasonBreakdown(opsRemovals, removalReasons, opsMonth);
+  const removalSourceRows = removalSourceBreakdown(opsRemovals, visibleCustomers, leadSources, opsMonth);
+  const removalCohortRows = removalCohortBreakdown(opsRemovals, visibleCustomers, opsMonth);
   const maxSourceCount = Math.max(1, ...sourceRows.map((r) => r.count));
 
   // Sales Performance Tracker — visible to everyone, not just canManage
