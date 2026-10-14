@@ -8,8 +8,8 @@ export function mapProfile(row: { id: string; name: string; email: string; phone
   return { id: row.id, name: row.name, email: row.email, phone: row.phone, ic: row.ic, role: row.role, teamId: row.team_id, active: row.status === "ACTIVE", activePoolLimit: row.active_pool_limit, inactivePoolLimit: row.inactive_pool_limit, autoAssignEnabled: row.auto_assign_enabled ?? true };
 }
 
-export function mapArea(row: { id: string; name: string; auto_assign_enabled: boolean; auto_assign_resumed_at: string }): Area {
-  return { id: row.id, name: row.name, autoAssignEnabled: row.auto_assign_enabled ?? true, autoAssignResumedAt: row.auto_assign_resumed_at };
+export function mapArea(row: { id: string; name: string }): Area {
+  return { id: row.id, name: row.name };
 }
 
 export function mapStage(row: { id: string; name: string; order: number; is_default: boolean; requires_amount: boolean; exclude_from_auto_assign: boolean }): Stage {

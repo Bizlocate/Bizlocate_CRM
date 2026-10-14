@@ -188,8 +188,8 @@ assert.deepEqual([...scopedUserIds(allUsers, sales)], ["u5"]);
 // --- leadsBySource: one row per (source, area); null source -> "No source", null area -> "No area" ---
 const sources = [leadSource({ id: "s1", name: "Facebook" }), leadSource({ id: "s2", name: "Referral" })];
 const areaList: Area[] = [
-  { id: "a1", name: "SETAPAK", autoAssignEnabled: true, autoAssignResumedAt: "2026-01-01T00:00:00Z" },
-  { id: "a2", name: "TTDI", autoAssignEnabled: true, autoAssignResumedAt: "2026-01-01T00:00:00Z" },
+  { id: "a1", name: "SETAPAK" },
+  { id: "a2", name: "TTDI" },
 ];
 const sourceCustomers = [
   customer({ id: "c1", sourceId: "s1", areaId: "a1", createdAt: "2026-08-05T00:00:00Z" }),

@@ -20,13 +20,13 @@ export interface Team {
   id: string;
   name: string;
   managerId: string | null;
+  autoAssignEnabled: boolean;
+  autoAssignResumedAt: string;
 }
 
 export interface Area {
   id: string;
   name: string;
-  autoAssignEnabled: boolean;
-  autoAssignResumedAt: string;
 }
 
 export interface SubArea {

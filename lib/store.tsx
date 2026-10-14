@@ -54,8 +54,8 @@ import {
   User,
 } from "./types";
 
-function mapTeam(row: { id: string; name: string; manager_id: string | null }): Team {
-  return { id: row.id, name: row.name, managerId: row.manager_id };
+function mapTeam(row: { id: string; name: string; manager_id: string | null; auto_assign_enabled?: boolean; auto_assign_resumed_at?: string }): Team {
+  return { id: row.id, name: row.name, managerId: row.manager_id, autoAssignEnabled: row.auto_assign_enabled ?? true, autoAssignResumedAt: row.auto_assign_resumed_at ?? "1970-01-01T00:00:00Z" };
 }
 
 function mapSubArea(row: { id: string; area_id: string; name: string }): SubArea {

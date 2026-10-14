@@ -1,4 +1,4 @@
-import type { Activity, Area, Customer, Stage, User } from "./types";
+import type { Activity, Customer, Stage, User } from "./types";
 
 export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -66,9 +66,15 @@ export function isSecondAssignDue(
   return dueAt <= now;
 }
 
+export interface TeamSwitch {
+  id: string;
+  lastAutoAssignedUserId: string | null;
+  autoAssignEnabled: boolean;
+  autoAssignResumedAt: string;
+}
+
 export interface SecondAssignAction {
   customerId: string;
-  areaId: string;
   teamId: string;
   winnerId: string;
   stageId: string | null;
@@ -81,7 +87,9 @@ export interface SecondAssignAction {
  * write anything.
  *
  * The second person always comes from the team that CREATED the customer
- * (`createdByTeamId`): that team's seat 1 decides when it is due, only that
+ * (`createdByTeamId`). That team's On/Off switch and resume time
+ * (`teams[].autoAssignEnabled` / `autoAssignResumedAt`) gate the customer;
+ * areas are not used. That team's seat 1 decides when it is due, only that
  * team's active auto-assign salespeople can win, and the round-robin pointer
  * is per team (`teams[].lastAutoAssignedUserId`). Nobody who already holds
  * any seat on the customer can win (a person holds one seat per customer).
@@ -91,33 +99,32 @@ export interface SecondAssignAction {
  */
 export function computeAutoSecondAssignPlan(
   customers: Customer[],
-  areas: Area[],
   users: User[],
   stages: Stage[],
   activities: Activity[],
   now: number,
-  teams: { id: string; lastAutoAssignedUserId: string | null }[] = []
+  teams: TeamSwitch[]
 ): SecondAssignAction[] {
   const defaultStage = stages.find((s) => s.isDefault) ?? stages[0];
   const actions: SecondAssignAction[] = [];
   const pointerByTeam = new Map<string, string | null>();
   const extraAssignedCount = new Map<string, number>();
   for (const c of customers) {
-    if (!c.areaId || !c.createdBy || !c.createdByTeamId) continue; // legacy/imported or admin-created: never eligible
+    if (!c.createdBy || !c.createdByTeamId) continue; // legacy/imported or admin-created: never eligible
     const teamId = c.createdByTeamId;
-    const area = areas.find((a) => a.id === c.areaId);
-    if (!area || !area.autoAssignEnabled) continue;
+    const team = teams.find((t) => t.id === teamId);
+    if (!team || !team.autoAssignEnabled) continue;
     const teamSeats = c.assignments.filter((s) => s.teamId === teamId);
     const slot1 = teamSeats.find((s) => s.slot === 1);
     if (!slot1 || teamSeats.some((s) => s.slot === 2)) continue;
     const slot1Stage = slot1.stageId ? stages.find((s) => s.id === slot1.stageId) : undefined;
-    if (!isSecondAssignDue({ id: c.id, createdAt: c.createdAt, assignments: teamSeats }, activities, slot1Stage, area.autoAssignResumedAt, now)) continue;
+    if (!isSecondAssignDue({ id: c.id, createdAt: c.createdAt, assignments: teamSeats }, activities, slot1Stage, team.autoAssignResumedAt, now)) continue;
     const excluded = c.assignments.map((s) => s.userId);
     const candidates = users
       .filter((u) => u.active && u.autoAssignEnabled && u.role === "SALESPERSON" && u.teamId === teamId && !excluded.includes(u.id))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     if (candidates.length === 0) continue;
-    const currentPointer = pointerByTeam.has(teamId) ? pointerByTeam.get(teamId)! : teams.find((t) => t.id === teamId)?.lastAutoAssignedUserId ?? null;
+    const currentPointer = pointerByTeam.has(teamId) ? pointerByTeam.get(teamId)! : team.lastAutoAssignedUserId;
     const lastIndex = candidates.findIndex((u) => u.id === currentPointer);
     const startIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % candidates.length;
     let winner: User | undefined;
@@ -137,7 +144,7 @@ export function computeAutoSecondAssignPlan(
     const winnerId = winner.id;
     pointerByTeam.set(teamId, winnerId);
     extraAssignedCount.set(winnerId, (extraAssignedCount.get(winnerId) ?? 0) + 1);
-    actions.push({ customerId: c.id, areaId: area.id, teamId, winnerId, stageId: defaultStage?.id ?? null });
+    actions.push({ customerId: c.id, teamId, winnerId, stageId: defaultStage?.id ?? null });
   }
   return actions;
 }

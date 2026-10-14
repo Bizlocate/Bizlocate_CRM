@@ -1,6 +1,6 @@
 import { createAdminClient } from "../../lib/supabase/admin.ts";
-import { mapActivity, mapArea, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "../../lib/mappers.ts";
-import { computeAutoSecondAssignPlan } from "../../lib/autoSecondAssign.ts";
+import { mapActivity, mapCustomer, mapCustomerAssignment, mapProfile, mapStage } from "../../lib/mappers.ts";
+import { computeAutoSecondAssignPlan, type TeamSwitch } from "../../lib/autoSecondAssign.ts";
 import { attachSeats, fetchAllSeatRows } from "../../lib/assignments.ts";
 
 export const config = { schedule: "@daily" };
@@ -10,22 +10,19 @@ export default async () => {
 
   const [
     { data: profileRows, error: profileError },
-    { data: areaRows, error: areaError },
     { data: teamRows, error: teamError },
     { data: stageRows, error: stageError },
     { data: customerRows, error: customerError },
     { data: activityRows, error: activityError },
   ] = await Promise.all([
     supabase.from("profiles").select("*"),
-    supabase.from("areas").select("*"),
-    supabase.from("teams").select("id, last_auto_assigned_user_id"),
+    supabase.from("teams").select("id, last_auto_assigned_user_id, auto_assign_enabled, auto_assign_resumed_at"),
     supabase.from("pipeline_stages").select("*"),
     supabase.from("customers").select("*").order("name"),
     supabase.from("activities").select("*").order("created_at", { ascending: false }),
   ]);
 
   if (profileError) throw profileError;
-  if (areaError) throw areaError;
   if (teamError) throw teamError;
   if (stageError) throw stageError;
   if (customerError) throw customerError;
@@ -35,9 +32,12 @@ export default async () => {
 
   const users = (profileRows ?? []).map(mapProfile);
 
-  const areas = (areaRows ?? []).map(mapArea);
-
-  const teams = (teamRows ?? []).map((t) => ({ id: t.id as string, lastAutoAssignedUserId: (t.last_auto_assigned_user_id ?? null) as string | null }));
+  const teams: TeamSwitch[] = (teamRows ?? []).map((t) => ({
+    id: t.id as string,
+    lastAutoAssignedUserId: (t.last_auto_assigned_user_id ?? null) as string | null,
+    autoAssignEnabled: (t.auto_assign_enabled ?? true) as boolean,
+    autoAssignResumedAt: (t.auto_assign_resumed_at ?? "1970-01-01T00:00:00Z") as string,
+  }));
 
   const stages = (stageRows ?? []).map(mapStage);
   const customers = attachSeats((customerRows ?? []).map(mapCustomer), seatRows.map((r) => mapCustomerAssignment(r as Parameters<typeof mapCustomerAssignment>[0])));
@@ -45,7 +45,7 @@ export default async () => {
   const usersById = new Map(users.map((u) => [u.id, u]));
   const activities = (activityRows ?? []).map((row) => mapActivity(row, usersById));
 
-  const actions = computeAutoSecondAssignPlan(customers, areas, users, stages, activities, Date.now(), teams);
+  const actions = computeAutoSecondAssignPlan(customers, users, stages, activities, Date.now(), teams);
 
   for (const action of actions) {
     const { error: seatInsertError } = await supabase.from("customer_assignments").insert({
