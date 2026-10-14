@@ -1037,7 +1037,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { table: "mandatory_field_settings", setState: (fn) => setFieldRequirements(fn), mapRow: mapFieldRequirement, keyOf: (x) => x.fieldKey },
       { table: "pipeline_stages", setState: (fn) => setStages(fn), mapRow: mapStage, keyOf: (x) => x.id },
       { table: "customers", setState: (fn) => setCustomers(fn), mapRow: mapCustomer, keyOf: (x) => x.id },
-      { table: "customer_assignments", setState: (fn) => setCustomerAssignments(fn), mapRow: mapCustomerAssignment, keyOf: (x) => x.id },
+      // customer_assignments: no live subscription yet — nothing reads it until phase 3b, which adds the entry (the table is in the publication by then); subscribing before the SQL runs can fail the whole channel.
       { table: "activities", setState: (fn) => setActivities(fn), mapRow: (row) => mapActivity(row, new Map(usersRef.current.map((u) => [u.id, u]))), keyOf: (x) => x.id },
       { table: "customer_change_log", setState: (fn) => setChangeLog(fn), mapRow: mapChangeLog, keyOf: (x) => x.id },
       { table: "deal_closures", setState: (fn) => setDealClosures(fn), mapRow: mapDealClosure, keyOf: (x) => x.id },
