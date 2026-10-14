@@ -2351,9 +2351,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!currentUser) return { ok: false, error: "Not signed in." };
     if (!note.trim()) return { ok: false, error: "A note is required." };
     const alreadyPending = removalRequests.some(
-      (r) => r.customerId === customerId && r.slot === slot && r.status === "PENDING"
+      (r) => r.customerId === customerId && r.requestedBy === currentUser.id && r.status === "PENDING"
     );
-    if (alreadyPending) return { ok: false, error: "A removal request for this slot is already pending." };
+    if (alreadyPending) return { ok: false, error: "A removal request from you for this customer is already pending." };
     const supabase = createClient();
     supabase
       .from("removal_requests")
