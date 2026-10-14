@@ -114,7 +114,7 @@ function mapRemovalReason(row: { id: string; name: string }): RemovalReason {
 }
 
 function assigneeSlots(c: Customer): string[] {
-  return [c.assignedToUserId, c.assignedToUserId2, c.assignedToUserId3].filter((id): id is string => !!id);
+  return c.assignments.map((s) => s.userId);
 }
 
 export interface CustomerProfileInput {
@@ -1840,7 +1840,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function deleteStage(id: string) {
-    const count = customers.filter((c) => c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
+    const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id)).length;
     if (count > 0) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
@@ -1856,11 +1856,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!user || limit === null || limit === undefined) return undefined;
     const count = customers.filter((c) => {
       if (c.id === excludeCustomerId) return false;
-      return (
-        (c.assignedToUserId === userId && c.pool1 === pool) ||
-        (c.assignedToUserId2 === userId && c.pool2 === pool) ||
-        (c.assignedToUserId3 === userId && c.pool3 === pool)
-      );
+      return c.assignments.some((s) => s.userId === userId && s.pool === pool);
     }).length;
     if (count >= limit) {
       const poolLabel = pool === "ACTIVE" ? "active" : "potential";
