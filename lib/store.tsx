@@ -1834,10 +1834,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   function deleteStage(id: string) {
-    // Counts the flat stage columns, not seats: `stage_N` has a foreign key to
-    // pipeline_stages, and a slot whose assignee was deleted keeps its stage
-    // (assigned_to is set null, stage_N is not), so the DB would refuse the delete.
-    const count = customers.filter((c) => c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
+    // Seats carry the live stage; the frozen flat `stage_N` columns are still counted
+    // because they keep a foreign key to pipeline_stages until Phase 4 drops them
+    // (a stale value there would make the DB refuse the delete).
+    const count = customers.filter((c) => c.assignments.some((s) => s.stageId === id) || c.stage1Id === id || c.stage2Id === id || c.stage3Id === id).length;
     if (count > 0) {
       return { ok: false, error: `${count} customer(s) are on this stage. Move them first.` };
     }
@@ -1960,10 +1960,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) seatWriteFailed(error.message);
         });
+      logAssignmentEvent(customerId, userId, slot);
     } else {
-      insertSeats([{ customerId, teamId, slot, userId, stageId }]);
+      insertSeats([{ customerId, teamId, slot, userId, stageId }]).then((ok) => {
+        if (ok) logAssignmentEvent(customerId, userId, slot);
+      });
     }
-    logAssignmentEvent(customerId, userId, slot);
     return { ok: true };
   }
 
@@ -2300,7 +2302,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   ) {
     if (!currentUser) return;
     const seat = customers.find((c) => c.id === customerId)?.assignments.find((s) => s.userId === currentUser.id);
-    if (!seat) return;
+    if (!seat) {
+      alert("You no longer hold a seat on this customer.");
+      return;
+    }
     const stageChanged = seat.stageId !== stageId;
     setCustomerAssignments((prev) => prev.map((s) => (s.id === seat.id ? { ...s, stageId } : s)));
     const supabase = createClient();
