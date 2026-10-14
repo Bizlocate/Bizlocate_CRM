@@ -6,7 +6,7 @@ import { Role, User } from "@/lib/types";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminUsersPage() {
-  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserPoolLimit,deleteUser, resetUserPassword } = useStore();
+  const { users, teams, currentUser, addUser, updateUser, updateUserRole, updateUserPoolLimit, deleteUser, resetUserPassword } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
