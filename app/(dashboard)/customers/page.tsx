@@ -61,6 +61,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const {
+    currentUser,
     customers,
     users,
     addCustomer,
@@ -120,10 +121,13 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   }
 
   // each assignee dropdown excludes whoever is already picked in the other two slots,
-  // and is scoped to the team(s) that own the selected area (ADMIN excluded — doesn't do sales).
-  // No team on the area yet? No candidates — set it on /admin/area first.
+  // and is scoped to a team (ADMIN excluded — doesn't do sales). A MANAGER always picks from their
+  // own team, whatever the area; an ADMIN picks from the team(s) that own the selected area (none
+  // linked yet? no candidates — set it on /admin/area first).
   function assigneeOptions(excluding: string[]) {
-    const teamIds = areas.find((a) => a.id === areaId)?.teamIds ?? [];
+    const teamIds = currentUser?.role === "MANAGER"
+      ? (currentUser.teamId ? [currentUser.teamId] : [])
+      : areas.find((a) => a.id === areaId)?.teamIds ?? [];
     if (teamIds.length === 0) return [];
     return activeUsers.filter((u) => u.role !== "ADMIN" && !!u.teamId && teamIds.includes(u.teamId) && !excluding.includes(u.id));
   }
