@@ -1086,6 +1086,29 @@ Append to the end of `supabase/schema.sql` (the whole text below, every line com
 -- --   run: select resync_customer_assignments(id) ... is NOT valid in reverse; restore the flat columns from a backup instead.
 ```
 
+- [ ] **Step 1b: Append the post-cutover cleanup block** (a SEPARATE block after the one above; the user runs it a few days after the cutover, once the team is happy — it is not reversible without a backup)
+
+```sql
+
+-- ============================================================
+-- Migration: Phase 3c cleanup — run a few days AFTER the cutover, once the
+-- team is happy. Empties the frozen flat slot columns on customers so a
+-- stale value can never be read, and so the old foreign keys from stage_1..3
+-- to pipeline_stages stop blocking the deletion of a stage. Not reversible
+-- without a backup. customers.updated_at is deliberately not touched.
+-- ============================================================
+--
+-- begin;
+-- alter table customers disable trigger customers_touch_updated_at;
+-- update customers set
+--   assigned_to = null, assigned_to_2 = null, assigned_to_3 = null,
+--   pool_1 = null, pool_2 = null, pool_3 = null,
+--   pool_1_since = null, pool_2_since = null, pool_3_since = null,
+--   stage_1 = null, stage_2 = null, stage_3 = null;
+-- alter table customers enable trigger customers_touch_updated_at;
+-- commit;
+```
+
 - [ ] **Step 2: Verify**
 
 Grep: the heading `Migration: Phase 3c CUTOVER` appears once; every non-blank line from it to EOF starts with `--`; the block contains `begin;` and `commit;` (commented).
