@@ -606,12 +606,9 @@ create policy "profiles_update" on profiles for update using (
 );
 create policy "profiles_delete_admin" on profiles for delete using (is_admin());
 
--- teams: admin full, member can see own team, any manager can read every
--- team (names only matter: used to label which team created a customer)
-create policy "teams_select" on teams for select using (
-  is_admin() or id = my_team_id()
-  or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
-);
+-- teams: admin writes; every signed-in user can read team names (used to
+-- label which team created a customer)
+create policy "teams_select" on teams for select using (auth.uid() is not null);
 create policy "teams_insert_admin" on teams for insert with check (is_admin());
 create policy "teams_update_admin" on teams for update using (is_admin());
 create policy "teams_delete_admin" on teams for delete using (is_admin());
@@ -2676,3 +2673,12 @@ insert into mandatory_field_settings (field_key, required) values
 --   is_admin() or id = my_team_id()
 --   or exists (select 1 from profiles where id = auth.uid() and role = 'MANAGER')
 -- );
+
+-- ============================================================
+-- Migration: Team names readable by every signed-in user (salespeople
+-- see which team created a customer on its detail page). Supersedes the
+-- teams_select policy in the migration above. Run once.
+-- ============================================================
+--
+-- drop policy if exists "teams_select" on teams;
+-- create policy "teams_select" on teams for select using (auth.uid() is not null);

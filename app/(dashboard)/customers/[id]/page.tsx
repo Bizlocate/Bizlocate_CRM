@@ -66,6 +66,7 @@ export default function CustomerDetailPage() {
     blastItems,
     blastRequests,
     users,
+    teams,
     stages,
     activities,
     changeLog,
@@ -472,6 +473,7 @@ export default function CustomerDetailPage() {
               ) : (
                 customer.phone
               )}
+              {" "}· Created by: {teams.find((t) => t.id === customer.createdByTeamId)?.name ?? "—"}
               {" "}· Assigned:{" "}
               {visibleAssignedUsers.length > 0 ? (
                 visibleAssignedUsers.map(({ slot, user }, i) => {
