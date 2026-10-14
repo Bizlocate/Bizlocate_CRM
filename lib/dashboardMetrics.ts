@@ -317,8 +317,10 @@ function avgDays(durationsMs: number[]): number | null {
 
 // Latest assignment of `customerId`'s `slot` at or before `beforeIso` — the
 // hand-off that produced whatever we're measuring duration from.
-function latestAssignmentBefore(assignmentEvents: AssignmentEvent[], customerId: string, slot: 1 | 2 | 3, beforeIso: string): AssignmentEvent | null {
-  const candidates = assignmentEvents.filter((e) => e.customerId === customerId && e.slot === slot && e.createdAt <= beforeIso);
+function latestAssignmentBefore(assignmentEvents: AssignmentEvent[], customerId: string, userId: string | null, slot: 1 | 2 | 3, beforeIso: string): AssignmentEvent | null {
+  const candidates = assignmentEvents.filter(
+    (e) => e.customerId === customerId && e.slot === slot && (userId === null || e.userId === userId) && e.createdAt <= beforeIso
+  );
   if (candidates.length === 0) return null;
   return candidates.reduce((latest, e) => (e.createdAt > latest.createdAt ? e : latest));
 }
@@ -351,11 +353,11 @@ export function assignToAppointmentDuration(
     for (const s of c.assignments) {
       if (!s.userId || !s.stageId || !appointmentStageIds.has(s.stageId)) continue;
       const enteredEvents = stageEvents
-        .filter((e) => e.customerId === c.id && e.slot === s.slot && appointmentStageIds.has(e.stageId))
+        .filter((e) => e.customerId === c.id && e.slot === s.slot && e.userId === s.userId && appointmentStageIds.has(e.stageId))
         .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
       const enteredAppointment = enteredEvents[0];
       if (!enteredAppointment) continue;
-      const assignedAt = latestAssignmentBefore(assignmentEvents, c.id, s.slot, enteredAppointment.createdAt);
+      const assignedAt = latestAssignmentBefore(assignmentEvents, c.id, s.userId, s.slot, enteredAppointment.createdAt);
       if (!assignedAt) continue;
       const ms = new Date(enteredAppointment.createdAt).getTime() - new Date(assignedAt.createdAt).getTime();
       if (ms < 0) continue;
@@ -414,7 +416,7 @@ export function closedDurationBySource(
   const bySource = new Map<string | null, number[]>();
   for (const d of dealClosures) {
     if (yearMonthOf(d.createdAt) !== yearMonth) continue;
-    const assignedAt = latestAssignmentBefore(assignmentEvents, d.customerId, d.slot, d.createdAt);
+    const assignedAt = latestAssignmentBefore(assignmentEvents, d.customerId, d.userId, d.slot, d.createdAt);
     if (!assignedAt) continue;
     const ms = new Date(d.createdAt).getTime() - new Date(assignedAt.createdAt).getTime();
     if (ms < 0) continue;

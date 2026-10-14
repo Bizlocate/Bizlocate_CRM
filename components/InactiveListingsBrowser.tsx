@@ -87,7 +87,7 @@ export default function InactiveListingsBrowser() {
             <div style={{ padding: 16, fontSize: 13.5, color: "#9aa0ab" }}>Nothing here.</div>
           )}
           {rows.map((r) => (
-            <div key={`${r.customerId}-${r.slot}`} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div key={`${r.customerId}-${r.userId}`} style={{ padding: "14px 16px", borderBottom: "1px solid #eef0f2", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <Link href={`/customers/${r.customerId}`} style={{ color: "inherit" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>{customerName(r.customerId)} — {businessName(r.customerId)}</div>
                 <div style={{ fontSize: 12, color: "#9aa0ab", marginTop: 3 }}>

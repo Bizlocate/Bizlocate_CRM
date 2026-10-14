@@ -137,13 +137,13 @@ export function warnZoneSlotsFor(
   assignmentEvents: AssignmentEvent[],
   users: Pick<User, "id" | "teamId">[],
   viewer: Pick<User, "id" | "role" | "teamId">,
-  removalRequests: Pick<RemovalRequest, "customerId" | "slot" | "status">[],
+  removalRequests: Pick<RemovalRequest, "customerId" | "requestedBy" | "status">[],
   tasks: Pick<Task, "customerId" | "userId" | "done">[] = [],
   now: number = Date.now()
 ): SlotAge[] {
   const pending = new Set(
-    removalRequests.filter((r) => r.status === "PENDING").map((r) => `${r.customerId}|${r.slot}`)
+    removalRequests.filter((r) => r.status === "PENDING").map((r) => `${r.customerId}|${r.requestedBy}`)
   );
   const ages = computeSlotAges(customers, activities, assignmentEvents, tasks, now).filter(isWarnZone);
-  return scopeSlotAgesToViewer(ages, users, viewer).filter((a) => !pending.has(`${a.customerId}|${a.slot}`));
+  return scopeSlotAgesToViewer(ages, users, viewer).filter((a) => !pending.has(`${a.customerId}|${a.userId}`));
 }

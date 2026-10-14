@@ -186,11 +186,11 @@ function daysAgo(n: number): string {
   assert.deepStrictEqual(none.map((a) => a.customerId).sort(), ["w1", "w2"]);
 
   // A PENDING removal request on w1/slot 1 drops just that slot.
-  const reqs = [removalRequest({ id: "rq1", customerId: "w1", slot: 1 })];
+  const reqs = [removalRequest({ id: "rq1", customerId: "w1", slot: 1, requestedBy: "sales-a" })];
   assert.deepStrictEqual(warnZoneSlotsFor([c1, c2], [], [], users, viewer, reqs, [], NOW).map((a) => a.customerId), ["w2"]);
 
   // Resolved requests don't hide anything, nor does one on a different slot.
-  const resolved = [removalRequest({ id: "rq2", customerId: "w1", slot: 1, status: "REJECTED" })];
+  const resolved = [removalRequest({ id: "rq2", customerId: "w1", slot: 1, requestedBy: "sales-a", status: "REJECTED" })];
   assert.strictEqual(warnZoneSlotsFor([c1, c2], [], [], users, viewer, resolved, [], NOW).length, 2);
   const otherSlot = [removalRequest({ id: "rq3", customerId: "w1", slot: 2 })];
   assert.strictEqual(warnZoneSlotsFor([c1, c2], [], [], users, viewer, otherSlot, [], NOW).length, 2);
