@@ -462,7 +462,7 @@ interface Store {
 
   addArea: (name: string) => void;
   updateArea: (id: string, name: string) => void;
-  updateAreaAutoAssign: (id: string, enabled: boolean) => void;
+  updateTeamAutoAssign: (id: string, enabled: boolean) => void;
   deleteArea: (id: string) => void;
   addSubArea: (areaId: string, name: string) => void;
   updateSubArea: (id: string, name: string) => void;
@@ -1294,43 +1294,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     supabase.from("areas").update({ name }).eq("id", id).then(() => {});
   }
 
-  function updateAreaAutoAssign(id: string, enabled: boolean) {
-    const target = areas.find((a) => a.id === id);
+  // Team-wide auto second-assign switch. Switching back ON stamps the resume
+  // time: a customer whose due date already passed before this moment is
+  // never auto-assigned (the sweep treats that as "missed the window").
+  function updateTeamAutoAssign(id: string, enabled: boolean) {
+    const target = teams.find((t) => t.id === id);
     if (!target) return;
-    const prevEnabled = target.autoAssignEnabled;
-    const prevResumedAt = target.autoAssignResumedAt;
-    const resuming = enabled && !prevEnabled;
+    const prev = { autoAssignEnabled: target.autoAssignEnabled, autoAssignResumedAt: target.autoAssignResumedAt };
     const nowIso = new Date().toISOString();
-    setAreas((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: enabled, ...(resuming ? { autoAssignResumedAt: nowIso } : {}) } : a))
-    );
-    const supabase = createClient();
-    // Two independent calls, not one: auto_assign_resumed_at's migration may not
-    // have run yet in prod, and an unknown column would reject the WHOLE update
-    // (including auto_assign_enabled) if sent together. Enabled-flag write must
-    // succeed/fail on its own so toggling an area back on isn't blocked by that.
-    supabase
-      .from("areas")
-      .update({ auto_assign_enabled: enabled })
+    const resuming = enabled && !target.autoAssignEnabled;
+    setTeams((all) => all.map((t) => (t.id === id ? { ...t, autoAssignEnabled: enabled, ...(resuming ? { autoAssignResumedAt: nowIso } : {}) } : t)));
+    createClient()
+      .from("teams")
+      .update(resuming ? { auto_assign_enabled: true, auto_assign_resumed_at: nowIso } : { auto_assign_enabled: enabled })
       .eq("id", id)
       .then(({ error }) => {
         if (error) {
-          console.error("updateAreaAutoAssign: failed to update auto_assign_enabled", error);
-          setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignEnabled: prevEnabled } : a)));
+          console.error("updateTeamAutoAssign failed", error);
+          setTeams((all) => all.map((t) => (t.id === id ? { ...t, ...prev } : t)));
         }
       });
-    if (resuming) {
-      supabase
-        .from("areas")
-        .update({ auto_assign_resumed_at: nowIso })
-        .eq("id", id)
-        .then(({ error }) => {
-          if (error) {
-            console.error("updateAreaAutoAssign: failed to update auto_assign_resumed_at", error);
-            setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, autoAssignResumedAt: prevResumedAt } : a)));
-          }
-        });
-    }
   }
 
   function deleteArea(id: string) {
@@ -2680,7 +2663,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteTeam,
     addArea,
     updateArea,
-    updateAreaAutoAssign,
+    updateTeamAutoAssign,
     deleteArea,
     addSubArea,
     updateSubArea,

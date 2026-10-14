@@ -7,7 +7,7 @@ import { CsvPreview } from "@/lib/types";
 import { removeCsvRow } from "@/lib/parseAreaCsv";
 
 export default function AdminAreaPage() {
-  const { areas, subAreas, addArea, updateArea, updateAreaAutoAssign, deleteArea, addSubArea, updateSubArea, deleteSubArea, previewAreaCsv, confirmAreaCsvImport } = useStore();
+  const { areas, subAreas, addArea, updateArea,deleteArea, addSubArea, updateSubArea, deleteSubArea, previewAreaCsv, confirmAreaCsvImport } = useStore();
 
   const [showForm, setShowForm] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
@@ -171,8 +171,8 @@ export default function AdminAreaPage() {
       )}
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Area</div><div>Sub-Areas</div><div>Auto Assign</div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Area</div><div>Sub-Areas</div>
         </div>
         {areas.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No areas yet. Create one or upload a CSV.</div>}
         {areas.map((a) => {
@@ -180,7 +180,7 @@ export default function AdminAreaPage() {
           const expanded = expandedAreaId === a.id;
           return (
             <div key={a.id} style={{ borderBottom: "1px solid #eef0f2" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   {editingAreaId === a.id ? (
                     <input className="field-input" style={{ flex: "1 1 200px" }} value={editingAreaName} onChange={(e) => setEditingAreaName(e.target.value)} onBlur={saveEditArea} autoFocus />
@@ -195,12 +195,6 @@ export default function AdminAreaPage() {
                   </span>
                 </div>
                 <div style={{ color: "#6b7280" }}>{rows.length}</div>
-                <div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280" }}>
-                    <input type="checkbox" checked={a.autoAssignEnabled} onChange={(e) => updateAreaAutoAssign(a.id, e.target.checked)} />
-                    On
-                  </label>
-                </div>
               </div>
 
               {expanded && (

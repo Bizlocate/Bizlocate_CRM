@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminTeamsPage() {
-  const { teams, users, addTeam, updateTeam, deleteTeam, updateUserTeam } = useStore();
+  const { teams, users, addTeam, updateTeam, deleteTeam, updateUserTeam, updateTeamAutoAssign, updateUserAutoAssign } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -104,8 +104,8 @@ export default function AdminTeamsPage() {
       )}
 
       <div className="card">
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
-          <div>Team Name</div><div>Manager</div><div>Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr .8fr 1fr", padding: "12px 20px", background: "#f7f7f8", borderBottom: "1px solid #e2e4e9", fontSize: 12, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".03em" }}>
+          <div>Team Name</div><div>Manager</div><div>Auto Assign</div><div>Actions</div>
         </div>
         {teams.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: "#9aa0ab" }}>No teams yet. Create one.</div>}
         {teams.map((t) => {
@@ -114,11 +114,15 @@ export default function AdminTeamsPage() {
           const availableUsers = users.filter((u) => u.teamId !== t.id);
           return (
             <div key={t.id} style={{ borderBottom: "1px solid #eef0f2" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr .8fr 1fr", padding: "14px 20px", alignItems: "center", fontSize: 13.5 }}>
                 <span style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => setExpandedTeamId(expanded ? null : t.id)}>
                   {expanded ? "▾" : "▸"} {t.name} <span style={{ color: "#9aa0ab", fontWeight: 400 }}>({teamMembers.length})</span>
                 </span>
                 <div style={{ color: "#6b7280" }}>{managerName(t.managerId)}</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280" }}>
+                  <input type="checkbox" checked={t.autoAssignEnabled} onChange={(e) => updateTeamAutoAssign(t.id, e.target.checked)} />
+                  {t.autoAssignEnabled ? "On" : "Off"}
+                </label>
                 <div style={{ display: "flex", gap: 14 }}>
                   <span style={{ color: "#4046c9", fontWeight: 500, cursor: "pointer" }} onClick={() => openEdit(t.id)}>Edit</span>
                   <span
@@ -137,6 +141,12 @@ export default function AdminTeamsPage() {
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 0", fontSize: 13 }}>
                       <span style={{ color: "#374151" }}>{m.name}</span>
                       <span style={{ color: "#9aa0ab" }}>{m.role}</span>
+                      {m.role === "SALESPERSON" && (
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, color: "#6b7280", opacity: t.autoAssignEnabled ? 1 : 0.5 }} title="Include this member in the auto second-assign rotation">
+                          <input type="checkbox" checked={m.autoAssignEnabled} onChange={(e) => updateUserAutoAssign(m.id, e.target.checked)} />
+                          {m.autoAssignEnabled ? "On" : "Off"}
+                        </label>
+                      )}
                       <span style={{ color: "#a13a2b", cursor: "pointer" }} onClick={() => updateUserTeam(m.id, null)}>Remove</span>
                     </div>
                   ))}
