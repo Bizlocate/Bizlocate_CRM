@@ -2840,18 +2840,20 @@ insert into mandatory_field_settings (field_key, required) values
 -- Run ONCE, together with deploying the Phase 3c app (the old app and this
 -- schema are not compatible). Runbook: docs/superpowers/plans/2026-10-14-phase3c-cutover.md Task 7.
 --
--- STEP 0 (read-only; save the output of all four before running anything):
+-- STEP 0 (read-only; save the output of all five before running anything):
 --   select schemaname, tablename, policyname, cmd, qual, with_check from pg_policies order by tablename, policyname;
 --   select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 --     where n.nspname = 'public' and p.prosrc ilike '%assigned_to%' order by 1;
 --   select event_object_table, trigger_name from information_schema.triggers where trigger_schema = 'public' order by 1, 2;
 --   select count(*) as seats from customer_assignments;   -- the Phase 3a mirror must be populated
+--   select customer_id, user_id, count(*) from customer_assignments group by 1, 2 having count(*) > 1;   -- must return no rows
 -- Send me the first three before running the block: any policy or function
 -- that mentions assigned_to / is_customer_assignee and is NOT replaced below
 -- would silently go stale.
 -- ============================================================
 --
 -- begin;
+-- set local lock_timeout = '10s';
 --
 -- -- 1. one last sync from the old columns, then stop mirroring
 -- do $$
@@ -2986,7 +2988,8 @@ insert into mandatory_field_settings (field_key, required) values
 -- );
 -- drop policy if exists "activities_insert" on activities;
 -- create policy "activities_insert" on activities for insert with check (
---   is_admin() or is_customer_member(activities.customer_id)
+--   activities.user_id = auth.uid()
+--   and (is_admin() or is_customer_member(activities.customer_id))
 -- );
 -- drop policy if exists "activities_delete" on activities;
 -- create policy "activities_delete" on activities for delete using (
@@ -3027,7 +3030,9 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- drop policy if exists "removal_requests_select" on removal_requests;
 -- create policy "removal_requests_select" on removal_requests for select using (
---   is_admin() or requested_by = auth.uid() or is_customer_member(removal_requests.customer_id)
+--   is_admin()
+--   or requested_by = auth.uid()
+--   or requested_by in (select id from profiles where team_id = my_team_id())
 -- );
 -- drop policy if exists "removal_requests_insert" on removal_requests;
 -- create policy "removal_requests_insert" on removal_requests for insert with check (
@@ -3058,7 +3063,8 @@ insert into mandatory_field_settings (field_key, required) values
 --
 -- drop policy if exists "stage_events_insert" on stage_events;
 -- create policy "stage_events_insert" on stage_events for insert with check (
---   is_admin() or is_customer_member(stage_events.customer_id)
+--   stage_events.user_id = auth.uid()
+--   and (is_admin() or is_customer_member(stage_events.customer_id))
 -- );
 --
 -- -- 8. a person changing team takes their seats along; a seat number already
@@ -3097,6 +3103,10 @@ insert into mandatory_field_settings (field_key, required) values
 --   when (old.team_id is distinct from new.team_id)
 --   execute function trg_profiles_move_seats();
 --
+-- -- 9. one pending removal request per person per customer (seat numbers are per team now)
+-- drop index if exists removal_requests_one_pending;
+-- create unique index removal_requests_one_pending on removal_requests (customer_id, requested_by) where status = 'PENDING';
+--
 -- commit;
 --
 -- -- Verify (seats = the STEP 0 count, or slightly more if people assigned in between; the other two = 0):
@@ -3105,13 +3115,14 @@ insert into mandatory_field_settings (field_key, required) values
 -- --     where qual ilike '%is_customer_assignee%' or with_check ilike '%is_customer_assignee%'
 -- --        or qual ilike '%assigned_to%' or with_check ilike '%assigned_to%';
 -- --   select count(*) as dup_seats from (select customer_id, user_id from customer_assignments group by 1,2 having count(*) > 1) d;
+-- --   select tgname from pg_trigger where tgname in ('customers_protect_assignment','customers_protect_pool','customers_resync_assignments','profiles_resync_assignments');   -- 0 rows
 --
 -- -- Rollback (only if something is badly wrong; data written to seats after the
 -- -- cutover is NOT copied back to the old columns):
 -- --   re-create the Phase 3a mirror (the "customer_assignments (Phase 3a)" block above),
 -- --   re-create the policies/triggers you saved in STEP 0 (they are also in the main schema above),
 -- --   drop trigger customer_assignments_protect / customer_assignments_touch_customer / profiles_move_seats,
--- --   run: select resync_customer_assignments(id) ... is NOT valid in reverse; restore the flat columns from a backup instead.
+-- --   restore the flat columns from the backup you took before the cutover (seat changes made after the cutover are not copied back).
 
 -- ============================================================
 -- Migration: Phase 3c cleanup — run a few days AFTER the cutover, once the
@@ -3119,9 +3130,16 @@ insert into mandatory_field_settings (field_key, required) values
 -- stale value can never be read, and so the old foreign keys from stage_1..3
 -- to pipeline_stages stop blocking the deletion of a stage. Not reversible
 -- without a backup. customers.updated_at is deliberately not touched.
+-- Run off-hours: it touches every customer row, so every open client gets one Realtime event per row.
 -- ============================================================
 --
 -- begin;
+-- do $$
+-- begin
+--   if exists (select 1 from pg_trigger where tgname = 'customers_resync_assignments') then
+--     raise exception 'run the Phase 3c cutover first (the Phase 3a mirror trigger is still active)';
+--   end if;
+-- end $$;
 -- alter table customers disable trigger customers_touch_updated_at;
 -- update customers set
 --   assigned_to = null, assigned_to_2 = null, assigned_to_3 = null,
