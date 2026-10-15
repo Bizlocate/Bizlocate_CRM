@@ -17,7 +17,12 @@ export default function MainNav() {
   function countDefaultStageFor(userIds: Set<string>): number {
     const defaultStage = stages.find((s) => s.isDefault);
     if (!defaultStage) return 0;
-    return customers.filter((c) => c.assignments.some((s) => userIds.has(s.userId) && s.stageId === defaultStage.id)).length;
+    // Skip customers the viewer has a pending removal request on -- the list
+    // views hide them too (CustomerListView), so badge and list must match.
+    return customers.filter((c) =>
+      c.assignments.some((s) => userIds.has(s.userId) && s.stageId === defaultStage.id) &&
+      !removalRequests.some((r) => r.customerId === c.id && r.requestedBy === currentUser?.id && r.status === "PENDING")
+    ).length;
   }
 
   // Own badge: the viewer's own assigned customers in the default stage --
@@ -25,7 +30,7 @@ export default function MainNav() {
   const ownNewStageCount = useMemo(() => {
     if (!currentUser || currentUser.role === "ADMIN") return 0;
     return countDefaultStageFor(new Set([currentUser.id]));
-  }, [customers, currentUser, stages]);
+  }, [customers, currentUser, stages, removalRequests]);
 
   // Team badge (MANAGER's Customers tab): customers where anyone on the
   // manager's own team has a slot in the default stage -- the same set the
@@ -33,7 +38,7 @@ export default function MainNav() {
   const teamNewStageCount = useMemo(() => {
     if (!currentUser || currentUser.role !== "MANAGER" || !currentUser.teamId) return 0;
     return countDefaultStageFor(new Set(users.filter((u) => u.teamId === currentUser.teamId).map((u) => u.id)));
-  }, [customers, users, currentUser, stages]);
+  }, [customers, users, currentUser, stages, removalRequests]);
 
   // tasks is already RLS-scoped to "mine" (private per creator), so this is
   // just the current user's own open-task count -- same list TodoTasksBrowser
