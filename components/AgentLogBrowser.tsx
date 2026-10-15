@@ -41,6 +41,7 @@ export default function AgentLogBrowser({ agents, customers, teams }: { agents: 
   const [teamId, setTeamId] = useState("");
   const [stageId, setStageId] = useState("");
   const [agentId, setAgentId] = useState("");
+  const [pool, setPool] = useState<"" | "ACTIVE" | "INACTIVE">("");
 
   // The Member dropdown narrows to the picked team (admin only).
   const visibleAgents = teamId ? agents.filter((a) => a.teamId === teamId) : agents;
@@ -55,6 +56,7 @@ export default function AgentLogBrowser({ agents, customers, teams }: { agents: 
   for (const c of customers) {
     for (const aid of scopedAgentIds) {
       if (!assigneeIds(c).includes(aid)) continue;
+      if (pool && c.assignments.find((s) => s.userId === aid)?.pool !== pool) continue;
       scopedEntries.push({ customer: c, agentId: aid, stageId: agentStageId(c, aid) });
     }
   }
@@ -96,6 +98,11 @@ export default function AgentLogBrowser({ agents, customers, teams }: { agents: 
           {visibleAgents.map((u) => (
             <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
           ))}
+        </select>
+        <select className="field-input" style={{ width: 180 }} value={pool} onChange={(e) => setPool(e.target.value as "" | "ACTIVE" | "INACTIVE")}>
+          <option value="">All Pools</option>
+          <option value="ACTIVE">Active Pool</option>
+          <option value="INACTIVE">Potential Pool</option>
         </select>
         <select className="field-input" style={{ width: 180 }} value={stageId} onChange={(e) => setStageId(e.target.value)}>
           <option value="">All Stages</option>
